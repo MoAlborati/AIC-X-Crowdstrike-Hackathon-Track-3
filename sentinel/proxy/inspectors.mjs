@@ -79,10 +79,14 @@ function headerLines(headers) {
  * The verdict carries ONLY ids (`flag-<index into flagSubstrings>`), locations, byte offsets and static
  * reason codes, never the matched text: the verdict is logged to stderr and the capture JSONL, and a
  * honeytoken copied into a log is a leaked honeytoken.
- * @param {readonly string[]} needles
+ * A needle is either a string (id `flag-<index>`) or a canary `{id, value}` (id kept as given), so
+ * the default stack can seed it with every honeytoken, not just flagSubstrings (#126).
+ * @param {ReadonlyArray<string | {id: string, value: string}>} needles
  */
 export function substringInspector(needles) {
-  const encoded = needles.map((n, i) => ({ id: flagSubstringId(i), buf: Buffer.from(n, 'utf8') }));
+  const encoded = needles.map((n, i) => (typeof n === 'string'
+    ? { id: flagSubstringId(i), buf: Buffer.from(n, 'utf8') }
+    : { id: n.id, buf: Buffer.from(n.value, 'utf8') }));
   return async function substring({ phase, path, headers, body }) {
     if (encoded.length === 0) return null;
     const meta = [];
@@ -110,4 +114,65 @@ export function substringInspector(needles) {
 /** Stable id for flagSubstrings[i]; shared with the proxy's log-redaction canary list. */
 export function flagSubstringId(i) {
   return `flag-${i}`;
+}
+
+/** Base64 substrings fully determined by `buf` at each byte alignment (mod 3) inside a larger encoding. */
+function base64Cores(buf) {
+  const cores = [];
+  for (let k = 0; k < 3; k += 1) {
+    const enc = Buffer.concat([Buffer.alloc(k), buf]).toString('base64');
+    cores.push(enc.slice(Math.ceil((8 * k) / 6), Math.floor((8 * (k + buf.length)) / 6)));
+  }
+  return cores;
+}
+
+/**
+ * #126: request-side canary check for POSTs to routes T3 does not parse (DVAA `POST /chat {message}`,
+ * A2A `/a2a/message`, `/`, ...). T3 returns null for those paths, so without this a honeytoken could be
+ * carried into them in a cheap encoding the raw substring backstop does not see.
+ *
+ * Scans the FULL decoded body for every canary as: percent-decoded (any subset of chars encoded, up to
+ * MAX_URL_DECODE_ROUNDS), hex (either case), base64 and base64url at all three byte alignments. The raw
+ * form is the substring backstop's job. Paths in `skipPaths` (T3's chat paths) are left to T3, which
+ * already parses and judges them, so benign chat-completions traffic is unchanged.
+ *
+ * The proxy turns a flagged verdict into a 403 `flagged_request` in block mode (never forwarded) and a
+ * would-block ALERT in observe mode. The verdict carries canary ids, forms and offsets only.
+ * @param {ReadonlyArray<{id: string, value: string}>} canaries
+ * @param {{skipPaths?: Iterable<string>}} [opts]
+ */
+export function nonChatCanaryInspector(canaries, { skipPaths = [] } = {}) {
+  const skip = new Set(skipPaths);
+  const needles = [];
+  for (const c of canaries) {
+    const buf = Buffer.from(c.value, 'utf8');
+    needles.push({ id: c.id, form: 'percent', text: c.value, view: 'decoded' });
+    needles.push({ id: c.id, form: 'hex', text: buf.toString('hex'), view: 'lower' });
+    for (const core of base64Cores(buf)) {
+      needles.push({ id: c.id, form: 'base64', text: core, view: 'raw' });
+      const url = core.replace(/\+/g, '-').replace(/\//g, '_');
+      if (url !== core) needles.push({ id: c.id, form: 'base64url', text: url, view: 'raw' });
+    }
+  }
+  return async function nonChatCanary({ phase, method, path, body }) {
+    if (phase !== 'request' || method !== 'POST' || needles.length === 0) return null;
+    if (skip.has(String(path ?? '').split('?')[0])) return null;
+    const raw = Buffer.isBuffer(body) ? body.toString('utf8') : String(body ?? '');
+    if (raw.length === 0) return null;
+    // Percent-decoded spellings (with and without '+'): urlVariants() minus the raw spelling itself.
+    const decoded = urlVariants(raw).filter((v) => v !== raw).join('\n');
+    const views = { raw, lower: raw.toLowerCase(), decoded };
+    const hits = [];
+    for (const n of needles) {
+      const at = views[n.view].indexOf(n.text);
+      if (at !== -1) hits.push({ needle_id: n.id, where: 'body', form: n.form, offset: at });
+    }
+    if (hits.length === 0) return null;
+    return {
+      flagged: true,
+      detector: 'non-chat-canary',
+      reasons: [...new Set(hits.map((h) => `canary_encoded_non_chat_route:${h.form}`))],
+      hits,
+    };
+  };
 }
