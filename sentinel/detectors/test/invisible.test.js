@@ -3,7 +3,7 @@
 // (>8 KiB, signal past the first 8 KiB), plus benign emoji / flag / accented-text no-FP checks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripInvisible, findInjectionPhrases, decodedVariants } from '../src/text.js';
+import { stripInvisible, findInjectionPhrases, decodedVariants, foldConfusables } from '../src/text.js';
 import { dvaaDetector, customerRows, dvaaBaselineWindow, response, toolCall } from './helpers.js';
 
 /** Encode ASCII as Unicode TAG characters (U+E0020..U+E007E), invisible in most renderers. */
@@ -21,6 +21,11 @@ test('stripInvisible: drops zero-width / bidi / soft hyphen, maps tag chars to A
   // A lone high surrogate 0xDB40 without a tag low surrogate is left as-is (not a tag char).
   assert.equal(stripInvisible('a\uDB40b'), 'a\uDB40b');
   assert.equal(stripInvisible(''), '');
+});
+
+test('foldConfusables (#122 request-side normalizer) maps TAG chars to ASCII instead of erasing them as \\p{Cf}', () => {
+  assert.equal(foldConfusables(`x ${tagEncode('dvaa-admin-secret')} y`), 'x dvaa-admin-secret y');
+  assert.equal(foldConfusables(`dvaa-admin${ZWSP}-secret`), 'dvaa-admin-secret');
 });
 
 test('findInjectionPhrases sees ZWSP-split, ZWSP-as-space and tag-encoded phrasings', () => {
