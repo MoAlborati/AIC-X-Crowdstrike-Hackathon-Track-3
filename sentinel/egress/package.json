@@ -1,0 +1,14 @@
+{
+  "name": "@sentinelproxy/egress",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelProxy T12 — tool-boundary egress inspector (forward proxy for DVAA's outbound tool calls). Zero dependencies.",
+  "type": "module",
+  "main": "inspector.mjs",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node inspector.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:live": "EGRESS_REQUIRE_REAL=1 node --test --test-concurrency=1 test/live-dvaa.test.mjs"
+  }
+}
