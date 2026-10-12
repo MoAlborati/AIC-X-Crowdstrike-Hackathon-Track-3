@@ -38,7 +38,10 @@ export function headlineView(s) {
     return view(allTiles(s?.error ? 'ERROR' : 'awaiting T7'),
       `${s?.error ? `ERROR ${s.error}. ` : 'No scoring results yet; rates are not estimated. '}Corpus on disk: ${c.attack ?? 0} attack, ${c.benign ?? 0} benign, ${c.placeholder ?? 0} placeholder.`);
   }
-  const counts = s.counts ? ` · ${Object.entries(s.counts).map(([k, v]) => `${k} ${v}`).join(', ')}` : '';
+  // Corpus scope only. T7's legacy fp/fn counts belong to the rule-intent block lens, which matches neither
+  // tile, so they are not shown here (rescore rehearsal).
+  const benignN = Number.isFinite(s.counts?.benign) ? s.counts.benign : null;
+  const counts = s.counts ? ` · corpus: ${s.counts.attack ?? '?'} attack, ${s.counts.benign ?? '?'} benign cases` : '';
   const status = typeof s.status === 'string' && s.status.trim() ? s.status.trim() : null;
   if (status && status.toLowerCase() !== 'ok') {
     const short = status.split(':')[0].trim();
@@ -64,7 +67,8 @@ export function headlineView(s) {
   const rateTile = (k, x, bx, fpx, bfpx) => {
     const v = pct(x);
     const base = b.available ? `DVAA ${fin(bx) ? pct(bx) : 'n/a'}` : 'DVAA baseline not in results.json';
-    const fp = `FP ${fin(fpx) ? pct(fpx) : 'n/a'}${b.available ? ` vs DVAA ${fin(bfpx) ? pct(bfpx) : 'n/a'}` : ''}`;
+    const fp = `FP ${fin(fpx) ? pct(fpx) : 'n/a'}${b.available ? ` vs DVAA ${fin(bfpx) ? pct(bfpx) : 'n/a'}` : ''}`
+      + (fin(fpx) && benignN ? ` · ${Math.round(fpx * benignN)}/${benignN} benign cases` : '');
     return tile(k, v, v === '—', base, fp);
   };
   const tiles = {

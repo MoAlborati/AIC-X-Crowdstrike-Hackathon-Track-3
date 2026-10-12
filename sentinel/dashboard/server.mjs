@@ -101,7 +101,7 @@ export async function replayPayload(index, id, runKey, { dev = true } = {}) {
         bytes: capture.bytes, canaryHits: capture.canaryHits,
       },
       run: { key: run.key, label: run.label, role: run.role, agent: run.agent, outcome: run.outcome, exchanges: run.exchanges, toolResults: run.toolResults },
-      runs: capture.runs.map(r => ({ key: r.key, label: r.label, role: r.role, outcome: r.outcome })),
+      runs: capture.runs.map(r => ({ key: r.key, label: r.label, role: r.role, twinTitle: r.twinTitle ?? null, outcome: r.outcome })),
       alerts,
       alertSource: { origin: src.origin, placeholder: src.placeholder, note: src.note, validator: validatorOrigin },
       ...replay,

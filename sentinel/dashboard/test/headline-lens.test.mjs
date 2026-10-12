@@ -60,15 +60,15 @@ test('lens shape (T7 PR #28): Detected / Prevented, each beside DVAA and its own
   assert.equal(v.tiles.prev.value, pct(LENS.preventionRecall));
   assert.equal(v.tiles.det.base, `DVAA ${pct(base.anyFinding.recall)}`);
   assert.equal(v.tiles.prev.base, `DVAA ${pct(base.prevention.recall)}`);
-  assert.equal(v.tiles.det.fp, `FP ${pct(LENS.headlineLenses.detection.falsePositiveRate)} vs DVAA ${pct(base.anyFinding.falsePositiveRate)}`);
-  assert.equal(v.tiles.prev.fp, `FP ${pct(LENS.headlineLenses.prevention.falsePositiveRate)} vs DVAA ${pct(base.prevention.falsePositiveRate)}`);
+  assert.equal(v.tiles.det.fp.split(' · ')[0], `FP ${pct(LENS.headlineLenses.detection.falsePositiveRate)} vs DVAA ${pct(base.anyFinding.falsePositiveRate)}`);
+  assert.equal(v.tiles.prev.fp.split(' · ')[0], `FP ${pct(LENS.headlineLenses.prevention.falsePositiveRate)} vs DVAA ${pct(base.prevention.falsePositiveRate)}`);
   // Latency: the in-detector figure only (no DVAA or dashboard timing next to it).
   assert.equal(v.tiles.lat.value, `${LENS.latencyMs.median.toFixed(3)} ms`);
   assert.equal(v.tiles.lat.base, 'p95 0.379 ms');
   assert.equal(v.tiles.lat.sub, 'median per case, detector only');
   // Pinned to the snapshot.
   assert.deepEqual(TILE_KEYS.map(k => v.tiles[k].value), ['63.0%', '41.8%', '0.067 ms']);
-  assert.deepEqual([v.tiles.det.base, v.tiles.det.fp, v.tiles.prev.base, v.tiles.prev.fp],
+  assert.deepEqual([v.tiles.det.base, v.tiles.det.fp.split(' · ')[0], v.tiles.prev.base, v.tiles.prev.fp.split(' · ')[0]],
     ['DVAA 65.6%', 'FP 0.0% vs DVAA 12.8%', 'DVAA 63.0%', 'FP 0.0% vs DVAA 12.8%']);
   assert.ok(TILE_KEYS.every(k => !v.tiles[k].pending));
   // The legacy 44.4% never appears anywhere in the headline.
@@ -83,7 +83,7 @@ test('lens baseline uses the anyFinding row, not the legacy blocking row', async
   r.detectors['dvaa-baseline'].modes.enforce.blocking.falsePositiveRate = 0.999;
   const { v } = await viewOf(r);
   assert.equal(v.tiles.det.base, 'DVAA 65.6%');
-  assert.equal(v.tiles.det.fp, 'FP 0.0% vs DVAA 12.8%');
+  assert.equal(v.tiles.det.fp.split(' · ')[0], 'FP 0.0% vs DVAA 12.8%');
   const ro = clone(LENS);
   ro.headline.mode = 'report-only';
   const { v: v2 } = await viewOf(ro);
@@ -96,7 +96,7 @@ test('per-lens FP is not filled from the top-level (blocking-lens) falsePositive
   delete r.headlineLenses.detection.falsePositiveRate;
   r.falsePositiveRate = 0.5;
   const { v } = await viewOf(r);
-  assert.equal(v.tiles.det.fp, 'FP n/a vs DVAA 12.8%');
+  assert.equal(v.tiles.det.fp.split(' · ')[0], 'FP n/a vs DVAA 12.8%');
 });
 
 test('lens fields read from headlineLenses when the top-level lens fields are absent', async () => {
@@ -150,13 +150,13 @@ test('missing pieces are shown as missing, never filled in', async () => {
   let { v } = await viewOf(r);
   assert.equal(v.tiles.det.value, '63.0%');
   for (const k of ['det', 'prev']) assert.equal(v.tiles[k].base, 'DVAA baseline not in results.json');
-  assert.equal(v.tiles.det.fp, 'FP 0.0%');
+  assert.equal(v.tiles.det.fp.split(' · ')[0], 'FP 0.0%');
 
   r = clone(LENS);
   delete r.detectors['dvaa-baseline'].modes.enforce.prevention;
   ({ v } = await viewOf(r));
   assert.equal(v.tiles.prev.base, 'DVAA n/a');
-  assert.equal(v.tiles.prev.fp, 'FP 0.0% vs DVAA n/a');
+  assert.equal(v.tiles.prev.fp.split(' · ')[0], 'FP 0.0% vs DVAA n/a');
 
   r = clone(LENS);
   delete r.preventionRecall;

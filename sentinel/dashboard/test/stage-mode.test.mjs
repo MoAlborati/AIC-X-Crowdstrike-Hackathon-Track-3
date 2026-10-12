@@ -298,3 +298,59 @@ test('stage capture 3 alerts are rebuilt reproducibly from its embedded proxy re
   assert.deepEqual(strip(cap.alerts.run), strip(stageCaptureAlerts(cap)));
   assert.ok(cap.alerts.run.every(a => a.PipelineContext.Detector === 'sentinel-t3' && a.PipelineContext.ProxyAction === 'blocked_request'));
 });
+
+test('headline FP is scoped to the benign corpus and the legacy fn count is gone (rescore rehearsal)', async () => {
+  await withServer(async (base) => {
+    const { headlineView } = await import('../public/headline-view.js');
+    const { body } = await getJson(`${base}/api/scoring`);
+    const v = headlineView(body);
+    if (!body.available || !body.counts?.benign) return; // nothing to scope when T7 results are absent
+    for (const k of ['det', 'prev']) if (!v.tiles[k].pending && /FP \d/.test(v.tiles[k].fp)) assert.match(v.tiles[k].fp, new RegExp(`/${body.counts.benign} benign cases$`));
+    assert.doesNotMatch(v.note, /\bfn \d|\bfp \d/);
+  });
+});
+
+test('contrast runs are labeled by configuration; a fully blocked run reads protected, not compromised', async () => {
+  const { trustAt } = await import('../public/replay-view.js');
+  await withServer(async (base) => {
+    const { body: pb } = await getJson(`${base}/api/replay?id=contrast/runs/proxy-block.demo&run=runB`);
+    assert.equal(pb.run.label, 'RAGBot :7005 behind SentinelProxy (block)');
+    assert.ok(!JSON.stringify(pb.timeline).includes('RAGBot-AIM'));
+    assert.ok(pb.graph.nodes.some(n => n.kind === 'proxy_refusal'));
+    const { body: s3 } = await getJson(`${base}/api/replay?id=stage/proxy-blocked-t3&run=run`);
+    const blocked = s3.alerts.filter(a => a.prevented);
+    const t = trustAt(s3, blocked, true);
+    assert.equal(t.protected, true);
+    assert.equal(t.value, 100);
+    const { body: twin } = await getJson(`${base}/api/replay?id=attack/aim-ab.demo&run=runB`);
+    assert.equal(trustAt(twin, twin.alerts, true).protected, true, 'AIM denied the call, nothing left the box');
+    const { body: vuln } = await getJson(`${base}/api/replay?id=attack/aim-ab.demo&run=runA`);
+    assert.notEqual(trustAt(vuln, vuln.alerts, true).protected, true, 'the vulnerable run stays compromised');
+  });
+});
+
+test('stage mode works when run-demo.sh points SENTINEL_CAPTURES_DIR / SENTINEL_ALERTS_DIR at pipeline output', async () => {
+  const { mkdtemp, mkdir, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'stage-env-'));
+  const saved = { ...process.env };
+  try {
+    await mkdir(path.join(dir, 'captures', 'live'), { recursive: true });
+    await mkdir(path.join(dir, 'alerts'), { recursive: true });
+    process.env.SENTINEL_CAPTURES_DIR = path.join(dir, 'captures');
+    process.env.SENTINEL_ALERTS_DIR = path.join(dir, 'alerts');
+    delete process.env.SENTINEL_HIDE_STAGE;
+    await withServer(async (base) => {
+      const { body } = await getJson(`${base}/api/captures`);
+      assert.ok(body.stage.every(s => !s.error), JSON.stringify(body.stage));
+      for (const s of body.stage) {
+        const { status, body: rp } = await getJson(`${base}/api/replay?id=${encodeURIComponent(s.id)}&run=${s.run}`);
+        assert.equal(status, 200);
+        assert.ok(rp.alerts.length >= 1 && !rp.alertSource.placeholder);
+      }
+    });
+  } finally {
+    for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_STAGE']) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    await rm(dir, { recursive: true, force: true });
+  }
+});

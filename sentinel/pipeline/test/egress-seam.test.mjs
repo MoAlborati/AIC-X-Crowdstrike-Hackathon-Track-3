@@ -104,7 +104,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
   process.env.SENTINEL_CAPTURES_DIR = path.join(outDir, 'captures');
   process.env.SENTINEL_ALERTS_DIR = path.join(outDir, 'alerts');
   process.env.SENTINEL_HIDE_PLACEHOLDERS = '1';
-  process.env.SENTINEL_HIDE_STAGE = '1'; // count only this pipeline output, not the dashboard's stage recordings
+  process.env.SENTINEL_HIDE_STAGE = '1'; // T5-stage recordings (sentinel/dashboard/stage) are not pipeline output
   const server = dash.server.createServer();
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
@@ -132,7 +132,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
     for (const a of chat.alerts) assert.match(a.caseCard.narrative, /response-side · alert_only/);
   } finally {
     await new Promise((r) => server.close(r));
-    for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_PLACEHOLDERS']) {
+    for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_PLACEHOLDERS', 'SENTINEL_HIDE_STAGE']) {
       if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
     }
   }
