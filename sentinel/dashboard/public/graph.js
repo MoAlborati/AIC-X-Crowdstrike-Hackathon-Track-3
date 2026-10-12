@@ -116,8 +116,9 @@ export function docLines(n, w, charW = 6.8, maxLines = 2) {
   if (start === 0 && body.length <= per * maxLines) return chunk(body, per);
   // Reserve room for the marker on the last line, then fill the rest with text.
   const markerFor = (k) => ` ⋯ +${k.toLocaleString('en-US')} chars`;
-  let take = per * maxLines - 2 - markerFor(flat.length).length - (start > 0 ? 1 : 0);
-  take = Math.max(4, take);
+  const take = per * maxLines - 2 - markerFor(flat.length).length - (start > 0 ? 1 : 0);
+  // Too narrow for any text: show the marker alone (it is what must never disappear).
+  if (take < 4) return [markerFor(flat.length).trim()];
   const shownText = flat.slice(start, start + take);
   const omitted = flat.length - shownText.length;
   return chunk(`“${start > 0 ? '…' : ''}${shownText}”${markerFor(omitted)}`, per);
