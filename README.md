@@ -3,10 +3,12 @@
 **An inline AI detection-and-response guardrail for agents: a working slice of Falcon AIDR.**
 
 CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
-model and tools. It turns an indirect prompt injection into a Falcon/AIDR-shaped alert, mapped to MITRE
+model and tools. It turns an indirect prompt injection that tries to exfiltrate data or misuse a tool into a Falcon/AIDR-shaped alert, mapped to MITRE
 ATLAS and OWASP, and it blocks the attacks it catches before forwarding or at egress. Our target is **DVAA** (Damn
 Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox, run offline on
 `127.0.0.1`. This is an authorized hackathon project, and all of the work is defensive.
+
+**Scope.** SentinelProxy stops prompt-injection-driven *exfiltration and tool misuse*. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
 
 ## The problem
 
@@ -99,6 +101,7 @@ so it can't go stale. How to read them:
 - **Egress guard scope** (T12). It does not intercept HTTPS: CONNECT is decided by host only. Egress events
   are linked to chat turns by best-effort time-window attribution only, and are reported standalone when the
   match is ambiguous. In-container loopback SSRF never reaches it.
+- **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5%, prevented 0%, with 0/400 false positives; DVAA detected 60.7% at 5.5% false positives (held-out; pending #84, see `captures/holdout-hf/RESULTS.md` once merged).
 - Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
   An injection that never attempts exfiltration may be flagged without being blocked.
 

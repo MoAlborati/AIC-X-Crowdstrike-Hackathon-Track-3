@@ -137,6 +137,15 @@ The headline numbers are read from the committed scoring output, which anyone ca
 **Proof:** `demo/run-demo.sh` (live Beat 4, with a WARN and fallback to the recording if the live proxy is down),
 `captures/` and `demo/captures/egress-demo-block.txt`.
 
+**16. "How does it do on generic jailbreaks?"**
+"Not well at blocking, by design. On a held-out set of 600 attacks and 400 benign cases from three public Hugging Face
+jailbreak and injection sets, none of which point data anywhere, we detected 28.5%, prevented 0%, and had 0 of 400
+false positives. DVAA's scanner detected 60.7% at a 5.5% false-positive rate. SentinelProxy blocks only when an
+injection tries to move data to a destination or misuse a tool, so it's an exfiltration and tool-misuse guardrail,
+not a general jailbreak classifier. Generic jailbreak text with no action is alerted at most. Pair it with a jailbreak
+classifier such as Prompt Guard."
+**Proof:** held-out; pending #84 (`captures/holdout-hf/RESULTS.md` once merged).
+
 ---
 
 ### If you blank
@@ -146,3 +155,4 @@ The headline numbers are read from the committed scoring output, which anyone ca
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md.** We complement Falcon AIDR at the tool boundary.
+6. **Scope:** we stop injection-driven exfiltration and tool misuse; generic jailbreaks are for a classifier such as Prompt Guard.

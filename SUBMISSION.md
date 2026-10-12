@@ -1,8 +1,10 @@
 # SentinelProxy: an inline detection-and-response guardrail for AI agents
 
-**Pitch:** SentinelProxy catches indirect prompt injections and blocks the attacks it catches before forwarding or at egress. It sits in front of a vulnerable agent and at its tool boundary, and it turns each attempt into a Falcon AIDR-shaped alert mapped to MITRE ATLAS and OWASP.
+**Pitch:** SentinelProxy catches prompt-injection-driven data exfiltration and tool misuse, and blocks the attempts it catches before forwarding or at egress. It sits in front of a vulnerable agent and at its tool boundary, and it turns each attempt into a Falcon AIDR-shaped alert mapped to MITRE ATLAS and OWASP.
 
 > Channel-agnostic write-up. Each `##` section stands alone, so you can paste it into any form field. The numbers in **Results** come from `sentinel/scoring/results.json` via `node scripts/fill-submission-metrics.mjs`. Nothing in that section is typed by hand.
+
+**Scope.** SentinelProxy stops prompt-injection-driven *exfiltration and tool misuse*. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
 
 ## Team
 
@@ -106,6 +108,7 @@ Source: `sentinel/scoring/results.json`. The file was generated <<METRIC:meta.ge
 
 ## Limitations
 
+- **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5%, prevented 0%, with 0/400 false positives; DVAA detected 60.7% at 5.5% false positives (held-out; pending #84, see `captures/holdout-hf/RESULTS.md` once merged).
 - **Response-side checks are alert-only for prevention on DVAA.** Its agents run tools in-process, so a response-side finding fires after the tool ran; in block mode it withholds the reply. Prevention happens at only two points: before the request is forwarded, and at the egress guard.
 - **The egress guard does not intercept HTTPS.** It decides CONNECT by host only. It links egress events to chat turns by best-effort time-window attribution only, reporting them standalone when the match is ambiguous, and loopback SSRF inside the container never reaches it.
 - **There are known redaction gaps in T4 alert text.** These include a card number that follows a short digit group, and double %-encoded or `\u`-escaped canaries. The egress guard decodes these forms for its *blocking* decision, but alert redaction does not.

@@ -174,6 +174,10 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
 
+**Scope (say it if asked about generalization):** "SentinelProxy stops prompt-injection-driven exfiltration and tool misuse. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5%, prevented 0%, with 0/400 false positives; DVAA detected 60.7% at 5.5% false positives (held-out; pending #84, see `captures/holdout-hf/RESULTS.md` once merged).
+
+---
+
 ## Slide 9 — A working slice of Falcon AIDR
 
 **On slide**
@@ -193,7 +197,7 @@ efficacy at sub-30ms latency (CrowdStrike, internal benchmark)". Keep "up to" an
 ## Slide 10 — Close
 
 **On slide**
-- **SentinelProxy:** guards against the confused deputy at the tool boundary.
+- **SentinelProxy:** guards against the confused deputy at the tool boundary: injection-driven exfiltration and tool misuse.
 - Exploit → detect → alert → block, deterministic, scored against ground truth, misses published.
 - Repo link · team names · "Thank you."
 
