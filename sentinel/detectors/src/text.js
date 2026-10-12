@@ -381,7 +381,12 @@ export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
     if (seen.has(s)) continue;
     seen.add(s);
     out.push({ text: s, encoding: enc });
-    const children = decodeOnce(s, enc, minRun);
+    const all = decodeOnce(s, enc, minRun);
+    // COMP-1 review: invisible / unicode_tag normalization is depth-FREE (queued at the same depth). It is
+    // idempotent and strictly shortens the text, so it terminates; charging it a level let one ZWSP push a
+    // 3x-%-encoded honeytoken past maxDecodeDepth (and made benign emoji ZWJ raise decode_depth_exhausted).
+    for (const c of all) if (c.norm) queue.push({ s: c.s, d, enc: c.enc });
+    const children = all.filter((c) => !c.norm);
     if (d >= depth) {
       const further = children.filter((c) => !seen.has(c.s));
       if (further.length) {
@@ -432,7 +437,7 @@ function decodeOnce(s, enc, minRun) {
   if (b64.length) children.push({ s: b64.join('\n'), enc: tag('base64') });
   // Invisible-character / Unicode-tag smuggling (COMP-1): only when stripping actually changes the text.
   const inv = stripInvisibleInfo(s);
-  if (inv.text !== s) children.push({ s: inv.text, enc: tag(inv.tagChars ? 'unicode_tag' : 'invisible') });
+  if (inv.text !== s) children.push({ s: inv.text, enc: tag(inv.tagChars ? 'unicode_tag' : 'invisible'), norm: true });
   return children;
 }
 
@@ -735,7 +740,7 @@ export function findInjectionPhrases(text) {
   return INJECTION_PHRASES.filter((p) => views.some((v) => v.indexOf(p) !== -1));
 }
 // Zero-width chars an attacker can use in place of a space (single-char class, global: linear replace).
-const ZW_SEPARATORS = /[​⁠﻿᠎]/g;
+const ZW_SEPARATORS = /[\u200B\u200C\u200D\u2060\uFEFF\u180E]/g;
 
 // ---- lookalike destinations ----------------------------------------------------------------------
 
