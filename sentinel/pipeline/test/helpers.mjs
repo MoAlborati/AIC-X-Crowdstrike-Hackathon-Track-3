@@ -46,7 +46,7 @@ export async function importDashboard() {
 export const tmp = (prefix = 'sentinel-t10-') => mkdtemp(path.join(tmpdir(), prefix));
 
 /** Real HTTP upstream that answers every request with `respond(reqBody, req)` -> {status, json}. */
-export async function startUpstream(respond) {
+export async function startUpstream(respond, { delayMs = 0 } = {}) {
   const hits = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -56,8 +56,12 @@ export async function startUpstream(respond) {
       hits.push({ path: req.url, bytes: body.length });
       const { status = 200, json } = respond(body, req);
       const out = Buffer.from(JSON.stringify(json));
-      res.writeHead(status, { 'content-type': 'application/json', 'content-length': out.length });
-      res.end(out);
+      const send = () => {
+        res.writeHead(status, { 'content-type': 'application/json', 'content-length': out.length });
+        res.end(out);
+      };
+      // delayMs: a real agent turn takes time; the in-flight window is what egress correlation keys on.
+      if (delayMs > 0) setTimeout(send, delayMs); else send();
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
