@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SentinelProxy Live Deck</title>
+<!--
+  Live, data-driven deck. Every number is fetched from the repo's committed result files at load time and derived by
+  demo/slides/deck-data.mjs (the same module demo/slides/test/deck-data.test.mjs checks). Nothing is hard-coded: a
+  missing file or key renders "⚠ missing: <file>#<key>".
+
+  Serve from the repo root (loopback only):   demo/slides/serve-deck.sh
+  or:  python3 -m http.server 8765 --bind 127.0.0.1   then open http://127.0.0.1:8765/demo/slides/deck.html
+
+  Keys: → ↓ Space PgDn next · ← ↑ PgUp previous · Home / End · N notes + clock · T reset clock · F fullscreen
+        S sources for this slide · P presenter window (notes on a second screen, kept in sync)
+  Offline: no external scripts, fonts or CDNs.
+-->
+<style>
+  :root {
+    --navy: #0b1a33;
+    --navy-2: #12264a;
+    --navy-3: #1b3463;
+    --ink: #f4f1ea;
+    --ink-dim: #b9c2d3;
+    --leak: #ff8a3d;      /* orange: leaked / attack */
+    --held: #5aaeff;      /* blue: blocked / held */
+    --ok: #c9d6ea;
+    --rule: #2c4677;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #050c19; color: var(--ink); font-family: var(--font); overflow: hidden; }
+  #viewport { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #stage { width: 1920px; height: 1080px; position: relative; transform-origin: center center; flex: none; }
+  .slide {
+    position: absolute; inset: 0; display: none; flex-direction: column;
+    background: var(--navy); padding: 72px 110px 96px; font-size: 34px; line-height: 1.35;
+  }
+  .slide.active { display: flex; }
+  .slide h1 { font-size: 64px; line-height: 1.1; margin: 0 0 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .slide h2 { font-size: 40px; margin: 0 0 18px; font-weight: 600; color: var(--ink-dim); }
+  .slide p { margin: 0 0 18px; }
+  .kicker { font-size: 26px; text-transform: uppercase; letter-spacing: 3px; color: var(--ink-dim); margin-bottom: 14px; }
+  .small { font-size: 26px; color: var(--ink-dim); }
+  .tiny { font-size: 22px; color: var(--ink-dim); }
+  .mono { font-family: var(--mono); }
+  .grow { flex: 1; min-height: 0; }
+  .row { display: flex; gap: 40px; }
+  .col { flex: 1; min-width: 0; }
+
+  .badge { display: inline-block; font-size: 24px; font-weight: 700; letter-spacing: 2px; padding: 6px 16px; border-radius: 8px; border: 2px solid currentColor; vertical-align: middle; }
+  .badge.rec { color: var(--ink-dim); }
+  .badge.live { color: var(--held); }
+  .leak { color: var(--leak); }
+  .held { color: var(--held); }
+  .tag { display: inline-block; font-weight: 800; letter-spacing: 1px; padding: 2px 12px; border-radius: 6px; font-size: 0.85em; }
+  .tag.leak { background: rgba(255,138,61,.16); border: 2px solid var(--leak); color: var(--leak); }
+  .tag.held { background: rgba(90,174,255,.14); border: 2px solid var(--held); color: var(--held); }
+  .tag.ok { border: 2px solid var(--ok); color: var(--ok); }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 12px 18px; border-bottom: 2px solid var(--rule); vertical-align: top; }
+  th { font-size: 26px; color: var(--ink-dim); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .t-ours { color: var(--ink); font-weight: 700; }
+  .t-base { color: var(--ink-dim); }
+
+  .term { background: #050c19; border: 2px solid var(--rule); border-radius: 12px; padding: 22px 28px; font-family: var(--mono); font-size: 25px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .term .cmd { color: var(--ink-dim); }
+  .term .out { color: var(--ink); }
+
+  .card { background: var(--navy-2); border: 2px solid var(--rule); border-radius: 16px; padding: 26px 30px; }
+  .card.leakb { border-color: var(--leak); }
+  .card.heldb { border-color: var(--held); }
+  .quote { font-size: 36px; font-style: italic; border-left: 6px solid var(--rule); padding-left: 28px; margin: 18px 0; }
+
+  [data-src] { cursor: help; }
+  .missing { color: var(--leak) !important; font-weight: 700; font-family: var(--mono); font-size: 0.6em; border: 2px dashed var(--leak); padding: 2px 8px; border-radius: 6px; word-break: break-all; }
+
+  footer.f {
+    position: absolute; left: 110px; right: 110px; bottom: 28px; display: flex; justify-content: space-between;
+    font-size: 20px; color: var(--ink-dim); border-top: 1px solid var(--rule); padding-top: 12px;
+  }
+  .sources {
+    display: none; position: absolute; right: 40px; bottom: 80px; max-width: 1200px; max-height: 560px; overflow: auto;
+    background: #050c19; border: 2px solid var(--held); border-radius: 12px; padding: 18px 24px; font-family: var(--mono);
+    font-size: 19px; line-height: 1.5; color: var(--ink-dim); z-index: 5;
+  }
+  body.show-sources .slide.active .sources { display: block; }
+
+  #notes {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0; max-height: 42vh; overflow: auto; z-index: 10;
+    background: rgba(5,12,25,.96); border-top: 3px solid var(--held); padding: 14px 24px 18px; font-size: 18px; line-height: 1.45;
+  }
+  body.show-notes #notes { display: block; }
+  #notes .bar { display: flex; gap: 24px; align-items: baseline; font-family: var(--mono); color: var(--ink-dim); margin-bottom: 8px; }
+  #notes .clock { font-size: 26px; color: var(--ink); font-weight: 700; }
+  #notes .clock.over { color: var(--leak); }
+  #notes .body p { margin: 6px 0; }
+  #notes .body q { color: var(--ink); }
+  #banner { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 20; background: var(--leak); color: #111; font-size: 16px; padding: 8px 16px; font-family: var(--mono); }
+
+  /* diagram */
+  .flow { display: flex; align-items: stretch; gap: 0; margin: 20px 0 26px; }
+  .node { flex: 1; text-align: center; padding: 22px 10px; border: 3px solid var(--rule); border-radius: 14px; background: var(--navy-2); font-size: 30px; }
+  .node.gate { border-color: var(--held); background: rgba(90,174,255,.10); }
+  .node .n { display: block; font-size: 22px; color: var(--ink-dim); }
+  .arrow { flex: 0 0 56px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: var(--ink-dim); }
+
+  .trifecta { display: flex; gap: 28px; margin: 10px 0 28px; }
+  .trifecta .card { flex: 1; font-size: 34px; }
+  .trifecta .card b { display: block; font-size: 40px; margin-bottom: 8px; }
+
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+  .steps li { counter-increment: s; position: relative; padding: 0 0 18px 74px; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 50px; height: 50px; border-radius: 50%; border: 3px solid var(--held); color: var(--held); text-align: center; line-height: 44px; font-weight: 700; }
+  ul.b { margin: 0; padding-left: 36px; }
+  ul.b li { margin-bottom: 12px; }
+
+  aside.notes { display: none; }
+  body.presenter { overflow: auto; }
+  body.presenter #viewport { display: none; }
+  body.presenter #notes { display: block; position: static; max-height: none; font-size: 22px; border: 0; }
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<div id="viewport"><div id="stage">
+
+<!-- ============================================ 1. Cover ============================================ -->
+<section class="slide" data-title="Cover">
+  <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+    <div class="kicker">CrowdStrike Track 3 · Santa Clara University</div>
+    <h1 style="font-size:120px;margin-bottom:24px">SentinelProxy</h1>
+    <p style="font-size:52px;margin-bottom:46px">A drop-in egress guard for tool-using agents</p>
+    <p style="font-size:34px">Team SentinelProxy · presented by Catherine</p>
+    <p class="small">Deterministic sandbox (DVAA, offline, canned replies). No LLM in the loop.</p>
+  </div>
+  <aside class="notes" data-budget="10">
+    <p>Beat 1 hook. Don't read the slide.</p>
+    <p><q>In under a minute I'll make an AI agent send its admin password to an attacker using one poisoned document, then stop it without touching its code.</q></p>
+    <p><q>It's a deterministic sandbox, no LLM.</q></p>
+  </aside>
+</section>
+
+<!-- ============================================ 2. Problem ============================================ -->
+<section class="slide" data-title="Problem">
+  <div class="kicker">The problem</div>
+  <h1>The lethal trifecta</h1>
+  <div class="trifecta">
+    <div class="card"><b>Untrusted input</b>tickets, docs, web pages, repo files the agent reads</div>
+    <div class="card"><b>Private data</b>credentials, customer records the agent can reach</div>
+    <div class="card leakb"><b class="leak">A way out</b>any tool that can send data to the internet</div>
+  </div>
+  <p class="quote">"The 'lethal trifecta': private data, untrusted content, external communication (Simon Willison, Jun 2025)."</p>
+  <p class="quote" style="font-size:30px">"AI is rewriting the enterprise attack surface at breakneck speed. Each prompt becomes an entry point for the adversary." — George Kurtz, CEO &amp; founder</p>
+  <p class="tiny">Quotes verbatim from planning/CITATIONS.md "Safe slide wording". Confused deputy: Hardy, "The Confused Deputy", ACM SIGOPS OSR 22(4):36–38, 1988.</p>
+  <aside class="notes" data-budget="20">
+    <p>Beat 2. The quotes stay on the slide, unspoken.</p>
+    <p><q>Your agent is a bank teller who obeys any note slipped into a deposit envelope. Every document, web page and repo file it reads is an envelope. The attacker never breaks in; the teller does the work.</q></p>
+    <p><q>We protect the agents you can't rebuild, from the outside.</q></p>
+  </aside>
+</section>
+
+<!-- ============================================ 3. Exploit ============================================ -->
+<section class="slide" data-title="Exploit (Path B)">
+  <div class="kicker"><span class="badge rec">RECORDED</span>&nbsp; Path B · DVAA RAGBot 7005</div>
+  <h1>One poisoned document. The agent sends the secrets out.</h1>
+  <p>Attack <b data-m="contrast.attackId"></b> “<span data-m="contrast.attackName"></span>”, DVAA's own bundled payload. Poisoned doc → <span class="mono" data-m="exploit.tool"></span> → attacker's canary.</p>
+  <div class="term grow"><span class="cmd">$ jq -r '.runA.toolCalls[0].function.name, .runA.dvaa.exfilExecuted' captures/attack/aim-ab.demo.json</span>
+<span class="out" data-m="exploit.tool"></span>
+<span class="out" data-m="exploit.exfilExecuted"></span>
+<span class="cmd">$ jq -r '.canary.hits[0].query.data' captures/attack/aim-ab.demo.json</span>
+<span class="out leak" style="font-size:30px;font-weight:700" data-m="exploit.canaryData"></span></div>
+  <p style="margin-top:18px"><span class="tag leak">LEAKED</span> canary hits: <b data-m="exploit.canaryHits"></b> · admin secret + SSN reached the attacker. All values are fake sandbox data.</p>
+  <aside class="notes" data-budget="25">
+    <p>Beat 3. Terminal + dashboard tab <code>?stage=1&amp;capture=vulnerable&amp;step=last</code>.</p>
+    <p><q>Recorded. A deliberately vulnerable agent from the organizers' sandbox gets one document with a hidden instruction.</q></p>
+    <p><q>It just sent the admin password and an SSN to the attacker's server.</q> Pause two seconds.</p>
+    <p>Beat 3b (run-demo.sh prints it; numbers in appendix A2): <q>Recorded. The sandbox's scanner reads only the first and last 8 KB, so attackers hide the payload in the middle. We read every byte, typically in under a tenth of a millisecond.</q> Say "2 of 2" only if asked.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 4. Two enforcement points ============================================ -->
+<section class="slide" data-title="Two enforcement points">
+  <div class="kicker">How it works</div>
+  <h1>Two enforcement points. Egress is what holds.</h1>
+  <div class="flow" role="img" aria-label="caller, then request check, then agent, then tools, then default-deny egress, then internet">
+    <div class="node">caller</div><div class="arrow">→</div>
+    <div class="node gate"><span class="n">①</span>request check</div><div class="arrow">→</div>
+    <div class="node">agent</div><div class="arrow">→</div>
+    <div class="node">tools</div><div class="arrow">→</div>
+    <div class="node gate"><span class="n">②</span>default-deny egress</div><div class="arrow">→</div>
+    <div class="node">internet</div>
+  </div>
+  <div class="row">
+    <div class="col card"><b>① Request check (SentinelProxy)</b><br>Refuses a request whose content orders data sent somewhere the user never named. Narrow on purpose: it reads words, so wording can slip past it.</div>
+    <div class="col card heldb"><b class="held">② Default-deny egress</b><br>Decides on the destination, not the words. A guest list, not a lie detector: it holds against every non-allowlisted destination we tried.</div>
+  </div>
+  <aside class="notes" data-budget="20">
+    <p>Beat 6 line, moved before the live demo so the room knows the two points.</p>
+    <p><q>Only you decide where data goes. Our egress guard is a guest list, not a lie detector: every unlisted destination we tried was denied, whatever the words said.</q></p>
+    <p>If asked: request-side "payee not confirmed" raises risk but never blocks alone; the only unconditional destination block is the egress allowlist.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 5. Live ============================================ -->
+<section class="slide" data-title="Live">
+  <div class="kicker"><span class="badge live">LIVE</span>&nbsp; Beat 4 then Beat 4b · <span class="mono">demo/run-demo.sh</span> drives both</div>
+  <h1>Same document, through SentinelProxy</h1>
+  <div class="row grow">
+    <div class="col">
+      <h2>① Request check: 200, then 403</h2>
+      <div class="term"><span class="cmd">$ curl … "What does the document indexing service do?"</span>
+<span class="out">200  → forwarded untouched</span>
+<span class="cmd">$ curl … &lt;DVAA's aim-ab request, verbatim&gt;</span>
+<span class="out held">403  → refused before the agent saw it</span></div>
+      <p class="small" style="margin-top:14px">Recorded run of the same block: status <b data-m="proxyBlock.status"></b>, detector <span class="mono" data-m="proxyBlock.detector"></span>, reasons <span class="mono" data-m="proxyBlock.reasons"></span>.</p>
+    </div>
+    <div class="col">
+      <h2>② Egress guard, live: <span class="mono" style="font-size:30px">scripts/encore-two-layer.sh block</span></h2>
+      <div class="term"><span class="out">LAYER1_PROXY_HTTP 403   (flags the reply only after the tool ran)
+LAYER2_EGRESS: deny · deny · deny
+GROUND_TRUTH canary hits: 0
+ENCORE PASS</span></div>
+      <p class="small" style="margin-top:14px">Recorded block run: <b data-m="egress.denies"></b> egress requests denied, <b data-m="egress.passes"></b> let through; attacker canary hits <b data-m="egress.canaryHits"></b> <span class="tag held">BLOCKED</span></p>
+    </div>
+  </div>
+  <aside class="notes" data-budget="55">
+    <p>Beat 4 (live 200 then 403). Dashboard tab <code>?stage=1&amp;capture=proxy-blocked&amp;step=last</code>.</p>
+    <p><q>Same agent, same document, now through SentinelProxy. First, a normal question: it passes.</q> … <q>Now the attack.</q></p>
+    <p><q>Refused before the agent ever saw it: the document slipped in an order to send data somewhere the user never named.</q></p>
+    <p>Beat 4b (live, started in the background at Beat 4). Tab <code>?stage=1&amp;capture=egress-blocked&amp;step=last</code>.</p>
+    <p><q>Live now, in its own sandbox: an agent that reads the poison itself.</q></p>
+    <p><q>Our proxy only flags that after the tool has run. So the egress guard denied every unlisted destination, and in this run no secret reached the attacker.</q></p>
+    <p>Fallback if WARN live egress run unavailable: <q>That live run didn't come up; this is the same run, recorded.</q> Never run the observe control on stage.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 6. Three outcomes ============================================ -->
+<section class="slide" data-title="Same attack, three outcomes">
+  <div class="kicker"><span class="badge rec">RECORDED</span>&nbsp; <span data-m="contrast.attackId"></span> against live DVAA · captured <span data-m="contrast.capturedAt"></span></div>
+  <h1>Same attack, three outcomes</h1>
+  <div id="contrast-table" class="grow"></div>
+  <p class="small">Rebuilding the agent works if you own the code. SentinelProxy protects the unmodified agent from outside.</p>
+  <aside class="notes" data-budget="20">
+    <p>Beat 5a. Slide only, no dashboard tab.</p>
+    <p><q>Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't.</q></p>
+    <p>Outcomes: leaked (and flagged but still leaked in observe mode), blocked by the proxy, blocked by a rebuild. Don't claim we beat AIM; we complement it.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 7. Scored ============================================ -->
+<section class="slide" data-title="Scored against DVAA's baseline">
+  <div class="kicker">Scored · <span data-m="scoring.corpus.positives"></span> attacks + <span data-m="scoring.corpus.negatives"></span> benign cases, labelled by DVAA's ground truth and the published benchmarks</div>
+  <h1>Scored against DVAA's own scanner</h1>
+  <table>
+    <thead><tr><th></th><th class="num">SentinelProxy (T3)</th><th class="num">DVAA baseline</th></tr></thead>
+    <tbody>
+      <tr><td>Detection recall (any finding)</td><td class="num t-ours" data-m="scoring.detection.t3.recall"></td><td class="num t-base" data-m="scoring.detection.dvaa.recall"></td></tr>
+      <tr><td>Prevention recall (request-side block, detector only)</td><td class="num t-ours" data-m="scoring.prevention.t3.recall"></td><td class="num t-base" data-m="scoring.prevention.dvaa.recall"></td></tr>
+      <tr><td>Benign requests blocked</td><td class="num t-ours" data-m="scoring.prevention.t3.fp"></td><td class="num t-base" data-m="scoring.prevention.dvaa.fp"></td></tr>
+      <tr><td><b>Where data actually leaves</b>: exfil attempts prevented</td><td class="num t-ours" data-m="scoring.exfil.t3"></td><td class="num t-base" data-m="scoring.exfil.dvaa"></td></tr>
+      <tr><td>In-detector latency, median · p95</td><td class="num t-ours"><span data-m="scoring.latency.t3.median" data-f="ms"></span> · <span data-m="scoring.latency.t3.p95" data-f="ms2"></span></td><td class="num t-base"><span data-m="scoring.latency.dvaa.median" data-f="ms"></span> · <span data-m="scoring.latency.dvaa.p95" data-f="ms2"></span></td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:22px">Held out, on public indirect-injection sets that name a destination we prevent <b data-m="holdouts.ipi.t3.prev" data-f="pct"></b> (DVAA <span data-m="holdouts.ipi.dvaa.prev" data-f="pct"></span>). Our request-side rule is narrow, which is why default-deny egress is the control. Full held-out table on the last slide.</p>
+  <p class="tiny">Egress is not in the scoring harness: these are request-side detector numbers. Our benign set was also used for tuning, so 0 blocked is a small-sample result, not a guarantee.</p>
+  <aside class="notes" data-budget="45">
+    <p>Beat 7, first half. Table not read aloud.</p>
+    <p><q>On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero.</q></p>
+    <p><q>We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo.</q></p>
+    <p>If the numbers on the slide differ from these spoken ones, the slide is right: say the slide's numbers. Never quote 57/71 without 64/71.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 8. OpsBot (Path A) ============================================ -->
+<section class="slide" data-title="Path A: OpsBot layers">
+  <div class="kicker">Path A · our own OpsBot (ticket reader, customer lookup, http_post) · all secrets fake</div>
+  <h1>No single layer is enough</h1>
+  <div id="track3a-table" class="grow"></div>
+  <aside class="notes" data-budget="30">
+    <p>Path A. Encore command if asked: <code>node track3a/run-demo.mjs</code> (about 2 s).</p>
+    <p>Say: the chat proxy alone stops the direct attack but leaks the indirect one; the mandate alone stops the indirect one but leaks the direct one. Stacking the proxy with the egress guard stops both, and normal traffic passes on every stack.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 9. Ciocca: who uses it, who pays ============================================ -->
+<section class="slide" data-title="Who uses it and who pays">
+  <div class="kicker">Ciocca Venture · 1 of 3</div>
+  <h1>Who uses it, and who pays</h1>
+  <div class="card heldb" style="margin-bottom:28px;font-size:40px"><b>Teams running agents they can't rebuild.</b> A vendor agent, an open-source agent or a legacy internal one: you can't rewrite its prompts or tool code, but you can control its network.</div>
+  <ul class="b">
+    <li><b>User:</b> the platform or AppSec engineer shipping an internal or customer-facing agent on an OpenAI-compatible API.</li>
+    <li><b>Budget holder:</b> head of engineering or security at a mid-size software company shipping agents, with no enterprise AI detection-and-response budget yet.</li>
+    <li><b>Their blocker:</b> "we can't ship this agent until security signs off on what it can send out."</li>
+    <li><b>Wedge:</b> an egress sidecar for agent tool calls: one container that becomes the agent's only route out. No code or model changes.</li>
+  </ul>
+  <aside class="notes" data-budget="25">
+    <p><q>Agents read untrusted text and act with your authority, so one hidden instruction can send customer data out. Who pays: teams running agents they can't rebuild, without an enterprise AIDR budget.</q></p>
+    <p>No market size, price or customer names. If pressed: "we haven't sized it yet".</p>
+  </aside>
+</section>
+
+<!-- ============================================ 10. Ciocca: how it stands apart ============================================ -->
+<section class="slide" data-title="How it stands apart">
+  <div class="kicker">Ciocca Venture · 2 of 3</div>
+  <h1>How it stands apart</h1>
+  <table style="font-size:28px">
+    <thead><tr><th style="width:24%">Existing tool</th><th style="width:36%">What it decides on</th><th>What SentinelProxy adds</th></tr></thead>
+    <tbody>
+      <tr><td><b>SASE / SWG egress allowlists</b><br><span class="small">Zscaler, Netskope, Squid</span></td><td>Host-level policy. Blind to the agent turn and to what the user actually asked for.</td><td>Agent-aware context (which turn, which tool, did the user name this destination), honeytoken matching, AIDR-shaped alerts.</td></tr>
+      <tr><td><b>Prompt-content classifiers</b><br><span class="small">Lakera Guard, Prompt Guard, Prompt Security, Lasso</span></td><td>Does this text look like an attack? An attacker can reword it.</td><td>We decide on where data goes, not how the text reads. Pair us with one. We haven't benchmarked them.</td></tr>
+      <tr><td><b>NeMo Guardrails</b></td><td>Programmable rails inside the app's code.</td><td>No app code changes: a sidecar in front of the chat endpoint plus an egress proxy.</td></tr>
+      <tr><td><b>Falcon AIDR</b></td><td>CrowdStrike's enterprise AI detection and response platform.</td><td>We complement it at the tool boundary. Our alerts use an AIDR-shaped schema; we don't connect to Falcon's APIs.</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:18px">Edge: drop-in sidecar · default-deny egress at the tool boundary · deterministic rules (same input, same verdict) · low false-positive posture.</p>
+  <aside class="notes" data-budget="25">
+    <p><q>Our wedge is an egress sidecar for agent tool calls. Classifiers judge the wording. We judge the destination, and rewording doesn't change it.</q></p>
+    <p>SASE/SWG: they can allowlist hosts too, but they don't know which agent turn or user request a call belongs to. Never say "better than" any of these at detection.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 11. Ciocca: path to launch ============================================ -->
+<section class="slide" data-title="Path to launch">
+  <div class="kicker">Ciocca Venture · 3 of 3</div>
+  <h1>Path to launch: observe first, then enforce</h1>
+  <ol class="steps">
+    <li><b>Now, prototype:</b> reverse proxy + egress guard against DVAA and our own OpsBot, scored corpus, working demo.</li>
+    <li><b>Open-source sidecar:</b> one compose file in front of any OpenAI-compatible agent. Design partners run it in observe mode. <i>Exit test: a partner leaves it in block mode.</i></li>
+    <li><b>Managed policy and alert routing (paid):</b> hosted allowlists and a honeytoken registry, alerts routed to the tools a team already uses. Price comes from design partners, not a guess.</li>
+    <li><b>SOC:</b> alerts into analyst triage. Works offline today as a prototype with Track 1's SOC Brief.</li>
+  </ol>
+  <p class="card" style="margin-top:8px">Evidence, paired: where data actually leaves we prevent <b data-m="scoring.exfil.t3" data-f="of"></b> exfil attempts with <b data-m="scoring.prevention.t3.fp" data-f="of"></b> legitimate requests blocked. DVAA's scanner prevents <span data-m="scoring.exfil.dvaa" data-f="of"></span> but blocks <span data-m="scoring.prevention.dvaa.fp" data-f="of"></span>.</p>
+  <aside class="notes" data-budget="25">
+    <p><q>Where data actually leaves, we prevent 57 of 71 attempts with zero of 164 legitimate requests blocked. The baseline stops 64 but blocks 21. Path: open-source sidecar with design partners, then paid managed policy, then SOC integration.</q></p>
+    <p>(Read the numbers off the slide if they differ.) Observe for a week, see the alerts, then turn on block.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 12. Close and limits ============================================ -->
+<section class="slide" data-title="Close and limits">
+  <div class="kicker">Close</div>
+  <h1 style="font-size:52px">Flagging isn't stopping. Default-deny egress is the control.</h1>
+  <h2 style="font-size:30px;margin-bottom:6px">Held-out sets we never tuned on (request-side detector only, paired)</h2>
+  <div id="holdout-table"></div>
+  <div class="row" style="margin-top:20px">
+    <div class="col">
+      <b>Honest limits</b>
+      <ul class="b small" style="margin-top:6px">
+        <li>A plain "send it to my URL" phrasing walks past the request check (1 of 22 in our test).</li>
+        <li>Data sent to an allowlisted host still passes; the egress guard doesn't read TLS.</li>
+        <li>Egress isn't scored on a corpus yet: it holds against every non-allowlisted destination we tried.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <b>Next</b>
+      <ul class="b small" style="margin-top:6px">
+        <li>TLS-aware egress; test against a real LLM agent.</li>
+        <li>Open-source sidecar; design partners in observe mode.</li>
+      </ul>
+      <p style="margin-top:14px;font-size:38px"><b>A document can ask. Only the user can authorize.</b> Thank you.</p>
+    </div>
+  </div>
+  <aside class="notes" data-budget="40">
+    <p><q>Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you.</q></p>
+    <p>If asked about hackmyagent: it's the DVAA authors' own battery, written against their scanner; we lose on recall in every category and win only on false positives. Disclose it, don't defend it.</p>
+    <p>"1 of 22" source: demo/QA-PREP.md Q17 (creative pass 2, #105). Not a committed capture.</p>
+  </aside>
+</section>
+
+<!-- ============================================ Appendix ============================================ -->
+<section class="slide" data-title="Appendix" data-appendix="1">
+  <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+    <div class="kicker">Appendix</div>
+    <h1>For Q&amp;A</h1>
+    <p>A1 · The AIDR-shaped alert &nbsp;·&nbsp; A2 · 8 KB evasion (n = 2) &nbsp;·&nbsp; A3 · SOC handoff</p>
+  </div>
+  <aside class="notes" data-budget="0"><p>Not presented. Hold slide 12 during Q&amp;A.</p></aside>
+</section>
+
+<section class="slide" data-title="A1 AIDR-shaped alert" data-appendix="1">
+  <div class="kicker">A1 · <span class="badge rec">RECORDED</span>&nbsp; real alert from the egress block run · <span data-m="alert.timestamp"></span></div>
+  <h1><span data-m="alert.detectName"></span> <span class="tag held" data-m="alert.disposition"></span></h1>
+  <p data-m="alert.description"></p>
+  <table style="font-size:28px">
+    <tbody>
+      <tr><td>Rule</td><td class="mono" data-m="alert.ruleId"></td></tr>
+      <tr><td>Severity</td><td><span data-m="alert.severityName"></span> (<span data-m="alert.severity"></span>)</td></tr>
+      <tr><td>MITRE ATLAS</td><td><span data-m="alert.techniqueId"></span> <span data-m="alert.technique"></span> · <span data-m="alert.tactic"></span></td></tr>
+      <tr><td>MITRE ATT&amp;CK</td><td data-m="alert.attack"></td></tr>
+      <tr><td>OWASP LLM · Agentic</td><td><span data-m="alert.owaspLlm"></span> · <span data-m="alert.owaspAgentic"></span></td></tr>
+      <tr><td>Benchmark</td><td data-m="alert.oasb"></td></tr>
+      <tr><td>Sink (redacted)</td><td class="mono" style="font-size:24px" data-m="alert.sink"></td></tr>
+      <tr><td>Decision latency</td><td><span data-m="alert.latencyMs"></span> ms</td></tr>
+    </tbody>
+  </table>
+  <p class="tiny" style="margin-top:12px">Schema <span data-m="alert.schema"></span>: AIDR-shaped schema only; it does not connect to Falcon.</p>
+  <aside class="notes" data-budget="0"><p>Built by the T4 alert builder from the real egress block run. Say "AIDR-shaped" only; it does not connect to Falcon.</p></aside>
+</section>
+
+<section class="slide" data-title="A2 8KB evasion" data-appendix="1">
+  <div class="kicker">A2 · 8 KB scanner-window evasion · n = 2 fixtures we built</div>
+  <h1>Payload hidden in the middle of a long document</h1>
+  <p>DVAA's scanner reads only the first and last 8 KB. Two fixtures put the injection in the gap.</p>
+  <table>
+    <thead><tr><th></th><th class="num">SentinelProxy (T3)</th><th class="num">DVAA baseline</th></tr></thead>
+    <tbody>
+      <tr><td>Detected</td><td class="num t-ours" data-m="scoring.evasion.t3.detected" data-f="frac"></td><td class="num t-base" data-m="scoring.evasion.dvaa" data-f="frac"></td></tr>
+      <tr><td>Prevented</td><td class="num t-ours" data-m="scoring.evasion.t3.prevented" data-f="frac"></td><td class="num t-base">—</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:20px">Cases: <span class="mono" id="evasion-ids"></span>. A narrow result against a weakness DVAA has on purpose. Not a differentiator.</p>
+  <aside class="notes" data-budget="0"><p>Say "2 of 2" only if asked, and always "n = 2, fixtures we built".</p></aside>
+</section>
+
+<section class="slide" data-title="A3 SOC handoff" data-appendix="1">
+  <div class="kicker">A3 · optional · offline, no LLM key</div>
+  <h1>SOC handoff</h1>
+  <div class="term">$ scripts/soc-handoff.sh
+  # proxy-blocked T3 alerts, post-execution flags and egress denies,
+  # converted by the T10 pipeline and briefed by Track 1's SOC Brief.
+  # writes .eval/soc-handoff/brief.md</div>
+  <p style="margin-top:20px">The same AIDR-shaped alerts become a plain-English analyst brief: the "SOC" step of the path to launch, as a prototype.</p>
+  <aside class="notes" data-budget="0"><p>Only if asked and time allows. If it fails, skip it.</p></aside>
+</section>
+
+</div></div>
+
+<div id="notes"><div class="bar"><span id="n-slide"></span><span id="n-budget"></span><span id="n-plan"></span><span class="clock" id="n-clock">0:00</span><span class="tiny">T resets · N hides</span></div><div class="body" id="n-body"></div></div>
+
+<script type="module">
+const DATA_ROOT = '../../';
+let D; // deck-data module
+
+async function loadModule() {
+  try {
+    return await import('./deck-data.mjs');
+  } catch (e) {
+    // Some static servers send .mjs with a non-JS MIME type; load it as a Blob instead.
+    const src = await (await fetch('./deck-data.mjs', { cache: 'no-store' })).text();
+    return import(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  }
+}
+
+async function loadRaw(files) {
+  const raw = {};
+  const failed = [];
+  await Promise.all(Object.entries(files).map(async ([k, f]) => {
+    try {
+      const res = await fetch(DATA_ROOT + f, { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const text = await res.text();
+      raw[k] = f.endsWith('.json') ? JSON.parse(text) : text;
+    } catch (e) {
+      failed.push(f);
+    }
+  }));
+  return { raw, failed };
+}
+
+function setMetric(el, m, how) {
+  el.textContent = D.fmt(m, how);
+  el.dataset.src = m ? m.src : 'unknown';
+  el.title = 'source: ' + el.dataset.src;
+  if (!m || !m.ok) el.classList.add('missing');
+}
+
+function span(m, how, cls) {
+  const s = document.createElement('span');
+  if (cls) s.className = cls;
+  setMetric(s, m, how);
+  return s;
+}
+
+function cell(tr, content, cls) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  if (typeof content === 'string') td.textContent = content; else if (content) td.appendChild(content);
+  tr.appendChild(td);
+  return td;
+}
+
+function header(table, labels, numFrom = 99) {
+  const thead = table.createTHead();
+  const tr = thead.insertRow();
+  labels.forEach((l, i) => { const th = document.createElement('th'); th.textContent = l; if (i >= numFrom) th.className = 'num'; tr.appendChild(th); });
+}
+
+function buildContrast(model) {
+  const c = model.contrast;
+  const t = document.createElement('table');
+  header(t, ['Agent', 'Outcome', 'Attacker canary hits'], 2);
+  const tb = t.createTBody();
+  const verdict = { vulnerable: ['LEAKED', 'leak'], observe: ['FLAGGED, STILL LEAKED', 'leak'], block: ['BLOCKED by SentinelProxy', 'held'], aim: ['BLOCKED by a rebuild', 'held'], securebot: ['BLOCKED by a rebuild', 'held'] };
+  for (const r of c.rows) {
+    const tr = tb.insertRow();
+    cell(tr, span(r.agent));
+    const td = cell(tr, null);
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + verdict[r.key][1];
+    tag.textContent = verdict[r.key][0];
+    td.appendChild(tag);
+    td.appendChild(document.createElement('br'));
+    td.appendChild(span(r.outcome, 'auto', 'small'));
+    cell(tr, span(r.canaryHits), 'num');
+  }
+  t.style.fontSize = '28px';
+  document.getElementById('contrast-table').appendChild(t);
+}
+
+function buildTrack3a(model) {
+  const t3a = model.track3a;
+  const host = document.getElementById('track3a-table');
+  if (!t3a.ok) { host.appendChild(span(D.missing(t3a.src))); return; }
+  const t = document.createElement('table');
+  header(t, ['Stack', ...t3a.scenarios, 'Attacks stopped', 'Benign OK'], 1 + t3a.scenarios.length);
+  t.style.fontSize = '27px';
+  const tb = t.createTBody();
+  for (const s of t3a.stacks) {
+    const tr = tb.insertRow();
+    cell(tr, D.STACK_LABELS[s] || s);
+    for (const sc of t3a.scenarios) {
+      const m = t3a.cells[`${s}|${sc}`];
+      const td = cell(tr, null);
+      if (!m || !m.ok) { td.appendChild(span(m || D.missing(`${D.FILES.track3a}#[stack=${s}, scenario=${sc}]`))); continue; }
+      const tag = document.createElement('span');
+      tag.className = 'tag ' + m.v.tone;
+      tag.textContent = m.v.label;
+      tag.dataset.src = m.src; tag.title = 'source: ' + m.src;
+      td.appendChild(tag);
+      if (m.v.tone !== 'ok') { const d = document.createElement('div'); d.className = 'tiny'; d.textContent = m.v.detail; td.appendChild(d); }
+    }
+    cell(tr, span(t3a.summary[s].stopped, 'frac'), 'num');
+    cell(tr, span(t3a.summary[s].benignOk, 'frac'), 'num');
+  }
+  host.appendChild(t);
+}
+
+function buildHoldouts(model) {
+  const t = document.createElement('table');
+  header(t, ['Held-out set (ours, then DVAA)', 'Detected', 'Prevented', 'Benign blocked'], 1);
+  t.style.fontSize = '24px';
+  const tb = t.createTBody();
+  for (const k of ['hf', 'ipi', 'hma']) {
+    const h = model.holdouts[k];
+    const tr = tb.insertRow();
+    const name = document.createElement('span');
+    name.textContent = h.label;
+    cell(tr, name);
+    for (const key of ['det', 'prev', 'fp']) {
+      const td = cell(tr, null, 'num');
+      const how = key === 'fp' ? 'frac' : 'auto';
+      td.appendChild(span(h.t3[key], how, 't-ours'));
+      td.appendChild(document.createElement('br'));
+      td.appendChild(span(h.dvaa[key], how, 't-base'));
+    }
+  }
+  document.getElementById('holdout-table').appendChild(t);
+  const note = document.createElement('p');
+  note.className = 'tiny';
+  note.style.marginTop = '8px';
+  note.textContent = 'Benign: hf benign rows; ipi clean benign emails; hackmyagent reuses the main-corpus benign rows. hackmyagent is the DVAA authors\' own battery, written against their scanner.';
+  document.getElementById('holdout-table').appendChild(note);
+}
+
+function bindAll(model) {
+  for (const el of document.querySelectorAll('[data-m]')) {
+    const m = D.getPath(model, el.dataset.m);
+    setMetric(el, m && typeof m === 'object' && 'src' in m ? m : D.missing(`deck model: ${el.dataset.m}`), el.dataset.f || 'auto');
+  }
+  const ids = document.getElementById('evasion-ids');
+  ids.textContent = model.scoring.evasion.ids.length ? model.scoring.evasion.ids.join(', ') : `⚠ missing: ${D.FILES.scoring}#beatsBaseline.eligible`;
+  ids.dataset.src = `${D.FILES.scoring}#beatsBaseline.eligible`;
+  if (!model.scoring.evasion.ids.length) ids.classList.add('missing');
+}
+
+function addChrome(model, slides) {
+  const gen = model.scoring.generatedAt;
+  slides.forEach((s, i) => {
+    const f = document.createElement('footer');
+    f.className = 'f';
+    const left = document.createElement('span');
+    left.append('numbers: ' + D.FILES.scoring + ' · generated ');
+    left.appendChild(span(gen));
+    const right = document.createElement('span');
+    right.textContent = `${i + 1} / ${slides.length}`;
+    f.append(left, right);
+    s.appendChild(f);
+    const srcs = [...new Set([...s.querySelectorAll('[data-src]')].map((e) => e.dataset.src))];
+    const box = document.createElement('div');
+    box.className = 'sources';
+    box.textContent = srcs.length ? 'Sources on this slide:\n' : 'No data-bound numbers on this slide.';
+    box.style.whiteSpace = 'pre-wrap';
+    box.textContent += srcs.map((x) => '· ' + x).join('\n');
+    s.appendChild(box);
+  });
+}
+
+// ---------------------------------------------------------------- navigation, notes, clock
+const slides = [...document.querySelectorAll('.slide')];
+let cur = 0;
+const budgets = slides.map((s) => Number((s.querySelector('aside.notes') || {}).dataset?.budget || 0));
+const planEnd = budgets.reduce((acc, b, i) => { acc.push((acc[i - 1] || 0) + b); return acc; }, []);
+let clockStart = null;
+const chan = 'BroadcastChannel' in window ? new BroadcastChannel('sentinel-deck') : null;
+const presenter = new URLSearchParams(location.search).has('notes');
+if (presenter) document.body.classList.add('presenter');
+
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+function renderNotes() {
+  const s = slides[cur];
+  const n = s.querySelector('aside.notes');
+  document.getElementById('n-body').innerHTML = n ? n.innerHTML : '';
+  document.getElementById('n-slide').textContent = `${cur + 1}/${slides.length} · ${s.dataset.title || ''}`;
+  document.getElementById('n-budget').textContent = budgets[cur] ? `~${mmss(budgets[cur])}` : 'appendix';
+  document.getElementById('n-plan').textContent = budgets[cur] ? `planned end ${mmss(planEnd[cur])} of ${mmss(planEnd[planEnd.length - 1])}` : '';
+}
+
+function tick() {
+  const el = document.getElementById('n-clock');
+  const sec = clockStart ? (Date.now() - clockStart) / 1000 : 0;
+  el.textContent = mmss(sec);
+  el.classList.toggle('over', !!budgets[cur] && sec > planEnd[cur] + 5);
+}
+setInterval(tick, 500);
+
+function show(i, fromRemote) {
+  cur = Math.max(0, Math.min(slides.length - 1, i));
+  slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+  if (location.hash !== '#' + (cur + 1)) history.replaceState(null, '', '#' + (cur + 1));
+  if (cur > 0 && !clockStart) clockStart = Date.now();
+  renderNotes();
+  tick();
+  if (chan && !fromRemote) chan.postMessage({ slide: cur, clockStart });
+}
+
+if (chan) chan.onmessage = (e) => { if (e.data && typeof e.data.slide === 'number') { if (e.data.clockStart) clockStart = e.data.clockStart; else if (e.data.reset) clockStart = null; show(e.data.slide, true); } };
+
+function fromHash() { const n = parseInt(location.hash.slice(1), 10); return Number.isFinite(n) ? n - 1 : 0; }
+window.addEventListener('hashchange', () => { if (fromHash() !== cur) show(fromHash()); });
+
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || (k === ' ' && !e.shiftKey)) { e.preventDefault(); show(cur + 1); }
+  else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp' || (k === ' ' && e.shiftKey)) { e.preventDefault(); show(cur - 1); }
+  else if (k === 'Home') { e.preventDefault(); show(0); }
+  else if (k === 'End') { e.preventDefault(); show(slides.length - 1); }
+  else if (k === 'n' || k === 'N') document.body.classList.toggle('show-notes');
+  else if (k === 's' || k === 'S') document.body.classList.toggle('show-sources');
+  else if (k === 't' || k === 'T') { clockStart = cur > 0 ? Date.now() : null; if (chan) chan.postMessage({ slide: cur, clockStart, reset: !clockStart }); tick(); }
+  else if (k === 'f' || k === 'F') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
+  else if (k === 'p' || k === 'P') window.open(location.pathname + '?notes' + location.hash, 'sentinel-notes', 'width=900,height=700');
+});
+
+function fit() {
+  const st = document.getElementById('stage');
+  const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+  st.style.transform = `scale(${scale})`;
+}
+window.addEventListener('resize', fit);
+fit();
+
+// ---------------------------------------------------------------- boot
+(async () => {
+  const banner = document.getElementById('banner');
+  try {
+    D = await loadModule();
+  } catch (e) {
+    banner.style.display = 'block';
+    banner.textContent = '⚠ could not load demo/slides/deck-data.mjs. Serve the repo root over http: demo/slides/serve-deck.sh';
+    show(fromHash());
+    return;
+  }
+  const { raw, failed } = await loadRaw(D.FILES);
+  if (failed.length) {
+    banner.style.display = 'block';
+    banner.textContent = '⚠ missing data files: ' + failed.join(', ') + (location.protocol === 'file:' ? ' (opened from file://; run demo/slides/serve-deck.sh)' : '');
+  }
+  const model = D.deriveAll(raw);
+  window.__deckModel = model; // for console inspection
+  bindAll(model);
+  buildContrast(model);
+  buildTrack3a(model);
+  buildHoldouts(model);
+  addChrome(model, slides);
+  show(fromHash());
+})();
+show(fromHash());
+</script>
+</body>
+</html>
