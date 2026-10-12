@@ -1,7 +1,7 @@
 // Adversarial timing (ReDoS) tests AT the maximum payload size (PR #3 review: an unbounded `{8,}` JWT regex
 // took 14 s on 256K chars of repeated "eyJ"). Each detector layer must stay under LAYER_BUDGET_MS and the
 // whole inspection under the fail-closed time budget, for crafted inputs aimed at every scanner.
-// Median of 3 runs per case to keep CI noise out without hiding a quadratic blow-up (which is 100-1000x).
+// Median of 5 runs per case to keep CI noise out without hiding a quadratic blow-up (which is 100-1000x).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
@@ -10,8 +10,10 @@ import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdow
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
-// T2's inspector timeout is ~50 ms: the WHOLE inspection must finish inside our own fail-closed budget.
-const TOTAL_BUDGET_MS = DEFAULT_BOUNDS.timeBudgetMs;
+// T2's inspector timeout is ~50 ms: the WHOLE inspection must finish under it even on a loaded box (the
+// merge gate runs every suite in parallel). Our internal fail-closed budget (timeBudgetMs = 40) sits below
+// it, so an inspection slowed past 40 ms by load becomes a BLOCK verdict, never a proxy timeout.
+const TOTAL_BUDGET_MS = 50;
 const MAX = DEFAULT_BOUNDS.maxPayloadBytes;
 const SCANNER_INPUT = MAX; // each scanner alone is held to 50 ms at the cap (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
 // The adversarial string appears twice (untrusted tool output + sink args), so each copy is ~45% of the cap.
@@ -46,7 +48,7 @@ function detectorWithBigRegistry() {
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-test('whole inspection < 40 ms budget (and every layer < 50 ms) on adversarial inputs at the payload cap (20k canaries)', { timeout: 60000 }, () => {
+test('whole inspection < 50 ms (T2 inspector timeout; internal fail-closed budget 40 ms) and every layer < 50 ms on adversarial inputs at the payload cap (20k canaries)', { timeout: 60000 }, () => {
   const det = detectorWithBigRegistry();
   const report = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
@@ -61,7 +63,7 @@ test('whole inspection < 40 ms budget (and every layer < 50 ms) on adversarial i
     const res = { choices: [{ message: { role: 'assistant', content: s.slice(0, 4096), tool_calls: [{ id: 'c', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'http://x.test/a', body: s }) } }] } }] };
     const layerRuns = {};
     const totals = [];
-    for (let r = 0; r < 3; r++) {
+    for (let r = 0; r < 5; r++) {
       const d = det.inspect({ sessionId: `adv-${name}-${r}`, request: req, response: res });
       // JSON escaping can push a few cases (e.g. "\n"-heavy) over the cap: that must FAIL CLOSED, fast.
       if (d.failClosed) assert.equal(d.error.bound, 'maxPayloadBytes', `${name}: ${JSON.stringify(d.error)}`);

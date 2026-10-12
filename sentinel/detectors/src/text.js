@@ -231,8 +231,10 @@ export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
     // the number of variants stays <= 1 + 3 x depth regardless of how many encoded runs the text holds.
     const hex = [];
     const b64 = [];
+    const seenTok = new Set(); // identical runs decode identically: decode each distinct run once
     for (const { token: whole } of tokens(s)) {
-      if (whole.length < minRun) continue;
+      if (whole.length < minRun || seenTok.has(whole)) continue;
+      seenTok.add(whole);
       // `key=<base64>` (query strings, env lines): '=' is base64 padding only at the END of a run, so an
       // interior '=' separates a key from the encoded value -> decode the value part.
       const eq = whole.replace(/=+$/, '').lastIndexOf('=');
