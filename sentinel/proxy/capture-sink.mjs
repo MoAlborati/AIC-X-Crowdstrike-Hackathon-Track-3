@@ -8,6 +8,15 @@
 //
 // The file holds full plaintext secrets, so it is owner-only: created 0600 (directory 0700 when we
 // create it), and an existing file with group/other bits is tightened to 0600 before the first write.
+//
+// What is raw and what is redacted (T10 / PR #26):
+//   - RAW (evidence): exchange request path, headers and bodies (request.*, response.body,
+//     response.decoded_body). The capture exists to prove what crossed the wire, so a planted
+//     honeytoken in an exfil attempt MUST appear here verbatim. Hence 0600 above.
+//   - REDACTED: every verdict (exchange.verdicts[]) and every alert record (type 'alert'), and the
+//     same alert lines on stderr. server.mjs runs them through sentinel/alerts redactDeep() with the
+//     configured honeytokens as canaries before they reach this sink or stderr.
+// This sink writes records as given; the redaction boundary lives in server.mjs (makeLogScrubber).
 
 import { appendFile, chmod, mkdir, stat } from 'node:fs/promises';
 

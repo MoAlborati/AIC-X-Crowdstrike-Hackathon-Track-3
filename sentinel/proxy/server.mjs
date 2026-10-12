@@ -32,11 +32,12 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { isUtf8 } from 'node:buffer';
 import { JsonlCaptureSink } from './capture-sink.mjs';
-import { substringInspector } from './inspectors.mjs';
+import { substringInspector, flagSubstringId } from './inspectors.mjs';
 import { ConfigError, isLoopbackHost } from '../config/load.mjs';
 // Single source of truth for verdict dispositions: T4's table (sentinel/alerts/schema.js). The
 // proxy never keeps its own list, so the two modules cannot drift apart.
 import { DISPOSITIONS } from '../alerts/index.js';
+import { prepareCanaries, redactDeep } from '../alerts/redact.js';
 
 // Every request and response is inspected, whatever its path. Keying inspection on an exact path
 // (e.g. only /v1/chat/completions) would let a path variant an upstream happens to accept, or a
@@ -292,6 +293,7 @@ export function classifyVerdict(v) {
   const hasDisposition = v.disposition !== undefined;
   if (!hasFlag && !hasDisposition) throw new InvalidVerdictError('verdict has neither `flagged` nor `disposition`');
   if (hasFlag && typeof v.flagged !== 'boolean') throw new InvalidVerdictError('verdict `flagged` must be a boolean');
+  if (v.alert !== undefined && typeof v.alert !== 'boolean') throw new InvalidVerdictError('verdict `alert` must be a boolean');
   let blocking = false;
   if (hasDisposition) {
     if (typeof v.disposition !== 'string') throw new InvalidVerdictError('verdict `disposition` must be a string');
@@ -302,15 +304,25 @@ export function classifyVerdict(v) {
   return v.flagged === true || blocking ? 'flagged' : 'clean'; // on conflict, flagged wins
 }
 
+/**
+ * Run every inspector. Returns { verdicts, alertOnly }:
+ *   verdicts  - flagged verdicts (block mode refuses on these).
+ *   alertOnly - NOT flagged but `alert: true` or disposition 'report' (T3 response-phase post-execution evidence: DVAA already
+ *               ran the tool in-process, so it is logged as an ALERT, never claimed as a block).
+ */
 async function runInspectors(inspectors, ctx) {
   const verdicts = [];
+  const alertOnly = [];
   for (const inspect of inspectors) {
     const v = await inspect(ctx);
-    if (classifyVerdict(v) === 'flagged') {
-      verdicts.push({ detector: v.detector ?? v.ruleId ?? inspect.name ?? 'anonymous', reasons: v.reasons ?? [], ...v });
-    }
+    const cls = classifyVerdict(v);
+    // Not flagged, but evidence: `alert: true` (T3 post-execution) or a ReportOnly disposition ('report').
+    const reportOnly = typeof v?.disposition === 'string' && DISPOSITIONS[v.disposition.toLowerCase()] === 'ReportOnly';
+    if (cls === 'clean' && v?.alert !== true && !reportOnly) continue;
+    const entry = { detector: v.detector ?? v.ruleId ?? inspect.name ?? 'anonymous', reasons: v.reasons ?? [], ...v };
+    (cls === 'flagged' ? verdicts : alertOnly).push(entry);
   }
-  return verdicts;
+  return { verdicts, alertOnly };
 }
 
 /** Run a phase's inspectors under a deadline. Rejects with InspectorTimeoutError when it passes. */
@@ -329,6 +341,39 @@ async function runInspectorsWithDeadline(inspectors, ctx, timeoutMs) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Log scrubber: everything that goes to stderr or into a capture record EXCEPT the exchange bodies,
+ * path and headers (kept raw as evidence; the capture file is 0600) passes through this.
+ * JSON round-trip first so toJSON()/Buffers/Dates are seen as the strings that would be logged
+ * (a Buffer is decoded, so a secret carried as bytes is still redacted). redactDeep is linear and
+ * bounded (MAX_REDACT_SCAN_CHARS per string, MAX_REDACT_TOTAL_CHARS per call); over budget it
+ * WITHHOLDS the whole string (marker with length + hash), never passes an unscanned tail.
+ */
+export function flagSubstringCanaries(flagSubstrings) {
+  return flagSubstrings.map((value, i) => ({ id: flagSubstringId(i), value }));
+}
+
+/** @param {Array<{id:string, value:string}>} canaries honeytokens to redact (raw/%/hex/base64 forms) */
+export function makeLogScrubber(canaries) {
+  try {
+    prepareCanaries(canaries); // validate once, at startup: fail loud on a value redaction can't cover
+  } catch (err) {
+    throw new ConfigError(`inspect.flagSubstrings / honeytokens cannot be used as log-redaction canaries: ${err.message}`);
+  }
+  const toLoggable = (_k, v) => {
+    if (v && v.type === 'Buffer' && Array.isArray(v.data)) {
+      const b = Buffer.from(v.data);
+      return isUtf8(b) ? b.toString('utf8') : `base64:${b.toString('base64')}`;
+    }
+    return v;
+  };
+  return (value) => {
+    const json = JSON.stringify(value, toLoggable);
+    if (json === undefined) return value;
+    return redactDeep(JSON.parse(json), { canaries }).value;
+  };
 }
 
 function jsonBuffer(obj) {
@@ -376,7 +421,7 @@ export function buildRefusal({ requestId, phase, reason, verdicts = [], mode, de
 /**
  * Create the proxy. Returns { server, sink, listen(), close() }.
  * @param {object} config validated config (see sentinel/config/load.mjs)
- * @param {{inspectors?: Function[], sink?: {write: Function, flush: Function}, logAlert?: Function}} [deps]
+ * @param {{inspectors?: Function[], sink?: {write: Function, flush: Function}, logAlert?: Function, scrub?: Function}} [deps]
  */
 export function createProxy(config, deps = {}) {
   const { mode, target, limits } = config;
@@ -385,16 +430,19 @@ export function createProxy(config, deps = {}) {
   const sink = deps.sink ?? new JsonlCaptureSink(config.capture);
   const inspectors = deps.inspectors ?? [substringInspector(config.inspect.flagSubstrings)];
   const logAlert = deps.logAlert ?? ((alert) => process.stderr.write(`[sentinel] ALERT ${JSON.stringify(alert)}\n`));
+  // Every alert / verdict / error string is scrubbed before logAlert or the sink sees it.
+  // deps.scrub: the CLI builds one scrubber over T3's honeytokens + flagSubstrings and shares it with T3's logger.
+  const scrub = deps.scrub ?? makeLogScrubber(flagSubstringCanaries(config.inspect.flagSubstrings));
   const block = mode === 'block';
   let inFlight = 0;
 
   async function emitAlert(requestId, alert) {
-    const record = { type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert };
+    const record = scrub({ type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
     logAlert(record);
     try {
       await sink.write(record);
     } catch (err) {
-      logAlert({ type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message });
+      logAlert(scrub({ type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
     }
     return record;
   }
@@ -466,18 +514,25 @@ export function createProxy(config, deps = {}) {
         return { decoded: null };
       }
       let verdicts;
+      let alertOnly = [];
       try {
-        verdicts = await runInspectorsWithDeadline(inspectors, {
+        ({ verdicts, alertOnly } = await runInspectorsWithDeadline(inspectors, {
           phase, method: req.method, path, headers, body: decoded, rawBody: raw,
           contentEncoding: encodings, requestId, ...extraCtx,
-        }, limits.inspectorTimeoutMs);
+        }, limits.inspectorTimeoutMs));
       } catch (err) {
         const reason = err instanceof InspectorTimeoutError ? 'inspector_timeout' : 'inspector_error';
         await emitAlert(requestId, { reason, phase, error: err.message, action: block ? 'fail_closed' : `${phase === 'request' ? 'forwarded' : 'returned'}_uninspected` });
         if (block) return { stop: refuse(503, phase, reason) };
         verdicts = [];
       }
-      record.verdicts.push(...verdicts.map((v) => ({ phase, ...v })));
+      // Verdicts are logged in the exchange record, so they are scrubbed; the bodies are not.
+      record.verdicts.push(...verdicts.map((v) => scrub({ phase, ...v })));
+      if (alertOnly.length > 0) {
+        // Not flagged, so nothing is refused, but the evidence must reach the logs (redacted like the rest).
+        record.verdicts.push(...alertOnly.map((v) => scrub({ phase, ...v })));
+        await emitAlert(requestId, { reason: 'detector_alert', phase, verdicts: alertOnly, action: 'alert_only' });
+      }
       return { decoded, encodings, verdicts };
     };
 
@@ -592,7 +647,9 @@ export function createProxy(config, deps = {}) {
       try {
         await emitAlert(requestId, { reason: 'proxy_internal_error', error: err.message, action: 'refused' });
       } catch (alertErr) {
-        process.stderr.write(`[sentinel] ALERT-PATH FAILURE request_id=${requestId}: ${alertErr.message}\n`);
+        let msg;
+        try { msg = scrub(String(alertErr?.message)); } catch { msg = '[unredactable error message withheld]'; }
+        process.stderr.write(`[sentinel] ALERT-PATH FAILURE request_id=${requestId}: ${msg}\n`);
       } finally {
         if (!res.headersSent) {
           const out = staticJson(500, 'internal_error', requestId);
