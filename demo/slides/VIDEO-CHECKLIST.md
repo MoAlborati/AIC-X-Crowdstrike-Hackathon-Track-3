@@ -7,20 +7,24 @@ On stage at 18:00, the video replaces any beat that breaks (see `demo/PRESENTER.
 Sources: `demo/PRESENTER.md` (T-30 and After), `demo/SCRIPT.md` (the beats, on main after #50), `demo/run-demo.sh`.
 If anything here disagrees with `run-demo.sh`, the runner wins.
 
-> **Deep links.** #76 (`t5-stage`, `?stage=1&capture=…`) is **not merged** as of this writing. Use the **main**
-> column below. Once #76 merges, use the `?stage=1` column instead: its dropdown shows only the 3 stage captures.
+> **Deep links.** #76 (stage mode) and #97 (egress stage capture) are merged. Use the `?stage=1` links in §3, each
+> opened at its last step. The spoken lines follow the script cut (critic D, #112): 365 words, about 2:44.
 
 ## 1. Pre-flight (15:45, from PRESENTER T-30)
 
-- [ ] `colima start --cpu 4 --memory 6`, then confirm with `docker info | head -3`
-- [ ] `export PATH=/opt/homebrew/opt/node@24/bin:$PATH`, then confirm `node --version` prints `v24.x`
+- [ ] `caffeinate -dimsu &` so the Mac can't sleep mid-recording
+- [ ] `colima start` (plain, no `--cpu`/`--memory`), then confirm with `docker info | head -3`
+- [ ] A Node 24 on PATH (Catherine: `export PATH=$HOME/.cache/node24/bin:$PATH`), then confirm `node --version` prints `v24.x`
 - [ ] `git pull`, then `scripts/eval.sh doctor`. Expect all PASS. If #70 isn't merged, run `git checkout mac-compat` first.
 - [ ] `scripts/eval.sh up`. Expect `all 22 DVAA ports answer 200` and `bound to 127.0.0.1`.
-- [ ] `EVAL_DASHBOARD_PORT=9100 scripts/eval.sh dashboard`, then open the three tabs from §3 (in order, in a **fresh browser window**).
-- [ ] Dry run: `demo/run-demo.sh --auto --keep-dvaa --no-teardown`. The Summary must say `demo run clean`. **Do not record until it does.**
+- [ ] Clean slate: `scripts/eval.sh dashboard-stop; rm -rf .eval/score`. **Never run `docker system prune` before 18:00.**
+- [ ] Dry run: `demo/run-demo.sh --auto --no-dvaa --no-teardown`. The Summary must end `demo run clean — no failing beats ·
+      dashboard http://127.0.0.1:<port>/`. **Do not record until it does.** It starts the dashboard itself; if :9100 is
+      busy it moves to the next free port and prints it, so use that port in the §3 links.
+- [ ] Open the three tabs from §3 (in order, in a **fresh browser window**).
 - [ ] Quit Slack, Mail, Messages, Calendar, and every other app except Terminal, the browser and the slides. Turn on **Do Not Disturb** (Control Center → Focus).
 - [ ] Display at **1920×1080** or the "Default" scaling (System Settings → Displays). Dock set to auto-hide (System Settings → Desktop & Dock).
-- [ ] Terminal: font at least **20pt** (Cmd-+), dark theme. Terminal on the **left half**, dashboard on the **right half**.
+- [ ] Terminal: **18pt**, full height, dark theme. Terminal on the **left half**, dashboard on the **right half**. **Cmd-K before every Enter.**
 - [ ] Clean the terminal (see §6): `export PS1='$ '`, then `clear`.
 - [ ] Slides open on slide 2, in a window you can bring to the front with one Cmd-Tab.
 
@@ -42,30 +46,32 @@ Stop the recording with the ⏹ in the menu bar, or **Cmd-Ctrl-Esc**.
 
 ## 3. Shot list (video time = stage clock)
 
-The video's timestamps match the stage clock, so "play the video from 0:40" lands on Beat 3. Run **interactive**
-(`demo/run-demo.sh --keep-dvaa --no-teardown`, not `--auto`) and press **Enter** on the target time. `--auto` runs
-too fast for the timestamps to line up. Start the run first and let the 3 preflights pass. **Then** start recording, sitting at the first "press Enter".
+The video's timestamps match the stage clock, so "play the video from 0:35" lands on Beat 3. Run **interactive**
+(`demo/run-demo.sh --no-dvaa --no-teardown`, not `--auto`) and press **Enter** on the target time. `--auto` runs
+too fast for the timestamps to line up. Interactive mode pauses after **each** of Preflight 1/3, 2/3 and 3/3: press
+Enter through them, **park at the prompt after "Preflight 3/3"**, Cmd-K, and **then** start recording. Beat 4 also
+pauses once after the live 200/403: press Enter at about 1:18.
 
-Dashboard deep links (port 9100):
+Dashboard deep links (port 9100, or the port `run-demo.sh` printed):
 
-| tab | main (use now) | after #76 merges |
-|---|---|---|
-| vulnerable | `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runA` | `http://127.0.0.1:9100/?stage=1&capture=vulnerable` |
-| aim-twin | `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runB` | `http://127.0.0.1:9100/?stage=1&capture=aim-twin` |
-| proxy-blocked | `http://127.0.0.1:9100/?id=contrast/runs/proxy-block.demo` | `http://127.0.0.1:9100/?stage=1&capture=proxy-blocked&step=last` |
+| tab | link |
+|---|---|
+| vulnerable | `http://127.0.0.1:9100/?stage=1&capture=vulnerable&step=last` |
+| proxy-blocked | `http://127.0.0.1:9100/?stage=1&capture=proxy-blocked&step=last` |
+| egress-blocked | `http://127.0.0.1:9100/?stage=1&capture=egress-blocked&step=last` |
 
 | video time | beat | action (exact) | on screen (must be visible) | dashboard tab |
 |---|---|---|---|---|
-| 0:00–0:20 | 1 Hook | slides, slide 2 (Cmd-Tab to slides) | two incidents and the Kurtz quote | — |
-| 0:20–0:40 | 2 Structure | slide 3 | confused-deputy diagram | — |
-| **0:40** | **3** Exploit (red) | Cmd-Tab to Terminal, **Enter**. At about 0:50 click the `vulnerable` tab. | `submit_to_index`, `true`, `dvaa-admin-secret … 123-45-6789` | vulnerable |
-| **1:00** | **3b** 8KB evasion | back to Terminal, **Enter** | `inMiddleGap:true`, `evadesDvaaBaseline:true`, `t3Caught:2` | — |
-| **1:20** | **4** Live block | **Enter**. Wait for both codes, then click the `proxy-blocked` tab. | live `HTTP 200`, then `HTTP 403`, `sentinel-t3`, the T4 alert (ATLAS, OWASP LLM01). **Must not show** `WARN live proxy unavailable`. | proxy-blocked |
-| **1:40** | **4b** Egress | back to Terminal, **Enter** | `deny` rows, `RESULT block: PREVENTED`, `(no canary hits)` | — |
-| **1:50** | **5a** AIM twin | **Enter**, click the `aim-twin` tab, then at about 2:00 Cmd-Tab to slide 6 | `false` + the denial reason, then the red / green / green columns | aim-twin |
-| 2:05–2:30 | 6 How | slide 7 | field → mechanism → rule | — |
-| **2:30** | **7** Close | Cmd-Tab to Terminal, **Enter**. Hold on the table for 8 s, then slides 8 → 10. | T3 vs DVAA table: recall, FP, `8KB evasion 2/2`, p95 < 0.5 ms; Summary `demo run clean` | — |
-| 2:50–3:00 | end | slide 10 held. **Stop recording.** | — | — |
+| 0:00–0:14 | 1 Hook | slides, slide 2 (Cmd-Tab to slides) | two incidents and the Kurtz quote | — |
+| 0:14–0:35 | 2 Structure | slide 3 | confused-deputy diagram | — |
+| **0:35** | **3** Exploit (red) | Cmd-Tab to Terminal, Cmd-K, **Enter**. At about 0:45 click the `vulnerable` tab. | `submit_to_index`, `true`, `dvaa-admin-secret … 123-45-6789` | vulnerable |
+| **0:50** | **3b** 8KB evasion | back to Terminal, Cmd-K, **Enter** | `inMiddleGap:true`, `evadesDvaaBaseline:true`, `t3Caught:2` | — |
+| **1:04** | **4** Live block | Cmd-K, **Enter**. Wait for both codes, click the `proxy-blocked` tab, then Cmd-K, **Enter** at about 1:18 (mid-beat pause). | live `HTTP 200`, then `HTTP 403`. **Must not show** `WARN live proxy unavailable`. | proxy-blocked |
+| **1:23** | **4b** Egress | back to Terminal, Cmd-K, **Enter**, then the `egress-blocked` tab | `RESULT block: PREVENTED`, `(no canary hits)` | egress-blocked |
+| **1:38** | **5a** AIM twin | Cmd-K, **Enter**, then Cmd-Tab straight to **slide 6** | the red / green / green columns | — (Slide 6 only) |
+| 1:50–2:03 | 6 Guest list | slide 7 | field → mechanism → rule | — |
+| **2:03** | **7** Close | Cmd-Tab to Terminal, Cmd-K, **Enter**. Hold on the table for 8 s, then slides 8 → 10. | T3 vs DVAA table, then Summary `demo run clean … dashboard http://127.0.0.1:<port>/` | — |
+| 2:44–3:00 | end | slide 10 held. **Stop recording.** | — | — |
 | (separate clip) | 3A OpsBot encore, optional | new recording, same settings: `node track3a/run-demo.mjs` (about 2 s), hold 10 s | the layering table: Undefended LEAKED ×2 … all blocked, benign OK | — |
 
 Save the encore as `~/Desktop/fallback-opsbot.mov`. Record it only if there's time left before 16:30.
@@ -76,7 +82,7 @@ Save the encore as `~/Desktop/fallback-opsbot.mov`. Record it only if there's ti
   (the fallback should show the *live* 200/403); a notification, another app, or a home-directory path shows up on screen;
   a beat starts more than **10 s** off its target time; the total runs over **3:10**.
 - **Don't retake** for mouse wobble, a slightly slow tab click, or a pause shorter than 3 s. Those get trimmed or ignored.
-- Before every retake: `clear`, then rerun `demo/run-demo.sh --keep-dvaa --no-teardown` up to the first "press Enter". Delete the bad raw file.
+- Before every retake: `clear`, then rerun `demo/run-demo.sh --no-dvaa --no-teardown` and park at the prompt after "Preflight 3/3". Delete the bad raw file.
 - **At most 3 takes.** At **16:25** stop and keep the best one, even if it isn't perfect. If no take is clean, keep the best
   one anyway and post on #66 which beat is bad, so Catherine knows not to cut to that beat.
 - If Beat 4 can't go live (DVAA or Colima down) by 16:15, record with `demo/run-demo.sh --no-dvaa --no-teardown` and note
@@ -96,7 +102,7 @@ Save the encore as `~/Desktop/fallback-opsbot.mov`. Record it only if there's ti
    Set `-ss` and `-to` to the timestamps from step 1. `-an` drops audio (it's silent). The result plays in QuickTime and is about 20–60 MB.
 3. **Without ffmpeg (QuickTime):** open the raw file, **Edit → Trim** (Cmd-T), drag the yellow handles, **Trim**, then
    **File → Export As → 1080p**, and save as `~/Desktop/fallback-demo.mov`.
-4. Check it: open `~/Desktop/fallback-demo.mov` in QuickTime and scrub to **0:40, 1:20 and 2:30**. Each should land on that beat.
+4. Check it: open `~/Desktop/fallback-demo.mov` in QuickTime and scrub to **0:35, 1:04 and 2:03**. Each should land on that beat.
 5. Copy to USB: `cp ~/Desktop/fallback-demo.mov /Volumes/<USB>/`.
 6. Upload (**pending #66**): **YouTube unlisted** or **Google Drive** (link-only, anyone with the link can view). Post the
    link as a comment on #66. **Never** commit the file or attach it to a repo release.

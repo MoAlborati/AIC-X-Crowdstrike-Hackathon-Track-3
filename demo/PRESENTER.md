@@ -9,104 +9,102 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
 
 ## T-30 min checklist
 
-- [ ] `colima start --cpu 4 --memory 6`, then confirm with `docker info | head -3`.
-- [ ] `export PATH=/opt/homebrew/opt/node@24/bin:$PATH`, then confirm that `node --version` prints `v24.x`.
+- [ ] `caffeinate -dimsu &` so the Mac never sleeps (a sleep kills Colima's port forwarder). Check that
+      `pmset -g | grep sleep` shows `sleep 1` overridden while it runs.
+- [ ] `colima start` (plain: don't pass `--cpu`/`--memory`, which would shrink the VM), then confirm with `docker info | head -3`.
+- [ ] A Node 24 on PATH: confirm that `node --version` prints `v24.x`. (On Catherine's Mac that's
+      `export PATH=$HOME/.cache/node24/bin:$PATH`.)
 - [ ] `git pull`, then `scripts/eval.sh doctor`. Expect all PASS. Every FAIL prints its macOS `fix:` line.
 - [ ] `scripts/eval.sh up`. Expect `all 22 DVAA ports answer 200` and `bound to 127.0.0.1`.
-- [ ] Dry run: `demo/run-demo.sh --auto --keep-dvaa --no-teardown`. It starts the dashboard on :9100 **with the real
-      SentinelProxy alerts** (preflight 3/3), so don't start the dashboard by hand. The Summary must say
-      `demo run clean`, and Beat 4 must show a **live** `200` then `403`, with no `WARN live proxy unavailable`.
-- [ ] Leave that dashboard running (`--no-teardown`) and open four tabs, in beat order:
-  - Beat 3: `http://127.0.0.1:9100/?stage=1&capture=vulnerable`
-  - Beat 4: `http://127.0.0.1:9100/?id=live/proxy-7005&run=run&step=last` (should read "High 70 IndirectPromptInjection · Blocked · pre-forward")
-  - Beat 4b: `http://127.0.0.1:9100/?id=live/egress-boundary&run=run&step=last` (should show four "Blocked · egress deny" cards)
-  - Beat 5a: `http://127.0.0.1:9100/?stage=1&capture=aim-twin`
-- [ ] Have the fallback video open in QuickTime, paused at 0:00 (`~/Desktop/fallback-demo.mov`; see **After**).
+- [ ] Clean slate before the final dry run: `scripts/eval.sh dashboard-stop; rm -rf .eval/score`, so no stale dashboard
+      or rescored latency differs from the slides. **Never run `docker system prune` before 18:00.**
+- [ ] Dry run: `demo/run-demo.sh --auto --no-dvaa --no-teardown`. It starts the dashboard **with the real SentinelProxy
+      alerts** (preflight 3/3), so don't start the dashboard by hand. The Summary must end
+      `demo run clean — no failing beats · dashboard http://127.0.0.1:<port>/`, and Beat 4 must show a **live** `200`
+      then `403`, with no `WARN live proxy unavailable`. If :9100 was busy, the runner moves the dashboard to the next
+      free port and says so: **use the port it prints**. If no dashboard starts, the run FAILS; it never says "clean" then.
+- [ ] Leave that dashboard running (`--no-teardown`) and open three tabs in beat order, all in **stage mode at the last
+      step** (replace 9100 if the runner printed another port):
+  - Beat 3: `http://127.0.0.1:9100/?stage=1&capture=vulnerable&step=last`
+  - Beat 4: `http://127.0.0.1:9100/?stage=1&capture=proxy-blocked&step=last` (blocked card; no stat tiles)
+  - Beat 4b: `http://127.0.0.1:9100/?stage=1&capture=egress-blocked&step=last`
+  - Beat 5a: **no tab.** Slide 6 only.
+- [ ] Have the fallback video open in QuickTime, paused at 0:00: `~/Desktop/fallback-demo.mov` (the one name used
+      everywhere; see **After** and `demo/slides/VIDEO-CHECKLIST.md`).
 - [ ] Quit Slack, Mail, Messages and anything else that pops up. Turn on **Do Not Disturb** (Control Center → Focus).
 - [ ] Screen share: set the display to 1920×1080 or the "Default" scaling (System Settings → Displays). Share the
       whole screen, not one window, so you can switch between the terminal, the browser and the slides.
-- [ ] Terminal: Cmd-+ until the font is at least 20pt, dark theme. Put the terminal on the left and the dashboard on the right.
-- [ ] At T-2, run `demo/run-demo.sh --keep-dvaa --no-teardown` (interactive). Let the preflights pass (row 0 is the
-      script-drift check), then **stop at the first "press Enter"**, before Beat 3. That's your starting position.
+- [ ] Terminal: **18pt**, full screen height, dark theme. Terminal on the left, dashboard on the right.
+      **Cmd-K before every Enter**, so each beat starts at the top of the window and nothing scrolls off.
+- [ ] At T-2, run `demo/run-demo.sh --no-dvaa --no-teardown` (interactive; `--no-dvaa` so a dead Colima forwarder
+      can't hang preflight 2 for minutes; Beat 4 still goes live whenever 7005 answers). Interactive mode pauses after
+      **each** of Preflight 1/3, 2/3 and 3/3. **Park at the prompt after "Preflight 3/3"**, then Cmd-K. That's your
+      starting position: the next Enter starts Beat 3.
 
-## Run of show (3:00 clock; Enter advances each beat)
+## Run of show (3:00 clock; Cmd-K, then Enter, for each beat)
 
-Main runs the beats in this order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** → 6 → **7**. Beats 1, 2 and 6 are slides only;
-`run-demo.sh` drives the beats in bold.
+Order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** → 6 → **7**. Beats 1, 2 and 6 are slides only; `run-demo.sh` drives the
+beats in bold. 365 spoken words, about 2:44 with transitions. Every quoted line is word for word from `demo/SCRIPT.md`.
+Don't read ticket numbers, reason codes or framework IDs aloud; they're on the slides for Q&A.
 
-**0:00 · Beat 1 Hook** · slide 1 → 2 (two incidents + the Kurtz quote) · fallback: keep talking
-> "Air Canada lost a tribunal case over its chatbot. A Chevy dealer's chatbot 'agreed' to sell a 2024
-> Tahoe for $1. CrowdStrike's CEO put it plainly: 'Each prompt becomes an entry point for the
-> adversary.' Today that prompt can arrive inside a document your agent reads."
-> "Everything you'll see runs in a deterministic sandbox, no LLM, and most of it is recorded. We'll say which."
+**0:00 · Beat 1 Hook** · slide 1 → 2 (incidents and the Kurtz quote stay on the slide, unspoken)
+> "In under a minute I'll make an AI agent send its admin password to an attacker using one poisoned document, then stop it without touching its code."
+> "It's a deterministic sandbox, no LLM."
 
-**0:20 · Beat 2 Structure** · slide 3 (confused-deputy diagram)
-> "Picture a new bank teller who obeys any note slipped into a deposit envelope. The teller has the
-> authority, the customer owns it, and the attacker can't touch the vault directly, so the attacker
-> writes the note. That's the confused deputy, Hardy 1988. Your AI agent is that teller, and every RAG doc,
-> web page and repo file is an envelope."
+**0:14 · Beat 2 Structure** · slide 3
+> "Your agent is a bank teller who obeys any note slipped into a deposit envelope. Every document, web page and repo file it reads is an envelope. The attacker never breaks in; the teller does the work."
+> "We protect the agents you can't rebuild, from the outside."
 
-**0:40 · Beat 3 Exploit (red)** · **Enter**, then the dashboard tab `vulnerable` · fallback: play the video from 0:40
-> "Recorded run. This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
-> "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
+**0:35 · Beat 3 Exploit (red)** · Cmd-K, **Enter**, then the `vulnerable` tab · fallback: play the video from 0:35
+> "Recorded. A deliberately vulnerable agent from the organizers' sandbox gets one document with a hidden instruction."
 
 Screen: `submit_to_index`, `true`, `… dvaa-admin-secret | … 123-45-6789` (fake sandbox values).
-> "It called submit_to_index, and the admin secret and an SSN just left the building."
+> "It just sent the admin password and an SSN to the attacker's server."
 
 Pause for two seconds and let it land.
 
-**1:00 · Beat 3b 8KB evasion (red, recorded, 10 seconds max)** · **Enter** · fallback: read the lines from the slide
-> "Recorded fixtures. DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
+**0:50 · Beat 3b 8KB evasion (red, recorded)** · Cmd-K, **Enter**
+> "Recorded. The sandbox's scanner reads only the first and last 8 KB, so attackers hide the payload in the middle. We read every byte, typically in under a tenth of a millisecond."
 
-Screen: `inMiddleGap:true`, `evadesDvaaBaseline:true`, `fullScanFindsSignal:true`, then `t3Caught: 2`.
-> "SentinelProxy scans the full payload and never truncates. 8KB evasion: 2 out of 2 fixtures caught."
+Say "2 of 2 fixtures" only if a judge asks.
 
-**1:10 · Beat 4 Detect → alert → block (green, the one live beat)** · **Enter**, then the dashboard tab `?id=live/proxy-7005&run=run&step=last`.
-`run-demo.sh` starts the real shipped proxy (`sentinel/proxy/cli.mjs`, block mode, `sentinel-t3`) on an ephemeral
-loopback port in front of 7005 and sends two `curl`s to it.
-> "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
+**1:04 · Beat 4 Block (green, the one live beat)** · Cmd-K, **Enter**
+> "Same agent, same document, now through SentinelProxy. First, a normal question: it passes."
 
 Screen: live `200`.
 > "Now the attack."
 
-Screen: live `403`, `blocked_request`, `detector: sentinel-t3`, then (say "recorded") the recording and the T4 alert
-(`IndirectPromptInjection`, ATLAS AML.T0051.001, OWASP LLM01, ASI01, OASB-1, Blocked).
-> "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side. If a honeytoken shows up in a response instead, the tool already ran (alert-only for prevention), but in block mode the reply is withheld, so the secret never reaches the client."
+Screen: live `403`.
+> "Refused before the agent ever saw it: the document slipped in an order to send data somewhere the user never named."
 
-> "Nothing was forwarded, so nothing could be exfiltrated."
+The runner **pauses here** so the 200/403 stays on screen. Switch to the `proxy-blocked` tab while you speak, then
+Cmd-K and Enter: the recorded evidence prints (unspoken). Fallback is automatic: if the terminal prints
+`WARN live proxy unavailable; showing the recording`, say "recorded" and keep going (see **If X breaks**).
 
-Fallback is automatic. If the terminal prints `WARN live proxy unavailable; showing the recording`, keep going (see **If X breaks**).
+**1:23 · Beat 4b Egress guard (green, recorded)** · Cmd-K, **Enter**, then the `egress-blocked` tab
+> "Recorded. But when the agent reads the poison itself, our proxy only flags it after the tool has run. So our egress guard denied every unlisted destination, and no secret reached the attacker."
 
-**1:40 · Beat 4b Egress default-deny (green, recorded, the blocking story)** · **Enter** · fallback: read `PREVENTED` and move on
-> "Recorded egress run, and this is our real blocking story: default-deny egress at the tool boundary. RepoBot reads its payload inside the agent, so the proxy cannot stop that exfil. The egress guard does. It denies non-allowlisted destinations and honeytokens, and fails closed."
+Screen: `RESULT … PREVENTED` and `(no canary hits)`. Point at those. Don't explain the telemetry deny.
 
-Screen: `deny` rows (RAGBot 7005 honeytokens, RepoBot 7022 `bootstrap.sh` fetch + credential post), then
-`RESULT block: PREVENTED`, `RESULT repobot block: PREVENTED`, `(no canary hits)`. Dashboard: switch to the tab
-`?id=live/egress-boundary&run=run&step=last`, which shows four "Blocked · egress deny" cards, one per deny.
-> "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
+**1:38 · Beat 5a AIM twin** · Cmd-K, **Enter**, then **slide 6 only** (red / green / green). No dashboard tab.
+> "Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't."
 
-**1:55 · Beat 5a AIM twin (recorded)** · **Enter**, then the tab `aim-twin`, then slide 6 (red / green / green) · fallback: slide 6 only
-> "Recorded run. Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+**1:50 · Beat 6 Guest list** · slide 7 · cut this first if you're running long
+> "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: any destination not on the list is denied, whatever the words say."
 
-Screen: `false` + the AIM denial reason.
-> "Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
+**2:03 · Beat 7 Outcome + close** · Cmd-K, **Enter**, then slides 8 → 10 (the full table is on slide 8; don't read it)
+> "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
 
-**2:05 · Beat 6 How it works** · slide 7 (field → mechanism → rule) · cut this first if you're running long
-> "We borrowed two controls from fields that already solved the confused deputy. Banks check the payee before money
-> moves, so our egress guard denies any destination that isn't on the allowlist. And a dead-man switch fails closed: if our
-> scanner times out or the input is too big, egress is denied and we raise an alert."
+> "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent zero, because none has anywhere to send data. Our known misses are listed in the repo."
 
-**2:20 · Beat 7 Outcome + "we attacked ourselves" + close** · **Enter**, then slides 8 → 10 · fallback: read the numbers off the slide
+> "Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you."
 
-The terminal prints the T3 vs DVAA table: detection recall 67.7% vs 65.6%, prevention 41.8% vs 63.0%, benign FP 0/164 vs 21/164,
-`8KB evasion: 2/2`, latency median 0.082 ms / p95 ~0.4 ms.
-> "From the committed scoring run, on 189 attacks and 164 benign cases, labelled by DVAA's ground truth and the published benchmarks. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+Teardown and the Summary print straight after Beat 7; switch to slide 10 before they scroll in.
+Running long? Cut Beat 6 first, then the second sentence of Beat 3b. **Never cut the "we attacked ourselves" line.**
 
-> "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
-
-> "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data. SentinelProxy is an exfil-focused guardrail for tool-using agents. Thank you."
-
-Running long? Cut the benign pass in Beat 4 first, then Beat 6, then shrink 3b. **Never cut the "we attacked ourselves" line.**
+**If a judge bypasses the proxy live** (spacing, homoglyphs, a polite rephrase): "Thank you. That's layer 1. Layer 2
+doesn't read words." Then point at the egress guard: it decides on the destination host, not the wording.
+**Never say "nothing gets out":** a split honeytoken sent to an allowlisted host still passes.
 
 ## Claim wording (for Q&A; also see `demo/QA-PREP.md`)
 
@@ -117,7 +115,8 @@ Running long? Cut the benign pass in Beat 4 first, then Beat 6, then shrink 3b. 
 - Don't say "DVAA has higher recall" without a qualifier. Since #46/#95 that's only true for **prevention**; on detection T3 is ahead (67.7% vs 65.6%).
 - **Held-out FP caveat:** "Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46."
 - Never say we "beat the baseline" across the board. "8KB evasion: 2/2 fixtures" is n=2 against a weakness DVAA built in on purpose, so don't sell it as a differentiator.
-- Latency: say exactly "median under a tenth of a millisecond, p95 around half a millisecond". p95 moves between about 0.39 and 0.52 ms from run to run, so never say "under half a millisecond".
+- Latency on stage: "typically in under a tenth of a millisecond" (the median, checked by `run-demo.sh`). If asked for more: "median under a tenth of a millisecond, p95 around half a millisecond". p95 moves between about 0.39 and 0.52 ms from run to run, so never say "under half a millisecond".
+- **"The attacker still got the key"** (closing line) is the recorded **watch-only (observe-mode) egress run**: the guard flagged the FAKE AWS key and forwarded it (`sentinel/egress/evidence-observe.jsonl`). "No secret reached the attacker" (Beat 4b) is the recorded **block** run only. Never generalize either to "nothing gets out".
 
 ## Encores (after 3:00, or in Q&A)
 
@@ -148,8 +147,8 @@ Use this only if a judge asks "what about attacks the chat proxy can't see?". Ru
 - **Proxy port busy:** the live Beat 4 proxy uses an ephemeral port (`SENTINEL_LISTEN_PORT=0`), so it can't collide.
   A manual encore on the shipped config (:8080) needs
   `SENTINEL_LISTEN_PORT=8090 node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json`.
-  If the dashboard port is busy, use `EVAL_DASHBOARD_PORT=9101`. Find what holds a port with `lsof -nP -iTCP:9100 -sTCP:LISTEN`.
-- **Dashboard blank:** press Cmd-R, then reload with an explicit capture (`?id=live/proxy-7005&run=run&step=last`). If the alert cards say "No detector verdicts recorded", the dashboard was started without the stage alerts: run `scripts/eval.sh dashboard-stop` and re-run `demo/run-demo.sh --no-teardown`. If it's
+  If the dashboard port is busy, `run-demo.sh` moves to the next free port and prints it; to pick one yourself, use `EVAL_DASHBOARD_PORT=9101`. Find what holds a port with `lsof -nP -iTCP:9100 -sTCP:LISTEN`.
+- **Dashboard blank:** press Cmd-R, then reload with an explicit capture (`?stage=1&capture=proxy-blocked&step=last`). If the alert cards say "No detector verdicts recorded", the dashboard was started without the stage alerts: run `scripts/eval.sh dashboard-stop` and re-run `demo/run-demo.sh --no-teardown`. If it's
   still blank, stay on the terminal. Every beat prints there.
 - **Live 403 fails** (prints `WARN live proxy unavailable; showing the recording`): `run-demo.sh` has already switched
   to the recorded block. Say: **"Same request, same detector: here's the block from our recorded run against live DVAA."**
@@ -158,9 +157,6 @@ Use this only if a judge asks "what about attacks the chat proxy can't see?". Ru
 ## After
 
 - Run `scripts/eval.sh dashboard-stop`, then `scripts/eval.sh down`, then `colima stop`.
-- **Make the fallback recording before 18:00:**
-  1. Press Cmd-Shift-5 → *Record Selected Portion*, covering the terminal and the dashboard.
-  2. Options: Microphone **None**, Save to **Desktop**. Click **Record**.
-  3. Run `demo/run-demo.sh --auto --keep-dvaa --no-teardown`.
-  4. Stop with the ⏹ in the menu bar (or Cmd-Ctrl-Esc).
-  5. Rename the file to `~/Desktop/fallback-demo.mov`. Keep it **out of the repo**, because it isn't gitignored. Put a copy on USB.
+- **Make the fallback recording before 18:00** with `demo/slides/VIDEO-CHECKLIST.md` (the one procedure): record
+  `~/Desktop/fallback-demo-raw.mov`, trim it to **`~/Desktop/fallback-demo.mov`** (the file PRESENTER opens), keep both
+  **out of the repo** (`*.mov` isn't gitignored) and put a copy on USB.

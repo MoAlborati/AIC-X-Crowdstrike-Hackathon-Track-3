@@ -5,7 +5,8 @@
 > **Pitch frame (critic #112, creative #105):** an exfil-focused guardrail for tool-using agents. Not "a slice of
 > Falcon AIDR", and not a jailbreak classifier. We own the losing blended prevention number, then show where data
 > actually leaves and the control that actually blocks: default-deny egress at the tool boundary. "Deterministic
-> sandbox, no LLM" is said in Beat 1. Every replay is labelled **recorded**. "100% precision" and "0% FP" are never
+> sandbox, no LLM" is said in Beat 1. Spoken lines (365 words, about 2:44) live in `demo/SCRIPT.md` and
+> `run-demo.sh`; no ticket numbers, reason codes or framework IDs are read aloud (critic D, #112). They stay on the slides. Every replay is labelled **recorded**. "100% precision" and "0% FP" are never
 > headlines.
 > Rules:
 > - Every factual claim is the verbatim "Safe slide wording" from `planning/CITATIONS.md` (PR #8, merged).
@@ -37,10 +38,11 @@ On screen for about 2 seconds while Beat 1 starts. Don't read it aloud. Go strai
 - "AI is rewriting the enterprise attack surface at breakneck speed. Each prompt becomes an entry point for the adversary." — George Kurtz, CEO & founder
 
 **Speaker notes**
-Beat 1 (0:00–0:20). Two relatable failures, then CrowdStrike's own words. Say "tribunal case", never "court".
-Say "agreed to sell", never "sold". No car was sold. Don't quote the C$812 award, which is still unconfirmed in
-CITATIONS. Close the beat with: "Today that prompt can arrive inside a document your agent reads." Then, within the
-first 20 seconds: "Everything you'll see runs in a deterministic sandbox, no LLM, and most of it is recorded. We'll say which."
+Beat 1 (0:00–0:14). **The slide carries the incidents and the Kurtz quote; none of it is spoken** (critic D: every
+judge has heard Air Canada and Chevy, and quoting Kurtz to CrowdStrike reads as flattery). Spoken: "In under a minute
+I'll make an AI agent send its admin password to an attacker using one poisoned document, then stop it without
+touching its code." Then: "It's a deterministic sandbox, no LLM." If asked: say "tribunal case", never "court";
+"agreed to sell", never "sold"; don't quote the C$812 award.
 
 ---
 
@@ -55,7 +57,8 @@ first 20 seconds: "Everything you'll see runs in a deterministic sandbox, no LLM
 - Footer: Hardy, "The Confused Deputy", ACM SIGOPS OSR 22(4):36–38, 1988.
 
 **Speaker notes**
-Beat 2 (0:20–0:40). This is the **only** narrative analogy in the talk. Don't add Agloe, HACCP or immunology.
+Beat 2 (0:14–0:35). "Confused deputy" and Hardy stay in the footer, unspoken. End the beat on the thesis: "We
+protect the agents you can't rebuild, from the outside." This is the **only** narrative analogy in the talk. Don't add Agloe, HACCP or immunology.
 The point is that the attacker never breaks in. The harm runs through the deputy's *legitimate* permissions, so the
 place to defend is between the deputy and its tools, not the deputy's input (ADJACENT §1, §10.1). That's where
 SentinelProxy sits.
@@ -75,10 +78,11 @@ SentinelProxy sits.
   A full scan still carries the signal. **8KB evasion: 2/2 fixtures** caught by SentinelProxy (T3).
 
 **Speaker notes**
-Beat 3 (0:40–1:00) + Beat 3b (1:00–1:20). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
+Beat 3 (0:35–0:50) + Beat 3b (0:50–1:04). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
 LLM. Say "recorded". Pause two seconds after the secret appears. Keep the 8KB-evasion moment to 10 seconds: it is n=2
 fixtures against a weakness DVAA built in on purpose, so it is not a differentiator. The proof is the two mid-document
-fixtures plus "8KB evasion: 2/2 fixtures" from `sentinel/scoring/results.json`. Never say a blanket
+fixtures plus "8KB evasion: 2/2 fixtures" from `sentinel/scoring/results.json`, shown on the slide; on stage frame it
+as a class ("attackers hide the payload in the middle; we read every byte") and say "2 of 2" only if asked. Never say a blanket
 "beats the baseline": on the full corpus DVAA's baseline has the higher prevention recall (slide 8). DVAA is the
 organizer-provided sandbox; every secret is fake.
 
@@ -98,7 +102,12 @@ organizer-provided sandbox; every secret is fake.
   ASI01 · ASI02 · OASB-1. Attacker server received nothing (RAGBot 7005 and RepoBot 7022).
 
 **Speaker notes**
-Beat 4 (1:10–1:40) + Beat 4b (1:40–1:55). The 200/403 is the only live step; say "recorded" when the screen moves to
+Beat 4 (1:04–1:23) + Beat 4b (1:23–1:38). The reason codes and tags on this
+slide are **not read aloud**; the spoken Beat 4 line is "the document slipped in an order to send data somewhere the user
+never named", and Beat 4b is the honest loss then the fix: the proxy only flags an in-agent read after the tool has run,
+so the egress guard denied every unlisted destination (this run: no canary hit). Dashboard tabs are stage mode at the
+last step (`?stage=1&capture=proxy-blocked&step=last`, `…egress-blocked…`), so the stat tiles never sit on screen
+during the block. The 200/403 is the only live step; say "recorded" when the screen moves to
 the alert card and the egress run. Egress default-deny is the prevention story: it stops the RepoBot exfil that the
 request proxy cannot. Order matters: benign passes first, then the attack is **blocked request-side, before the request
 is forwarded** (ADJACENT §6a, FP economics). Prevention is the request-side block (T3) and the egress guard (T12). A
@@ -125,7 +134,8 @@ verbatim from `run-demo.sh`. Point at the case card: it names the *source* docum
   **reply withheld**; RepoBot 7022 → the proxy **cannot stop the exfil** (payload read in-agent), and **T12's egress guard is the control that stops it**.
 
 **Speaker notes**
-Beat 5a (1:55–2:05), recorded: say so. The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
+Beat 5a (1:38–1:50), recorded: say so. **Show this slide only, no dashboard tab**:
+the aim-twin replay draws the call in red with "Detected · alert-only", which reads as a leak. The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
 which is secure by design. The point to make: AIM works because someone rebuilt the agent, while SentinelProxy protects
 the *unmodified* 7005 from outside. Both quoted verdicts come straight from `aim-ab.demo.json`. Different agents are
 prevented by different controls (see the prevention map) — request-side block, response withhold, or egress guard —
@@ -146,7 +156,9 @@ and response-side tripwires are alert-only for prevention (the reply is withheld
 - Footnote: "Confirmation of Payee passed 2 billion checks (Pay.UK, Mar 2024)."
 
 **Speaker notes**
-Beat 6 (2:05–2:20). Speak only the payee and fail-closed rows; the mandate row stays on the slide. All three are rated **Yes** on the per-mechanism precondition test (ADJACENT §6a, §10.3a). Their
+Beat 6 (1:50–2:03). Spoken (one mechanism only): "Only you decide where data goes. Our egress guard is a guest list,
+not a lie detector: any destination not on the list is denied, whatever the words say." The rows stay on the slide,
+unspoken. All three are rated **Yes** on the per-mechanism precondition test (ADJACENT §6a, §10.3a). Their
 preconditions hold in agent-land because destinations, tools and amounts are structured and checked outside the
 model. **Before the demo, confirm each row is implemented in merged T3.** Drop any row that isn't, and don't present
 it as built. If a judge asks "why not a classifier?": "Spam filters lost to spammers because the attacker wrote the
@@ -175,7 +187,9 @@ Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `se
   164-case benign corpus."
 
 **Speaker notes**
-Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
+Beat 7, first half (2:03–2:20). The table is **not read aloud**. Spoken: "On 189 attacks and
+164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42,
+but it blocks one in eight normal requests. We blocked zero." Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
 latency, the one latency phrase we quote is "median under a tenth of a millisecond, p95 around half a millisecond" (figures in RESULTS.md). **Never put a guessed number on it.**
 Say it plainly: our detection recall is now slightly above DVAA's baseline, but the baseline has the higher
@@ -206,9 +220,8 @@ benchmark of a different system on a different corpus isn't like-for-like.
   (`captures/holdout-hf/RESULTS.md`). Main corpus: `sentinel/scoring/RESULTS.md`.
 
 **Speaker notes**
-Beat 7, second half. Spoken: "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we
-prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our
-blocking rule today. Both are on our limitations list." Say it before a judge reads it to you. Leave the slide up
+Beat 7, second half. Spoken: "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent
+zero, because none has anywhere to send data. Our known misses are listed in the repo." Say it before a judge reads it to you. Leave the slide up
 during Q&A. If AIDR comes up: we complement it at the tool boundary, we haven't integrated with Falcon's APIs, and the
 only allowed efficacy wording is "Up to 99% efficacy at sub-30ms latency (CrowdStrike, internal benchmark)".
 
@@ -218,11 +231,15 @@ only allowed efficacy wording is "Up to 99% efficacy at sub-30ms latency (CrowdS
 
 **On slide**
 - **SentinelProxy:** an exfil-focused guardrail for tool-using agents: one pre-forward check, default-deny egress, alerting.
-- Deterministic sandbox, no LLM. Scored against DVAA ground truth, misses and held-out failures published.
+- **A document can ask. Only the user can authorize.**
+- Deterministic sandbox, no LLM. Scored on DVAA ground truth and published-benchmark labels; misses and held-out failures published.
 - Repo link · team names · "Thank you."
 
 **Speaker notes**
-On screen at 2:50 for "Thank you". Hard stop at 3:00. Hold it during Q&A, with Slide 9 and backup B1 ready.
+On screen at about 2:30 for the close. Spoken: "Flagging isn't stopping: in our watch-only run, the attacker
+still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize.
+Thank you." (Watch-only = the recorded observe-mode egress run, `sentinel/egress/evidence-observe.jsonl`; never
+"nothing gets out".) If a judge bypasses the proxy live: "Thank you. That's layer 1. Layer 2 doesn't read words." Hard stop at 3:00. Hold it during Q&A, with Slide 9 and backup B1 ready.
 
 ---
 
