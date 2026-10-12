@@ -17,6 +17,10 @@
 #   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs); NOT YET MERGED if absent
 #   gate <PR#>      MERGE GATE: merge the PR into origin/main in a temp worktree and run `test` there;
 #                   exit 1 on a conflict or any failing suite. Required before merging any PR.
+#                   Also on the merged tree: claim drift (scripts/claim-drift.mjs: T3/DVAA %s in the pitch docs
+#                   must match sentinel/scoring/results.json), demo/run-demo.sh --check-script, and one
+#                   demo/run-demo.sh --auto --no-dvaa pass when the PR touches sentinel/detectors,
+#                   sentinel/scoring, demo/ or sentinel/dashboard.
 #
 # Every step prints PASS, FAIL or NOT YET MERGED. Nothing is skipped silently: a component that is not
 # on this branch yet prints "NOT YET MERGED" with its ticket, and a failing step exits non-zero.
@@ -616,6 +620,52 @@ cmd_dashboard_stop() {
 # Merge gate: PR head merged into the current origin/main, in a throwaway worktree, then `test`.
 # A merge conflict or any failing suite fails the gate. Logs: .eval/gate-pr<N>/.
 GATE_TMP=""; GATE_TMP2=""
+# Demo + claim checks on the merged tree (issue #110, overseer rec #1). Returns 1 if any fails.
+#   claim drift   T3/DVAA %s in README/SUBMISSION/QA-PREP/DECK must match sentinel/scoring/results.json
+#   script sync   demo/run-demo.sh --check-script (spoken lines verbatim in demo/SCRIPT.md)
+#   demo --auto   one full replay, only when the PR touches detectors, scoring, demo/ or the dashboard
+GATE_DEMO_PATHS='^(sentinel/detectors/|sentinel/scoring/|demo/|sentinel/dashboard/)'
+gate_demo_checks() { # merged-tree base-sha pr
+  local tree="$1" base="$2" pr="$3" log="$OUT/gate-pr$3/demo" crc=0 changed port
+  mkdir -p "$log"
+  hdr "gate demo checks (merged tree)"
+  if ! require_node; then return 1; fi
+  if [ ! -f "$tree/scripts/claim-drift.mjs" ]; then
+    bad "claim drift: scripts/claim-drift.mjs missing on the merged tree"; crc=1
+  elif node "$tree/scripts/claim-drift.mjs" --repo "$tree" > "$log/claim-drift.log" 2>&1 \
+       && node --test "$tree/scripts/test/claim-drift.test.mjs" > "$log/claim-drift-test.log" 2>&1; then
+    ok "claim drift: quoted T3/DVAA percentages match sentinel/scoring/results.json"
+  else
+    bad "claim drift (logs .eval/gate-pr$pr/demo/claim-drift*.log)"
+    sed 's/^/        | /' "$log/claim-drift.log" | head -n 12; crc=1
+  fi
+  if [ ! -x "$tree/demo/run-demo.sh" ]; then
+    nym "demo/run-demo.sh not on the merged tree"
+  elif bash "$tree/demo/run-demo.sh" --check-script > "$log/check-script.log" 2>&1; then
+    ok "demo/run-demo.sh --check-script"
+  else
+    bad "demo/run-demo.sh --check-script (log .eval/gate-pr$pr/demo/check-script.log)"
+    tail -n 8 "$log/check-script.log" | sed 's/^/        | /'; crc=1
+  fi
+  changed="$(git -C "$tree" diff --name-only "$base" HEAD 2>/dev/null | grep -E "$GATE_DEMO_PATHS" || true)"
+  if [ -z "$changed" ]; then
+    echo "  SKIP  demo --auto (PR touches none of sentinel/detectors, sentinel/scoring, demo/, sentinel/dashboard)"
+  elif [ ! -x "$tree/demo/run-demo.sh" ]; then
+    :
+  else
+    # Own loopback dashboard port per gate run, so parallel gates and a running demo never collide.
+    port=$(( 19100 + ($$ % 800) ))
+    echo "  demo --auto: PR touches $(echo "$changed" | wc -l | tr -d ' ') demo-relevant file(s), e.g. $(echo "$changed" | head -n 1)"
+    if EVAL_DASHBOARD_PORT="$port" run_with_timeout "$SUITE_TIMEOUT" bash "$tree/demo/run-demo.sh" --auto --no-dvaa \
+         > "$log/demo-auto.log" 2>&1; then
+      ok "demo/run-demo.sh --auto --no-dvaa: every beat PASS (dashboard :$port)"
+    else
+      bad "demo/run-demo.sh --auto --no-dvaa (log .eval/gate-pr$pr/demo/demo-auto.log)"
+      grep -E 'FAIL' "$log/demo-auto.log" | head -n 8 | sed 's/^/        | /'; crc=1
+    fi
+  fi
+  return $crc
+}
 cmd_gate() {
   local rc
   gate_run "$@"; rc=$?
@@ -656,6 +706,7 @@ gate_run() {
   echo "  merged tree ${merged:0:12} in $tmp"
   rm -rf "$OUT/gate-pr$pr"
   EVAL_REPO="$tmp" EVAL_OUT="$OUT/gate-pr$pr" EVAL_STRICT=0 bash "$SELF" test; rc=$?
+  gate_demo_checks "$tmp" "$base" "$pr" || rc=1
   # Attribute failures: run the same suites on origin/main alone, so a red main is not blamed on the PR.
   if [ "$rc" != 0 ] && [ "$base" != "$merged" ]; then
     local btmp="$tmp.main"
