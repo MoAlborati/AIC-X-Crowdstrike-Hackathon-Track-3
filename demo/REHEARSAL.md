@@ -42,6 +42,50 @@ deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interac
 
 ---
 
+## Delivery gate — one command (`scripts/delivery-gate.sh`)
+
+**Delivery gate 15:15–15:45 on main + Catherine's Mac.** Run it on a clean checkout of `main`, on the build
+host AND on Catherine's Mac (stock bash 3.2, Colima, node@24); both must end `VERDICT: PASS`.
+
+```bash
+git checkout main && git pull
+DG_HOST_LABEL="Catherine's Mac" scripts/delivery-gate.sh     # exit 0 = PASS; anything else = do not ship
+```
+
+It runs, in order: `scripts/eval.sh doctor` → `up` → `all` → `demo/run-demo.sh --check-script` (when
+present) → `demo/run-demo.sh --auto` ×5 → `scripts/egress-demo.sh both` (on a unique
+`EGRESS_PROJECT`/`EGRESS_NET`) → `scripts/eval.sh track3a` (when present). Each step's log goes to
+`.eval/delivery-<UTC timestamp>/`; it prints a step | result | duration | log table and appends a dated
+entry (machine, bash, node, docker context, git SHA) below. A missing component prints `MISSING: <x>`
+(required scripts fail the gate; optional ones fail it only with `DG_STRICT=1`). Knobs: `DG_DEMO_RUNS`,
+`DG_DEMO_ARGS` (default `--no-dvaa`, so replays don't stop the fleet `up` started), `DG_STEP_TIMEOUT`,
+`DG_NO_RECORD=1`. The script writes the entry into this file; commit it as the gate's evidence.
+
+### Delivery-gate command log
+
+<!-- delivery-gate-log:start — scripts/delivery-gate.sh inserts entries above the end marker -->
+#### 2026-10-12T20:17Z — PASS — `ca5294551c77` on build host (WSL2 Linux)
+- Machine: `Linux x86_64` · bash 3.2.57(2)-release · node v22.22.3 · docker context `default` · branch `delivery-gate`
+- Logs: `.eval/delivery-20261012T201502Z/`
+
+| Step | Result | Duration | Log |
+|---|---|---|---|
+| eval.sh doctor | PASS | 0s | .eval/delivery-20261012T201502Z/eval-doctor.log |
+| eval.sh up | PASS | 1s | .eval/delivery-20261012T201502Z/eval-up.log |
+| eval.sh all | PASS | 90s | .eval/delivery-20261012T201502Z/eval-all.log |
+| run-demo.sh --check-script | MISSING | - | - |
+| run-demo.sh --auto #1 | PASS | 2s | .eval/delivery-20261012T201502Z/demo-auto-1.log |
+| run-demo.sh --auto #2 | PASS | 2s | .eval/delivery-20261012T201502Z/demo-auto-2.log |
+| run-demo.sh --auto #3 | PASS | 3s | .eval/delivery-20261012T201502Z/demo-auto-3.log |
+| run-demo.sh --auto #4 | PASS | 2s | .eval/delivery-20261012T201502Z/demo-auto-4.log |
+| run-demo.sh --auto #5 | PASS | 3s | .eval/delivery-20261012T201502Z/demo-auto-5.log |
+| egress-demo.sh both | PASS | 41s | .eval/delivery-20261012T201502Z/egress-both.log |
+| eval.sh track3a | MISSING | - | - |
+
+<!-- delivery-gate-log:end -->
+
+---
+
 ## 2. Timing log — 3 rehearsals
 
 Target 2:50, hard limit 3:00. Record each beat's **actual** seconds against the SCRIPT budget; note what
