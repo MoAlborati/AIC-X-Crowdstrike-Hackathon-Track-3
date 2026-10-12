@@ -20,10 +20,10 @@ Track 3 offers two paths: (A) build your own agent and defend it, or (B) attack 
 
 If our project is an inline prompt-injection / exfil detector in front of an agent, we are demoing a **miniature Falcon AIDR**. The judges are CrowdStrike people — they will see their own roadmap reflected back.
 
-- **Sep 16 2025** — **Charlotte AI AgentWorks** (no-code agent builder + **guardrails**) launched.
-- **Sep 16 2025** — Pangea acquisition (~$260M) for **Falcon AI Detection & Response (AIDR)**: real-time prompt-injection + jailbreak detection, **"up to 99% efficacy at sub-30ms latency,"** built on **"180+ known prompt injection techniques."**
-- **Dec 2025** — **Falcon AIDR GA**; pairs with NVIDIA NeMo Guardrails.
-- Kurtz: **"each prompt becomes an entry point for the adversary."** Sentonas: **"Prompt injection is a frontier security problem."**
+- **Sep 16 2025** — **Charlotte AI AgentWorks** (no-code agent builder + **guardrails**) announced at Fal.Con 2025.
+- **Sep 16 2025** — Pangea acquisition announced (closed Sep 26; price *reported* by press at ~$260M — CrowdStrike's 10-Q shows ~$223M consideration + ~$46.5M vesting stock) → **Falcon AI Detection & Response (AIDR)**: real-time prompt-injection + jailbreak detection, **"up to 99% efficacy at sub-30ms latency"** (Pangea release; internal benchmark).
+- **Dec 15 2025** — **Falcon AIDR GA**, "powered by … 180+ known prompt injection techniques" (GA release). NVIDIA NeMo Guardrails integration followed in **Mar 2026**.
+- Kurtz: **"Each prompt becomes an entry point for the adversary."** Sentonas: **"Prompt injection is a frontier security problem."** GA release: **"prompts are the new malware."**
 
 **Say their words on stage:** "AI Detection and Response," "guardrail," "prompts are the new malware," "detect → alert → block in real time."
 
@@ -67,7 +67,7 @@ Each detection = an **AIDR/Falcon-shaped alert JSON**: `DetectName`, `Severity`/
 
 | Time | Beat |
 |---|---|
-| 0:00–0:20 | **Problem.** "Air Canada lost in court over its chatbot. Chevy's bot sold a Tahoe for $1. Every prompt is an entry point for the adversary." |
+| 0:00–0:20 | **Problem.** "Air Canada lost a tribunal case over its chatbot. Chevy's bot agreed to sell a Tahoe for $1. Every prompt is an entry point for the adversary." |
 | 0:20–0:35 | **Solution.** "We built [Name] — an inline AI detection-and-response guardrail for agents. A mini Falcon AIDR." |
 | 0:35–1:15 | **EXPLOIT (live, RAGBot 7005 / RepoBot 7022).** Poisoned RAG doc / repo `AGENTS.md` hijacks the agent → it exfiltrates admin creds + SSNs via `submit_to_index`/`http:post`. Secret leaves on screen. Show it **evading DVAA's own 8KB scanner.** Pause — let it land. |
 | 1:15–2:05 | **DETECT → ALERT → BLOCK.** Same attack through our proxy. Honeytoken tripwire fires; incident graph lights up; taint path glows red; tool call BLOCKED. Show latency + **precision/recall vs the `dvaa{}` ground truth.** |
@@ -79,7 +79,7 @@ Each detection = an **AIDR/Falcon-shaped alert JSON**: `DetectName`, `Severity`/
 - **No live cold LLM/API calls in the 3-min window** — DVAA runs offline with canned responses; capture the event log and **replay deterministically.** Live path = optional encore.
 - **Don't key the detector on one exact injection string** — anchor on the deterministic honeytoken, but also show 2–3 **pre-computed** variants (AgentDojo/InjecAgent) so it reads as real detection.
 - **Don't run the mutating attacker live** — record / replay the winning variant.
-- **Don't live-scan the 2.65M-row AIT dataset** — pre-index a tiny slice (the exact data-scale stall trap).
+- **Don't live-scan the 2.66M-row AIT dataset** — pre-index a tiny slice (the exact data-scale stall trap).
 - Pre-seed data-rich state; keep a recorded full-demo video as fallback.
 
 ## 9. Scoring levers, ranked
