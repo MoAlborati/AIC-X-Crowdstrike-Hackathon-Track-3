@@ -82,6 +82,32 @@ test('real T3 wiring: default adapter loads sentinel/detectors from the branch a
   }
 });
 
+test('prevention lens: a post-execution-only finding counts toward detection but NOT prevention', async () => {
+  // Synthetic seam: every positive gets ONLY a post-execution finding (would-block by policy, prevents:false).
+  const post = fnDetector('post-only', (c) => ({
+    fired: c.groundTruth === 'positive' ? [{ ruleId: 'test.post', wouldBlock: true, prevents: false, direction: 'response', postExecution: true }] : [],
+  }));
+  const r = runScoring({ detectors: [post], iterations: 1, headline: 'post-only' });
+  const m = r.detectors['post-only'].modes.enforce;
+  assert.equal(m.anyFinding.recall, 1, 'detected');
+  assert.equal(m.prevention.recall, 0, 'post-execution must not count as prevention');
+  assert.equal(m.prevention.tp, 0);
+  assert.equal(r.detectionRecall, 1);
+  assert.equal(r.preventionRecall, 0);
+  assert.equal(r.recall, 1, 'legacy rule-intent field unchanged (dashboard-compatible)');
+  assert.equal(r.detectors['post-only'].detectedNotPrevented.length, r.corpus.positives);
+
+  // Real seam: the T1 aim-ab capture is caught by T3 only through response tool-call findings on an
+  // in-process agent (post-execution): detected, not prevented.
+  const t3 = await t3Detector();
+  const rt = runScoring({ detectors: [t3], iterations: 1 });
+  const row = rt.detectors.t3.perCase.find((x) => x.id === 'attack/aim-ab.demo.json#runA');
+  assert.equal(row.detectedAny, true);
+  assert.equal(row.preventedEnforce, false, 'post-execution T3 finding scored as a block');
+  assert.ok(rt.preventionRecall <= rt.detectionRecall);
+  assert.ok(rt.preventionRecall < rt.recall, 'prevention must be stricter than rule-intent block on this corpus');
+});
+
 test('headline comes from the named detector (enforce/blocking) with the fields T5 reads', () => {
   // Full-payload "oracle" built from the labels' own signal surface: flags any unit mentioning a URL/email
   // sink or an injection keyword. Test-only; proves wiring, not detection quality.
