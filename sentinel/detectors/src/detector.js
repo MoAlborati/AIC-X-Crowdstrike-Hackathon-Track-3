@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
+  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -211,8 +211,9 @@ export function createDetector(opts = {}) {
     // Pass 1: injection markers per text. A principal turn carrying injection phrases is SUSPECT: it cannot
     // widen the mandate (ambiguity -> narrower), so destinations named only there stay unconfirmed.
     const inboundTexts = [
-      ...untrusted.map((u) => ({ label: u.label, text: u.text, toolCallId: u.toolCallId, principal: false })),
-      ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
+      // Homoglyph fold (#112): mixed-script words are folded to ASCII before every request-side scan.
+      ...untrusted.map((u) => ({ label: u.label, text: foldConfusables(u.text), toolCallId: u.toolCallId, principal: false })),
+      ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: foldConfusables(p.text), principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
       u.phrases = findInjectionPhrases(u.text);
@@ -260,6 +261,28 @@ export function createDetector(opts = {}) {
         ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email, index: x.index })),
         ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban, index: x.index })),
       ];
+      // Issue #112: identifiers spaced out with whitespace / '.' / '-' / zero-width chars ("U S 1 3 ...")
+      // are re-joined and scanned for destinations and honeytokens too. Indices map back to u.text.
+      // seenDest is built ONCE per text and kept current with add() (#122 review: rebuilding it per run was
+      // O(#runs x #destinations) and could push a benign page into the fail-closed time budget).
+      const seenDest = new Set(named.map((d) => `${d.type}\u0000${d.destination}`));
+      const joined = joinSpacedRuns(findSpacedRuns(u.text));
+      for (const v of joined ? [joined.keep, joined.compact] : []) {
+        if (!v) continue;
+        const { text: t, pos } = v;
+        for (const h of registry.scan(t)) if (!seenTok.has(h.entry.id)) (seenTok.add(h.entry.id), tokensHit.push(h));
+        const found = [
+          ...extractUrls(t).map((x) => ({ type: 'http', destination: x.host, index: pos[x.index] })),
+          ...extractEmails(t).map((x) => ({ type: 'email', destination: x.email, index: pos[x.index] })),
+          ...findIbans(t).map((x) => ({ type: 'account', destination: x.iban, index: pos[x.index] })),
+        ];
+        for (const d of found) {
+          const key = `${d.type}\u0000${d.destination}`;
+          if (seenDest.has(key)) continue;
+          seenDest.add(key);
+          named.push(d);
+        }
+      }
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
       if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) {
@@ -349,7 +372,9 @@ export function createDetector(opts = {}) {
       // 1. honeytoken -------------------------------------------------------------------------
       ts = performance.now();
       const seenTokens = new Set();
-      for (const v of variants) {
+      // Issue #112: a honeytoken spaced out in the arguments ("s k - d v a a ...") is re-joined first.
+      const spacedArgs = (() => { const j = joinSpacedRuns(findSpacedRuns(rawArgs)); return j ? [j.keep, j.compact].filter(Boolean).map((v) => ({ text: v.text, encoding: 'spaced' })) : []; })();
+      for (const v of [...variants, ...spacedArgs]) {
         for (const { entry } of registry.scan(v.text)) {
           if (seenTokens.has(entry.value)) continue;
           seenTokens.add(entry.value);

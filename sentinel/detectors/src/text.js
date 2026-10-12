@@ -168,6 +168,164 @@ export function findIbans(text) {
   return out;
 }
 
+/**
+ * Spaced-out identifiers (issue #112): "U S 1 3 3 0 0 ...", "U.S.1.3...", "s k - d v a a", or single
+ * characters split by zero-width characters. Each run of >= MIN_SPACED_RUN single-character elements
+ * (one ASCII alnum, or one of @ : /, with no alnum neighbour), separated by up to MAX_SPACED_SEP chars
+ * of whitespace / zero-width / '.' / '-', is re-joined into two candidate tokens:
+ *   compact: every separator dropped              ("U.S.1.3" -> "US13", for IBANs / account numbers)
+ *   keep:    whitespace + zero-width dropped, '.' and '-' kept ("e v i l . c o m" -> "evil.com",
+ *            "s k - d v a a" -> "sk-dvaa", for hosts, emails and honeytokens)
+ * posCompact / posKeep map every output char back to its index in `text`, so callers can keep using the
+ * original offsets (e.g. the 120-char verb window before a destination).
+ * Linear: one forward pass, each char visited a bounded number of times; output is <= |text| chars per
+ * variant. No regex. Runs are never truncated (a run is as long as the input allows).
+ */
+export const MIN_SPACED_RUN = 6;
+const MAX_SPACED_SEP = 3;
+const isZeroWidth = (c) => c === 0x200b || c === 0x200c || c === 0x200d || c === 0x2060 || c === 0xfeff || c === 0x00ad;
+const isSpaceSep = (c) => c === 32 || c === 9 || c === 0xa0 || isZeroWidth(c);
+const isPunctSep = (c) => c === 46 || c === 45; // . -
+const isSpacedElem = (c) => isAlnum(c) || c === 64 || c === 58 || c === 47; // @ : /
+function isSingleAt(text, i) {
+  const n = text.length;
+  if (i >= n || !isSpacedElem(text.charCodeAt(i))) return false;
+  if (i > 0 && isAlnum(text.charCodeAt(i - 1))) return false;
+  return !(i + 1 < n && isAlnum(text.charCodeAt(i + 1)));
+}
+export function findSpacedRuns(text) {
+  const out = [];
+  if (typeof text !== 'string') return out;
+  const n = text.length;
+  let cbuf = null; // element offsets of the current run (compact variant)
+  let kbuf = null; // element + kept '.'/'-' offsets (keep variant)
+  let i = 0;
+  while (i < n) {
+    if (!isSingleAt(text, i)) {
+      i++;
+      continue;
+    }
+    if (cbuf === null) (cbuf = new Int32Array(n)), (kbuf = new Int32Array(n));
+    let nc = 0;
+    let nk = 0;
+    cbuf[nc++] = i;
+    kbuf[nk++] = i;
+    let last = i;
+    for (;;) {
+      let k = last + 1;
+      const mark = nk;
+      while (k < n && k - last - 1 < MAX_SPACED_SEP) {
+        const c = text.charCodeAt(k);
+        if (isPunctSep(c)) kbuf[nk++] = k;
+        else if (!isSpaceSep(c)) break;
+        k++;
+      }
+      if (!isSingleAt(text, k)) {
+        nk = mark;
+        break;
+      }
+      cbuf[nc++] = k;
+      kbuf[nk++] = k;
+      last = k;
+    }
+    if (nc >= MIN_SPACED_RUN) {
+      const posCompact = cbuf.slice(0, nc);
+      const compact = gather(text, posCompact);
+      // keep === compact (same string) when the run had no '.'/'-': callers scan it once.
+      const posKeep = nk === nc ? posCompact : kbuf.slice(0, nk);
+      out.push({ index: i, compact, keep: nk === nc ? compact : gather(text, posKeep), posCompact, posKeep });
+    }
+    i = last + 1;
+  }
+  return out;
+}
+/**
+ * All runs from findSpacedRuns joined into ONE text per variant ('\n' between runs, never part of a token,
+ * URL or email), with one offset map back to the source (-1 at the joints). Callers scan each variant
+ * once instead of once per run (#122 review: per-run calls cost ~2 us each, 20k runs = 40 ms). Linear.
+ * `compact` is null when no run had a '.'/'-' (it would equal `keep`).
+ */
+export function joinSpacedRuns(runs) {
+  if (!runs.length) return null;
+  const build = (key, posKey) => {
+    let len = runs.length - 1;
+    for (const r of runs) len += r[key].length;
+    const pos = new Int32Array(len);
+    let at = 0;
+    runs.forEach((r, k) => {
+      if (k) pos[at++] = -1;
+      pos.set(r[posKey], at);
+      at += r[posKey].length;
+    });
+    return { text: runs.map((r) => r[key]).join('\n'), pos };
+  };
+  const keep = build('keep', 'posKeep');
+  return { keep, compact: runs.some((r) => r.keep !== r.compact) ? build('compact', 'posCompact') : null };
+}
+/** The ASCII chars of `text` at `pos`, as one string (latin1 is exact for ASCII). */
+function gather(text, pos) {
+  const b = Buffer.allocUnsafe(pos.length);
+  for (let j = 0; j < pos.length; j++) b[j] = text.charCodeAt(pos[j]);
+  return b.toString('latin1');
+}
+
+/**
+ * Homoglyph fold (#112 critic B): Cyrillic/Greek letters that render like Latin ones ("ѕend", "trаnsfer")
+ * are mapped to ASCII, but ONLY inside a word that also contains an ASCII letter (mixed script), so
+ * genuine Cyrillic/Greek prose is left alone. NFKC first (fullwidth, ligatures, compatibility forms), then
+ * \p{Cf} format chars (zero-width, soft hyphen, bidi) are removed (issue #126 #3).
+ * ASCII-only input is returned unchanged (one charCode scan). Linear; output length = NFKC length.
+ */
+const CONFUSABLE = new Map(Object.entries({
+  а: 'a', в: 'b', е: 'e', о: 'o', р: 'p', с: 'c', у: 'y', х: 'x', і: 'i', ј: 'j', ѕ: 's', ԁ: 'd', һ: 'h', ӏ: 'l', ԛ: 'q', ԝ: 'w',
+  А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', Ѕ: 'S', І: 'I', Ј: 'J', У: 'Y',
+  α: 'a', ο: 'o', ν: 'v', ρ: 'p', ι: 'i', κ: 'k', υ: 'u',
+  Α: 'A', Β: 'B', Ε: 'E', Ζ: 'Z', Η: 'H', Ι: 'I', Κ: 'K', Μ: 'M', Ν: 'N', Ο: 'O', Ρ: 'P', Τ: 'T', Χ: 'X', Υ: 'Y',
+}).map(([k, v]) => [k.charCodeAt(0), v.charCodeAt(0)]));
+const CF_RE = /\p{Cf}/gu;
+const isAsciiLetter = (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+const isGreekCyrillic = (c) => c >= 0x0370 && c <= 0x052f;
+export function foldConfusables(text) {
+  if (typeof text !== 'string') return text;
+  let i = 0;
+  const n0 = text.length;
+  while (i < n0 && text.charCodeAt(i) < 128) i++;
+  if (i === n0) return text;
+  // NFKC, then drop format chars (\p{Cf}: ZWSP/ZWJ/ZWNJ, soft hyphen, BOM, bidi controls). Linear regex, no backtracking.
+  const t = text.normalize('NFKC').replace(CF_RE, '');
+  const n = t.length;
+  let buf = null; // UTF-16 code units of t, allocated on the first mixed-script word only
+  i = 0;
+  while (i < n) {
+    let c = t.charCodeAt(i);
+    if (!isAsciiLetter(c) && !isGreekCyrillic(c)) {
+      i++;
+      continue;
+    }
+    const start = i;
+    let latin = false;
+    let mapped = false;
+    do {
+      if (isAsciiLetter(c)) latin = true;
+      else if (CONFUSABLE.has(c)) mapped = true;
+      i++;
+      c = i < n ? t.charCodeAt(i) : 0;
+    } while (i < n && (isAsciiLetter(c) || isGreekCyrillic(c)));
+    if (latin && mapped) {
+      if (buf === null) {
+        buf = new Uint16Array(n);
+        for (let j = 0; j < n; j++) buf[j] = t.charCodeAt(j);
+      }
+      for (let j = start; j < i; j++) {
+        const m = CONFUSABLE.get(buf[j]);
+        if (m !== undefined) buf[j] = m;
+      }
+    }
+  }
+  return buf === null ? t : UTF16.decode(buf);
+}
+const UTF16 = new TextDecoder('utf-16le');
+
 /** Shannon entropy in bits/char. Linear in token length. */
 export function entropy(s) {
   if (!s) return 0;
@@ -512,10 +670,15 @@ const INJECTION_PHRASES = [
   'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
 ];
 
-/** Instruction-like phrases in (untrusted) text. Linear: lower-case once, indexOf per phrase. */
+/**
+ * Instruction-like phrases in (untrusted) text. Normalized first (issue #126 #3): NFKC, \p{Cf} stripped,
+ * mixed-script homoglyphs folded (foldConfusables), every whitespace run (double space, newline, NBSP, tab)
+ * collapsed to one space. Linear: one fold, one /\s+/g pass (maximal run, nothing after it), lower-case
+ * once, indexOf per phrase.
+ */
 export function findInjectionPhrases(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
-  const lower = text.toLowerCase();
+  const lower = foldConfusables(text).replace(/\s+/g, ' ').toLowerCase();
   return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
 }
 

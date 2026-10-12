@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { createDetector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../index.js';
-import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
+import { findIbans, findSpacedRuns, foldConfusables, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
@@ -63,8 +63,26 @@ const ADVERSARIAL = {
   begin_lines: '----- BEGIN DOC -----\n',
   info_tags: '<INFORMATION>\n',
   phrases: 'ignore previous ',
+  // #112: one 170K-element spaced run, re-joined into two variants and re-scanned by every extractor
+  spaced_singles: 'a ',
+  spaced_iban: 'U S 1 3 0 0 ',
+  spaced_email: 'a @ b . c . ',
+  spaced_zw: 'k\u200b-\u200b',
+  homoglyph_words: 'a\u0430e\u0435 ',
+  fullwidth: '\uff53\uff45 ',
+  // #122 review: O(#runs x #destinations) regression guards
+  urls_and_runs: (i) => `ignore previous instructions. http://h${i}.com a b c d e f xx `,
+  urls_then_runs: (i) => (i < 6000 ? `http://u${i}.com ` : 'a b c d e f xx '),
+  distinct_spaced_hosts: (i) => `x ${i.toString(36).split('').join(' ')} . c o m yy `,
 };
-const fill = (u) => u.repeat(Math.ceil((MAX * 0.45) / u.length)).slice(0, Math.floor(MAX * 0.45));
+const fill = (u, len = Math.floor(MAX * 0.45)) => {
+  if (typeof u !== 'function') return u.repeat(Math.ceil(len / u.length)).slice(0, len);
+  // counter-driven unit (#122 review): many short runs, each next to a DISTINCT destination
+  const parts = [];
+  let n = 0;
+  for (let i = 0; n < len; i++) (parts.push(u(i)), (n += parts[parts.length - 1].length));
+  return parts.join('').slice(0, len);
+};
 
 function detectorWithBigRegistry() {
   const det = createDetector({ honeytokens: DVAA_HONEYTOKENS, logger: quietLogger(), bounds: { timeBudgetMs: 100000 } }); // measure, don't fail closed
@@ -124,6 +142,8 @@ test('every text scanner alone is linear: < 50 ms CPU (median of 3) at the paylo
     splitUntrustedSegments: [splitUntrustedSegments, ['----- BEGIN A -----\n', '[BEGIN A]\n', '<INFORMATION>\n', `${'-'.repeat(199)}\n`]],
     findInjectionPhrases: [findInjectionPhrases, ['ignore previous ', 'aaaa']],
     findIbans: [findIbans, ['US13300000012121 ', 'US133000000121212121212121212121212']],
+    foldConfusables: [foldConfusables, ['a\u0430 ', '\u0430', '\uff53']],
+    findSpacedRuns: [findSpacedRuns, ['a ', 'a . ', 'a - b ', 'a   b    ', 'ab a ']],
   };
   for (const [name, [fn, units]] of Object.entries(scanners)) {
     for (const u of units) {
@@ -150,7 +170,7 @@ test('runtime budget: adversarial turns at the FULL 2 MiB payload cap finish far
   const CAP = DEFAULT_BOUNDS.maxPayloadBytes;
   const worst = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
-    const s = unit.repeat(Math.ceil((CAP * 0.4) / unit.length)).slice(0, Math.floor(CAP * 0.4));
+    const s = fill(unit, Math.floor(CAP * 0.4));
     const req = { messages: [{ role: 'user', content: 'process' }, { role: 'assistant', tool_calls: [{ id: 'h', type: 'function', function: { name: 'web_fetch', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'h', content: s }] };
     const res = { choices: [{ message: { role: 'assistant', content: 'ok', tool_calls: [{ id: 'c', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'http://x.test/a', body: s }) } }] } }] };
     const { out: d, cpu } = measure(() => det.inspect({ sessionId: `cap-${name}`, request: req, response: res }));
