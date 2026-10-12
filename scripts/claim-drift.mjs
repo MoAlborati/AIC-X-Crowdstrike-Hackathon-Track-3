@@ -9,16 +9,17 @@
 // Rules:
 //   * In scope: a percentage ("41.8%", "0%") on a line that talks about detection, prevention, recall, blocking,
 //     precision or false positives (FP). Other percentages are ignored.
-//   * Allowed values: every recall / precision / falsePositiveRate in results.json for the T3 headline lenses and
-//     for the t3 and dvaa-baseline detectors (all modes and lenses, plus recall by positive kind). A quoted number
-//     matches when it equals value*100 at the precision it is written with (41.8% ~ 0.418, 63% ~ 0.6296).
+//   * Allowed values: every recall / precision / *Rate in results.json (any detector, mode, lens, kind, source), simple
+//     derived ratios (precision, recall, FP rate, accuracy) from any {tp,fp,tn,fn} block, and every percentage in
+//     sentinel/scoring/RESULTS.md (generated from results.json). A quoted number matches when it equals value*100
+//     at the precision it is written with (41.8% ~ 0.418, 63% ~ 0.6296).
 //   * Held-out allowlist: numbers from a different evaluation set are fine when they are clearly labelled. Inside a
 //     paragraph, every percentage AFTER the first "held-out"/"holdout" label is skipped; ones before it are checked.
 //   * Unfilled `<<METRIC...>>` placeholders are fine; they are removed before scanning.
 //   * Third-party vendor figures are not T3/DVAA claims: a line naming AIDR / Falcon / CrowdStrike is skipped.
 //   * A line containing `claim-drift: ignore` is skipped (escape hatch; use sparingly).
 import { readFileSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_DOCS = ['README.md', 'SUBMISSION.md', 'demo/QA-PREP.md', 'demo/DECK.md'];
@@ -28,26 +29,31 @@ const PCT_RE = /(\d+(?:\.\d+)?)\s?%/g;
 const IGNORE_RE = /claim-drift:\s*ignore|\bAIDR\b|\bFalcon\b|CrowdStrike/i;
 const METRIC_RE = /<<METRIC[^>]*>>/g;
 
-/** Every rate in results.json that a doc may quote, as fractions in [0,1]. */
-export function allowedRates(results) {
+const RATE_KEY_RE = /^(recall|precision|falsePositiveRate|detectionRate|detectionRecall|preventionRecall)$|Rate$/;
+/** Every rate a doc may quote, as fractions in [0,1]:
+ *  - every recall / precision / *Rate number anywhere in results.json (all detectors, modes, lenses, kinds, sources);
+ *  - simple derived ratios from any {tp, fp, tn, fn} block: precision, recall, FP rate, accuracy;
+ *  - every percentage printed in sentinel/scoring/RESULTS.md (generated from results.json), passed as resultsMd. */
+export function allowedRates(results, resultsMd = '') {
   const out = new Set();
-  const take = (o) => {
-    if (!o || typeof o !== 'object') return;
-    for (const k of ['recall', 'precision', 'falsePositiveRate']) if (typeof o[k] === 'number') out.add(o[k]);
-  };
-  for (const k of ['detectionRate', 'recall', 'precision', 'falsePositiveRate', 'detectionRecall', 'preventionRecall']) {
-    if (typeof results[k] === 'number') out.add(results[k]);
-  }
-  for (const lens of Object.values(results.headlineLenses ?? {})) take(lens);
-  for (const name of ['t3', 'dvaa-baseline']) {
-    const d = results.detectors?.[name];
-    if (!d) continue;
-    take(d);
-    for (const mode of Object.values(d.modes ?? {})) for (const lens of Object.values(mode ?? {})) take(lens);
-    for (const [k, v] of Object.entries(d)) {
-      if (k.startsWith('recallByPositiveKind')) for (const kind of Object.values(v ?? {})) take(kind);
+  const add = (v) => { if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1) out.add(v); };
+  const walk = (o, depth) => {
+    if (!o || typeof o !== 'object' || depth > 12) return;
+    if (Array.isArray(o)) { if (o.length <= 64) for (const v of o) walk(v, depth + 1); return; }  // skip perCase rows
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === 'number' && RATE_KEY_RE.test(k)) add(v);
+      else if (v && typeof v === 'object') walk(v, depth + 1);
     }
-  }
+    const { tp, fp, tn, fn } = o;
+    if ([tp, fp, tn, fn].every((x) => typeof x === 'number')) {
+      if (tp + fp) add(tp / (tp + fp));
+      if (tp + fn) add(tp / (tp + fn));
+      if (fp + tn) add(fp / (fp + tn));
+      if (tp + fp + tn + fn) add((tp + tn) / (tp + fp + tn + fn));
+    }
+  };
+  walk(results, 0);
+  for (const m of String(resultsMd).matchAll(/(\d+(?:\.\d+)?)\s?%/g)) add(Number(m[1]) / 100);
   return [...out];
 }
 
@@ -94,7 +100,9 @@ export function checkDoc(file, content, rates) {
 
 export function run({ repo, resultsPath, docs }) {
   const results = JSON.parse(readFileSync(resultsPath, 'utf8'));
-  const rates = allowedRates(results);
+  let resultsMd = '';
+  try { resultsMd = readFileSync(resolve(dirname(resultsPath), 'RESULTS.md'), 'utf8'); } catch { /* optional */ }
+  const rates = allowedRates(results, resultsMd);
   if (rates.length === 0) throw new Error(`no rates found in ${resultsPath}`);
   const drift = [];
   for (const doc of docs) {

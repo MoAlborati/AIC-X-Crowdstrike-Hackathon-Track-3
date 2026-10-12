@@ -13,11 +13,12 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const SCRIPT = path.join(REPO, 'scripts', 'claim-drift.mjs');
 const RESULTS = path.join(REPO, 'sentinel', 'scoring', 'results.json');
 const results = JSON.parse(readFileSync(RESULTS, 'utf8'));
-const rates = allowedRates(results);
+const RESULTS_MD = path.join(REPO, 'sentinel', 'scoring', 'RESULTS.md');
+const rates = allowedRates(results, readFileSync(RESULTS_MD, 'utf8'));
 
 function tempRepo() {
   const dir = mkdtempSync(path.join(REPO, '.eval', 'claim-drift-'));
-  for (const f of [...DEFAULT_DOCS, 'sentinel/scoring/results.json']) {
+  for (const f of [...DEFAULT_DOCS, 'sentinel/scoring/results.json', 'sentinel/scoring/RESULTS.md']) {
     mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
     copyFileSync(path.join(REPO, f), path.join(dir, f));
   }
@@ -81,9 +82,20 @@ test('delete-the-fix: results.json moving under the docs (re-score) turns the qu
   try {
     const p = path.join(dir, 'sentinel/scoring/results.json');
     const j = JSON.parse(readFileSync(p, 'utf8'));
-    j.preventionRecall = 0.5; j.headlineLenses.prevention.recall = 0.5;
-    for (const m of Object.values(j.detectors?.t3?.modes ?? {})) if (m.prevention) m.prevention.recall = 0.5;
+    // Simulate a re-score where T3 prevention moves from 79/189 (41.8%) to 94/189 (49.7%): every stored 0.418
+    // rate, every 79/110 tp/fn block, and the regenerated RESULTS.md all move together.
+    const bump = (o) => {
+      if (!o || typeof o !== 'object') return;
+      if (o.tp === 79 && o.fn === 110) { o.tp = 94; o.fn = 95; }
+      for (const [k, v] of Object.entries(o)) {
+        if (typeof v === 'number' && Math.abs(v - 0.418) < 0.0005) o[k] = 0.4974;
+        else bump(v);
+      }
+    };
+    bump(j);
     writeFileSync(p, JSON.stringify(j));
+    const md = path.join(dir, 'sentinel/scoring/RESULTS.md');
+    writeFileSync(md, readFileSync(md, 'utf8').replaceAll('41.8%', '49.7%'));
     const r = cli(dir);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /41\.8%/);
@@ -117,4 +129,32 @@ test('unfilled <<METRIC:...>> placeholders are OK; current values pass; out-of-s
 
 test('third-party vendor figures (AIDR) are not T3/DVAA claims', () => {
   assert.deepEqual(checkDoc('x.md', 'Detection: AIDR quotes "Up to 99% efficacy".\n', rates), []);
+});
+
+test('accepted set = results.json + RESULTS.md + derived ratios: per-kind 80.3% passes, stale 83.1% still fails', () => {
+  const ok = 'T3 detection recall on exfil positives is 80.3%; injection-only 46.6%; DVAA detection precision 85.5%.\n';
+  assert.deepEqual(checkDoc('x.md', ok, rates), []);
+  const stale = 'T3 detection recall on exfil positives is 83.1%.\n';
+  assert.equal(checkDoc('x.md', stale, rates).length, 1);
+  // Derived from a {tp,fp,tn,fn} block even when no precision field is stored.
+  const derived = allowedRates({ lens: { tp: 141, fp: 0, tn: 164, fn: 48 } });
+  assert.ok(derived.some((r) => matches('74.6', r)), 'tp/(tp+fn) = 141/189 = 74.6%');
+  assert.ok(!derived.some((r) => matches('83.1', r)));
+});
+
+test('a number printed only in RESULTS.md (e.g. a layered 74.6%) is accepted via the CLI; 83.1% is not', () => {
+  const dir = tempRepo();
+  try {
+    const md = path.join(dir, 'sentinel/scoring/RESULTS.md');
+    writeFileSync(md, readFileSync(md, 'utf8') + '\n| layered | detection | 74.6% |\n');
+    const readme = path.join(dir, 'README.md');
+    const base = readFileSync(readme, 'utf8');
+    writeFileSync(readme, base + '\n\nLayered detection recall is 74.6%.\n');
+    let r = cli(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    writeFileSync(readme, base + '\n\nLayered detection recall is 83.1%.\n');
+    r = cli(dir);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /README\.md:\d+\s+83\.1%/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
