@@ -287,7 +287,7 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **DoD:** 2 (prevent at the real tool boundary), 5 (ground truth for scoring)
 - **Deps:** spike #18 (`planning/SPIKE-EGRESS.md`), T4 (`buildAlert`, `redact.js`). Supersedes PR #18.
 - **Scope:** `sentinel/egress/`, `scripts/egress-demo.sh`, `BACKLOG.md` (this entry), `.gitignore`
-- **What:** Promote `spike/egress/inspector.mjs` to `sentinel/egress/`: a forward proxy that DVAA reaches via
+- **What:** Promote `spike/egress/inspector.mjs` (spike since removed; superseded by `sentinel/egress/`) to `sentinel/egress/`: a forward proxy that DVAA reaches via
   `NODE_USE_ENV_PROXY=1` + `HTTP(S)_PROXY` on an `internal: true` network (compose overlay
   `sentinel/egress/compose.egress.yml`), so every outbound tool call is inspected before it leaves.
   Kept minimal, next to the request-side chat proxy (T2).

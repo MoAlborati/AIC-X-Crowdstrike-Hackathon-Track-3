@@ -16,11 +16,11 @@ control that actually blocks is default-deny egress at the tool boundary."
 **Proof:** `sentinel/scoring/RESULTS.md` headline table and "Recall by positive kind (prevention)".
 
 **C2. "Held-out prevention is 0 of 600, and detection drops from 67.7% to 28.5%. That's overfitting."**
-"Partly, yes. We ran that held-out set on ourselves and published it. None of those 600 public jailbreak rows has a
-destination to send data to, so our exfil rule has nothing to block; DVAA prevents 60.7% of them because it is a
-jailbreak scanner. We're an exfil guard, not a jailbreak classifier: pair us with one, such as Prompt Guard. The
+"Partly, yes. We ran that held-out set on ourselves and published it, and a missing destination doesn't explain it away:
+on a second held-out set of indirect injections that do name destinations (LLMail-Inject + BIPIA), we prevent 3.2%
+against DVAA's 51.4%. DVAA prevents 60.7% of the jailbreak set because it is a jailbreak scanner. We're an exfil guard, not a jailbreak classifier: pair us with one, such as Prompt Guard. The
 detection drop is real, and recall on novel phrasings is limited."
-**Proof:** `captures/holdout-hf/RESULTS.md` (T3 0.285 detection, 0.000 prevention, 0/400 benign blocked).
+**Proof:** `captures/holdout-hf/RESULTS.md` (T3 0.285 detection, 0.000 prevention, 0/400 benign blocked); `captures/holdout-ipi/RESULTS.md`.
 
 **C3. "DVAA is offline with canned responses. You've never faced a real LLM, and you don't prevent DVAA's own captures."**
 "Correct, and we say "deterministic sandbox, no LLM" in the first 20 seconds. A real model that paraphrases, splits or
@@ -40,13 +40,19 @@ are tripwires and alerts, not the engine."
 "Agreed on the name: we dropped it. It's an exfil-focused guardrail for tool-using agents that complements AIDR at the
 tool boundary; we haven't integrated with Falcon. And yes, the request-side rule is bypassable: spacing and homoglyphs
 get past it, the spacing fix is in PR #122, and the verbs are English only. We don't claim request-side robustness.
-What holds is default-deny egress: it decides on the destination host, not content, so it still blocks when the regex
-is bypassed. The residual risk is exfil to an operator-allowlisted host, including HTTPS CONNECT to one, where TLS is opaque."
+What holds is default-deny egress: it decides on the destination host, not content, so it still denied every
+non-allowlisted destination we tried when the regex was bypassed. It isn't scored on an attack set. The residual risk is exfil to an operator-allowlisted host, including HTTPS CONNECT to one, where TLS is opaque."
 **Proof:** issue #112 (section 4 mutation table; critic B's live egress check); PR #122; `sentinel/egress/inspector.mjs` (host-only CONNECT).
 
 ---
 
 ## The rest
+
+**0. "I just bypassed your proxy with a role-play / fantasy-world jailbreak."**
+"Thank you. That's layer 1. Layer 2 doesn't read words." Receipt (critic B2, #112, not a committed capture, so cite the
+issue table): 20 different role-play jailbreak framings from the held-out set were run through the full two-layer stack.
+With egress in block mode the attacker canary got **0 of 40** hits, and with egress relaxed it got **40 of 40**. All 20
+framings got identical egress verdicts, because the guard decides on the destination host, not the wording.
 
 **1. "DVAA's own scanner prevents more attacks than yours. Why would anyone deploy yours?"**
 "On prevention, yes: DVAA's scanner stops more, 63.0% against our 41.8%, but it does it with a 12.8% benign
@@ -189,7 +195,7 @@ The headline numbers are read from the committed scoring output, which anyone ca
 
 **16. "How does it do on generic jailbreaks?"**
 "Not well at blocking, by design. On a held-out set of 600 attacks and 400 benign cases from three public Hugging Face
-jailbreak and injection sets, none of which point data anywhere, we detected 28.5%, prevented 0%, and had 0 of 400
+jailbreak and injection sets, we detected 28.5%, prevented 0%, and had 0 of 400
 false positives. By set, we detected 58% of Gandalf, 19% of SPML and about 8% of jailbreak-classification. DVAA's
 scanner detected and prevented 60.7%, with 22 of 400 false positives (5.5%). SentinelProxy blocks only when an
 injection tries to move data to a destination or misuse a tool, so it's an exfiltration and tool-misuse guardrail,
@@ -247,6 +253,19 @@ that budget doesn't exist yet: teams running agents they can't rebuild. Our aler
 that platform or an acquisition target, not a rival to it."
 **Proof:** `sentinel/alerts` (AIDR-shaped T4 schema); `planning/CITATIONS.md` (AIDR is GA and integrates NeMo Guardrails, so platforms do partner).
 
+**17. "What doesn't it cover?"**
+"Layer by layer: the proxy is keyword-gated, so a plain phrasing walks past it (1 of 22 blocked in our own test), and spacing or homoglyphs bypass it until #122 lands. Response-side
+findings arrive after the tool ran, so they alert but don't prevent. The egress guard doesn't read TLS, accepts any port on an
+allowlisted host, forwards the `Host` header unchanged and scans gzip bodies raw; it also can't tell arbitrary data sent
+to an allowlisted host from normal traffic, and it never sees DNS. MCP tool descriptions and A2A agent cards are out of scope, and file-type or parser-differential attacks
+(content hidden in non-text files) are untested, because we inspect text fields, not file content.
+What holds is default-deny on the destination: every non-allowlisted host we tried was denied, whatever the wording.
+Egress isn't scored on an attack set, and email, DNS, multi-turn, encoded and non-English exfil are untested there."
+*If asked about held-out indirect injection:* "On the held-out LLMail-Inject + BIPIA set, we detect 8.1% and prevent 3.2%
+against DVAA's 51.4%, with 0 of 200 clean emails blocked against its 18, and we miss all 20 BIPIA code-exfil snippets. Egress default-deny
+is the backstop for any real send."
+**Proof:** SUBMISSION.md "Known limitations" (one line per gap, with the next step); issues #126, #129, #112, #105; `captures/holdout-ipi/RESULTS.md`.
+
 ---
 
 ### If you blank
@@ -256,4 +275,4 @@ that platform or an acquisition target, not a rival to it."
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md, and we attacked ourselves:** 0% held-out prevention, spaced-IBAN bypass. Default-deny egress is the control that blocks.
-6. **Scope:** we are designed to stop injection-driven exfiltration and tool misuse (57 of 71 exfil attempts prevented in our corpus); generic jailbreaks are for a classifier such as Prompt Guard.
+6. **Scope:** we are designed to stop injection-driven exfiltration and tool misuse (57 of 71 exfil attempts prevented in our corpus with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164); generic jailbreaks are for a classifier such as Prompt Guard.

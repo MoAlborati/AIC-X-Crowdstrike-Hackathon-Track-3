@@ -10,7 +10,7 @@ honours `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` in core `http`/`https` **and** in 
 inspector. The inspector logs the egress, and can block it, before it reaches the destination. This is proven
 on the live RAGBot (7005) `submit_to_index` exfil path: 3/3 runs.
 
-Prototype: `spike/egress/` (throwaway, not production code).
+Prototype: `spike/egress/` (throwaway, not production code; removed after it was promoted to `sentinel/egress/`, #112).
 
 ---
 

@@ -267,6 +267,17 @@ function toAlert(req, cfg, v, matchedCanary) {
       `reasons=[${v.reasons.join(',')}] canaries=[${v.canaryIds.join(',')}] mode=${cfg.mode} action=${v.action}`,
     ...(matchedCanary ? { canary: matchedCanary } : {}),
     canaries: cfg.honeytokens,
-  }, { onWarning: () => {} });
+  }, { onWarning: cfg.onAlertWarning ?? warnAlertSchema });
   return alert;
+}
+
+/**
+ * T4 alert-schema warnings (field/hop truncation, withheld fields) used to be swallowed here
+ * (`onWarning: () => {}`, #112 CRITIC-C #12). They are now written to stderr, one line each, so an
+ * operator can see an alert was shortened. The verdict is unaffected: it is decided before the alert is built.
+ */
+export function warnAlertSchema(msg, detail) {
+  let d = '';
+  try { d = JSON.stringify(detail); } catch { d = '[unserializable detail]'; }
+  process.stderr.write(`WARN sentinel-egress alert_schema ${msg} ${d}\n`);
 }

@@ -7,7 +7,7 @@
 
 export const BOUNDS = Object.freeze({
   // Capture files the pipeline writes into one output dir (one per session part).
-  // T5 indexes at most MAX_CAPTURE_FILES=500 and answers 507 beyond that, so we stop at 400 and keep
+  // T5 indexes at most MAX_CAPTURE_FILES=2000 and answers 507 beyond that, so we stop at 400 and keep
   // headroom for its placeholder fixtures. Overflow: PipelineBoundError. `tail` exits 3. `live`
   // makes the proxy sink throw, so the proxy refuses the exchange with 503 + ALERT.
   MAX_CAPTURES: 400,

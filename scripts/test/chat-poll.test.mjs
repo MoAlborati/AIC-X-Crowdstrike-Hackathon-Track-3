@@ -173,3 +173,26 @@ test('data-rich: 250 open + 120 closed issues, every unanswered one beyond posit
   for (const n of [2, 200, 250]) assert.ok(!nums.has(n), `#${n} is answered`);
   assert.ok(existsSync(path.join(ctx.state, 'seen.txt')));
 });
+
+test('rate limit: unchanged issues are not re-fetched each poll, and a new comment still emits', () => {
+  const withCount = (i, n, updated) => ({ ...i, comments: n, updated_at: updated });
+  const ctx = setup({
+    open: [withCount(issue(63, 'q'), 1, '2026-10-12T20:00:00Z')],
+    comments: { 63: [comment('orch', `ack ${MARK}`, 120)] },
+  });
+  // Between poll 2 and poll 3 a human comments: updated_at and the comment count change.
+  const after = JSON.stringify([withCount(issue(63, 'q'), 2, '2026-10-12T20:05:00Z')]);
+  const newComments = JSON.stringify([comment('orch', `ack ${MARK}`, 120), comment('bob', 'still there?', 30)]);
+  writeFileSync(path.join(ctx.fix, 'after-open.json'), after);
+  writeFileSync(path.join(ctx.fix, 'after-comments.json'), newComments);
+  writeFileSync(path.join(ctx.bin, 'sleep'), `#!/usr/bin/env bash
+n=$(cat "$FIX/sleep.n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$FIX/sleep.n"
+[ "$n" = 2 ] && { cp "$FIX/after-open.json" "$FIX/open.json"; cp "$FIX/after-comments.json" "$FIX/comments-63.json"; }
+exit 0
+`);
+  const { res, events } = run(ctx, { CHAT_MAX_POLLS: '4' });
+  assert.equal(res.status, 0, res.stderr);
+  const calls = readFileSync(path.join(ctx.fix, 'calls.log'), 'utf8').split('\n').filter((l) => /issues\/63\/comments/.test(l));
+  assert.equal(calls.length, 2, `comments fetched on poll 1 and after the change only, got ${calls.length}`);
+  assert.equal(events.filter((e) => /issue=#63 from=bob /.test(e)).length, 1, events.join('\n'));
+});
