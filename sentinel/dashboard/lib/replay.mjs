@@ -66,6 +66,7 @@ export function buildReplay(capture, alerts, extra = {}) {
   const sinkNode = new Map(); // destination -> node id
   const sinkByHost = new Map(); // host -> first sink node id with that host (alerts often name only the host)
   const exchangeByRequest = new Map(); // proxy request id -> exchange index (pipeline captures)
+  const turnWindows = []; // recorded agent-turn windows (egress stage capture): {t0, t1, index}
   const userMsgOfExchange = new Map(); // exchange index -> last user message node id
   const addSinkNode = (dest, extra = {}) => {
     const sid = `sink:${dest}`;
@@ -134,6 +135,7 @@ export function buildReplay(capture, alerts, extra = {}) {
     }
 
     if (ex.requestId) exchangeByRequest.set(ex.requestId, ex.index);
+    if (ex.turnWindow) turnWindows.push({ ...ex.turnWindow, index: ex.index });
     const agentId = `assistant:${ex.index}`;
     // The proxy refused this request (pipeline capture, finish_reason sentinel_blocked): the agent never
     // answered, so the node is the proxy's 403 refusal, never an agent reply.
@@ -231,6 +233,10 @@ export function buildReplay(capture, alerts, extra = {}) {
       // Pipeline alert (AlertId "<requestId>:<direction>:<n>"): the user turn of that exact exchange.
       const exIdx = exchangeByRequest.get(String(alert.id).split(':')[0]);
       if (exIdx !== undefined && userMsgOfExchange.has(exIdx)) return userMsgOfExchange.get(exIdx);
+      // Unattributed egress alert: the user turn of the ONE recorded agent turn in flight at its timestamp.
+      const at = Date.parse(alert.timestamp ?? '');
+      const inFlight = Number.isFinite(at) ? turnWindows.filter(w => at >= w.t0 && at <= w.t1) : [];
+      if (inFlight.length === 1 && userMsgOfExchange.has(inFlight[0].index)) return userMsgOfExchange.get(inFlight[0].index);
     }
     if (hop.kind === 'sink' && alert.entities.sink?.destination) {
       const dest = stripQuery(alert.entities.sink.destination);

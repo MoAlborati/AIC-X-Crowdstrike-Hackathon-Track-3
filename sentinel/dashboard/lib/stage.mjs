@@ -16,7 +16,7 @@
 
 export const STAGE_LABEL = Object.freeze({
   prevented_request: 'Blocked · pre-forward',
-  prevented_egress: 'Blocked · egress deny',
+  prevented_egress: 'Blocked · egress (denied before send)',
   post_execution: 'Detected · post-execution (alert-only)',
   alert_only: 'Detected · alert-only',
 });

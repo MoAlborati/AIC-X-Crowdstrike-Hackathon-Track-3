@@ -71,19 +71,20 @@ test('deep link resolves against the REAL capture index; an unknown capture or r
 });
 
 // ---- stage mode -----------------------------------------------------------------------------------
-test('stage mode: the dropdown is exactly the three stage runs (vulnerable, AIM twin, proxy-blocked), not the whole corpus', async () => {
+test('stage mode: the dropdown is exactly the four stage runs (vulnerable, AIM twin, proxy-blocked, egress-blocked), not the whole corpus', async () => {
   await withServer(async (base) => {
     const { body } = await getJson(`${base}/api/captures`);
-    assert.equal(body.stage.length, 3);
+    assert.equal(body.stage.length, 4);
     assert.deepEqual(body.stage.map(s => [s.key, s.id, s.run]), [
       ['vulnerable', 'attack/aim-ab.demo', 'runA'],
       ['aim-twin', 'attack/aim-ab.demo', 'runB'],
       ['proxy-blocked', 'stage/proxy-blocked-t3', 'run'],
+      ['egress-blocked', 'stage/egress-blocked-t12', 'run'],
     ]);
     const opts = stageOptions(body.stage);
-    assert.equal(opts.length, 3);
+    assert.equal(opts.length, 4);
     assert.ok(opts.every(o => !o.disabled));
-    assert.ok(body.captures.length > 100 * opts.length, 'normal mode still lists the full corpus');
+    assert.ok(body.captures.length > 300, 'normal mode still lists the full corpus');
     // stage deep link by key and by id
     assert.equal(chooseInitial(parseDeepLink('?stage=1&capture=aim-twin'), body.captures, body.stage).run, 'runB');
     assert.equal(chooseInitial(parseDeepLink('?stage=1&capture=stage/proxy-blocked-t3'), body.captures, body.stage).stageKey, 'proxy-blocked');
@@ -99,7 +100,7 @@ test('stage mode: a missing stage capture stays listed with an error (fail loud)
   assert.equal(r.length, STAGE_ENTRIES.length);
   assert.deepEqual([r[2].id, r[2].run, r[2].fallback], ['contrast/runs/proxy-block.demo', 'runB', true]);
   const none = resolveStage([{ id: 'attack/aim-ab.demo', error: 'boom' }]);
-  assert.equal(none.length, 3);
+  assert.equal(none.length, STAGE_ENTRIES.length);
   assert.ok(none.every(s => s.error));
   assert.match(none[0].error, /attack\/aim-ab.demo#runA: boom/);
   assert.ok(stageOptions(none).every(o => o.disabled && /missing/.test(o.label)));

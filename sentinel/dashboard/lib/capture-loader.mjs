@@ -382,7 +382,10 @@ function normalizeOpenAI(raw, entry) {
   const labelDvaa = !Array.isArray(raw.exchanges) && raw.label?.dvaa ? raw.label.dvaa : undefined;
   // requestId: the proxy's request id (sentinel/pipeline captures), so an alert (AlertId "<requestId>:<dir>:<n>")
   // resolves to its own exchange by targeted lookup.
-  const exchanges = exRaw.map((ex, i) => ({ ...openaiExchange(ex.request, ex.response, i, ex.dvaa ?? labelDvaa), requestId: typeof ex.sentinel?.requestId === 'string' ? ex.sentinel.requestId : null }));
+  // turnWindow: the recorded [t0, t1] (epoch ms) of the agent turn (egress stage capture), so an
+  // unattributed tool-boundary egress alert resolves to the one turn in flight when it fired.
+  const windowOf = (w) => (Number.isFinite(w?.t0) && Number.isFinite(w?.t1) && w.t0 <= w.t1 ? { t0: w.t0, t1: w.t1 } : null);
+  const exchanges = exRaw.map((ex, i) => ({ ...openaiExchange(ex.request, ex.response, i, ex.dvaa ?? labelDvaa), requestId: typeof ex.sentinel?.requestId === 'string' ? ex.sentinel.requestId : null, turnWindow: windowOf(ex.sentinel?.turnWindow) }));
   const port = raw.agent?.port ?? raw.port ?? (entry.id.match(/(\d{4})_/)?.[1] ? Number(entry.id.match(/(\d{4})_/)[1]) : null);
   const name = raw.agent?.name ?? raw.agentName ?? entry.id.match(/\d{4}_([\w-]+)$/)?.[1] ?? 'agent';
   const dv = exchanges.map(e => e.dvaa).find(Boolean);
