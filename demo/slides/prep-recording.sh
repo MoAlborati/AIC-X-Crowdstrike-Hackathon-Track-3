@@ -10,17 +10,25 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 ok()   { printf '  \033[32mOK\033[0m    %s\n' "$*"; }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; FAILED=1; }
+skip() { printf '  \033[33mSKIP\033[0m  %s\n' "$*"; }
 FAILED=0
+IS_MAC=0; [ "$(uname -s)" = Darwin ] && IS_MAC=1
+[ "$IS_MAC" = 1 ] || echo "  note: not macOS ($(uname -s)): Mac-only steps (caffeinate, colima, open) are skipped with a message"
 
 echo "== 1. keep the Mac awake"
-if pgrep -x caffeinate >/dev/null; then ok "caffeinate already running"; else caffeinate -dimsu >/dev/null 2>&1 & disown; ok "caffeinate started (pid $!)"; fi
+if ! command -v caffeinate >/dev/null 2>&1; then skip "caffeinate not found (macOS only): keep this machine awake by hand"
+elif pgrep -x caffeinate >/dev/null; then ok "caffeinate already running"
+else caffeinate -dimsu >/dev/null 2>&1 & disown; ok "caffeinate started (pid $!)"; fi
 
 echo "== 2. Node 24"
 [ -x "$HOME/.cache/node24/bin/node" ] && export PATH="$HOME/.cache/node24/bin:$PATH"
-case "$(node --version 2>/dev/null)" in v24.*) ok "node $(node --version)";; *) bad "node $(node --version 2>/dev/null) — need v24 (expected at ~/.cache/node24/bin)";; esac
+nv=$(node --version 2>/dev/null); nmaj=${nv#v}; nmaj=${nmaj%%.*}
+case "$nmaj" in ''|*[!0-9]*) nmaj=0;; esac
+if [ "$nmaj" -ge 24 ]; then ok "node $nv"; else bad "node ${nv:-not found} — need >= 24 (expected at ~/.cache/node24/bin)"; fi
 
 echo "== 3. Docker / Colima"
 if docker info >/dev/null 2>&1; then ok "docker daemon reachable ($(docker context show))"
+elif ! command -v colima >/dev/null 2>&1; then bad "docker not reachable and colima not installed (macOS only): start your Docker daemon by hand"
 else echo "  ..    starting colima (30-60 s)"; colima start >/dev/null 2>&1 && docker info >/dev/null 2>&1 && ok "colima started" || bad "docker not reachable: run 'colima start'"; fi
 
 echo "== 4. repo on main, clean"
@@ -42,15 +50,27 @@ if [ "${1:-}" != "--no-dry" ]; then
   echo "== 7. dry run (must say 'demo run clean' — do not record until it does)"
   out=$(demo/run-demo.sh --auto --no-dvaa --no-teardown 2>&1)
   if grep -q 'demo run clean' <<<"$out"; then ok "demo run clean"; else bad "dry run not clean:"; grep -E 'FAIL|WARN' <<<"$out" | head -8; fi
-  grep -q 'WARN live proxy' <<<"$out" && bad "Beat 4 fell back to the recording (live proxy unavailable)"
+  grep -q 'live proxy unavailable' <<<"$out" && bad "Beat 4 fell back to the recording (live proxy unavailable)"
 fi
 
-echo "== 8. dashboard tabs (stage view; from PRESENTER.md)"
-open "http://127.0.0.1:9100/?stage=1&capture=vulnerable" \
-     "http://127.0.0.1:9100/?id=live/proxy-7005&run=run&step=last" \
-     "http://127.0.0.1:9100/?id=live/egress-boundary&run=run&step=last" \
-     "http://127.0.0.1:9100/?stage=1&capture=aim-twin"
-ok "opened 4 tabs in the default browser (vulnerable · proxy-7005 · egress-boundary · aim-twin)"
+echo "== 8. dashboard tabs (stage view; read from demo/PRESENTER.md so a script cut cannot leave them stale)"
+links=$(grep -o 'http://127\.0\.0\.1:9100/?[^` )"]*' demo/PRESENTER.md 2>/dev/null | awk '!seen[$0]++')
+if [ -z "$links" ]; then
+  links="http://127.0.0.1:9100/?stage=1&capture=vulnerable
+http://127.0.0.1:9100/?id=live/proxy-7005&run=run&step=last
+http://127.0.0.1:9100/?id=live/egress-boundary&run=run&step=last
+http://127.0.0.1:9100/?stage=1&capture=aim-twin"
+  echo "  note: no :9100 deep links found in demo/PRESENTER.md; using the built-in four"
+fi
+n=0
+while IFS= read -r u; do
+  [ -n "$u" ] || continue; n=$((n+1))
+  if [ "$IS_MAC" = 1 ]; then open "$u"; else echo "        $u"; fi
+done <<EOF
+$links
+EOF
+if [ "$IS_MAC" = 1 ]; then ok "opened $n tabs in the default browser (in PRESENTER.md order)"
+else skip "'open' is macOS only: open the $n links above by hand"; fi
 
 echo
 if [ "$FAILED" -ne 0 ]; then printf '\033[31mNOT READY\033[0m — fix the FAIL lines above, then rerun.\n'; exit 1; fi
