@@ -1,7 +1,7 @@
 # LOOP — Autonomous Goal-Loop Protocol
 
 How we execute GOAL.md autonomously through agents, shipping PRs you review/respond to.
-Modeled on the firm's convergence process (see `gates/` — encodes the content-engine data-scale rules).
+Modeled on the firm's convergence process (see `gates/` — encodes the team's data-scale reliability rules: bounded/fail-loud, data-rich testing, delete-the-fix proof).
 
 ## Roles
 - **Operator (you, humans):** review PRs, approve/merge, answer blockers in STATE.md. Final authority.
@@ -101,10 +101,12 @@ Operator's direction: "limit scope, our goal is to win the hackathon". These ove
   come at the end.
 
 ## Worktrees (required for concurrent tickets)
-- **Every concurrently running ticket MUST use its own `git worktree`** at `/home/gingy/crowdstrike-<ticket>`
-  (e.g. `/home/gingy/crowdstrike-t3`), created with
-  `git worktree add -b <branch> /home/gingy/crowdstrike-<ticket> origin/<base>`. Agents work, commit and push only there.
-- **The main checkout (`/home/gingy/crowdstrike`) is orchestrator-only.** No child agent edits, checks out a branch or
+One worktree per ticket, sibling of the main checkout. Below, `<repo>` is the absolute path of the main
+checkout and `../<repo>-<ticket>` is the ticket's worktree directory next to it.
+- **Every concurrently running ticket MUST use its own `git worktree`** at `../<repo>-<ticket>`
+  (e.g. `../<repo>-t3`), created with
+  `git worktree add -b <branch> ../<repo>-<ticket> origin/<base>`. Agents work, commit and push only there.
+- **The main checkout (`<repo>`) is orchestrator-only.** No child agent edits, checks out a branch or
   commits in it.
 - Why: during T0b/T1, agents shared the main checkout, and one agent's `git checkout` moved HEAD under another, so a commit landed on
   **another agent's branch**. Separate worktrees give each agent its own HEAD and index.

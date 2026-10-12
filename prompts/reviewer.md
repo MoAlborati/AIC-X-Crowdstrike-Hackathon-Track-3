@@ -14,10 +14,10 @@ intentionally-vulnerable localhost sandbox. Defensive work only. Read `GOAL.md`,
 stopped: write `handoffs/{{TICKET}}.md`, end `STATUS: DEGRADED`.
 
 **WORKTREE (required).** Work only in your own git worktree, never in the main checkout
-`/home/gingy/crowdstrike` (orchestrator-only). Create it with:
-`cd /home/gingy/crowdstrike && git fetch origin && git worktree add -b {{BRANCH}} /home/gingy/crowdstrike-{{TICKET}} origin/<base>`
-(use `git worktree add /home/gingy/crowdstrike-{{TICKET}} {{BRANCH}}` if the branch already exists). Use absolute paths
-under `/home/gingy/crowdstrike-{{TICKET}}` for every command. Other agents share the machine, and a shared
+`<repo>` (orchestrator-only). Create it with:
+`cd <repo> && git fetch origin && git worktree add -b {{BRANCH}} ../<repo>-{{TICKET}} origin/<base>`
+(use `git worktree add ../<repo>-{{TICKET}} {{BRANCH}}` if the branch already exists). Use absolute paths
+inside your worktree `../<repo>-{{TICKET}}` (a sibling of the main checkout) for every command. Other agents share the machine, and a shared
 checkout once put a commit on another agent's branch.
 
 **Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish.

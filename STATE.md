@@ -72,7 +72,7 @@ See BACKLOG.md. Next: drain the merge queue (#35, #26), land #28, then T3-fix, T
   working and runs a **~10-minute heartbeat** that checks PR reviews and comments (LOOP.md §Parallelism, §How the loop keeps
   running; AGENTS.md; prompts/orchestrator-kickoff.md; BACKLOG parallel-waves note).
 - 2026-10-12 — **Worktree rule:** every concurrently running ticket MUST use its own `git worktree` at
-  `/home/gingy/crowdstrike-<ticket>`, and the main checkout is orchestrator-only. Cause: an incident where agents shared the main checkout
+  `../<repo>-<ticket>`, and the main checkout is orchestrator-only. Cause: an incident where agents shared the main checkout
   and a commit landed on another agent's branch (LOOP.md §Worktrees, AGENTS.md, all `prompts/*.md`).
 - 2026-10-12 — **Cost-waiver line** added to every `prompts/*.md`: the operator has waived cost limits, so child agents ignore COST
   hook messages and finish (cost hooks had cut several T0c research reports short, and many of their citations are unverified).
