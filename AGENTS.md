@@ -10,12 +10,26 @@ defensive and scoped to this repo + the authorized local DVAA target.
 - **Operator** (humans): final authority. Reviews PRs, approves/merges, answers Blockers in STATE.md.
 - **Orchestrator** (the main Opus 5.5 session): owns the loop; **does not implement**. Selects tickets,
   fills `prompts/` templates, dispatches child agents, reads their STATUS lines, opens/updates PRs, runs
-  the gates' delivery checks, keeps STATE.md current. Never merges its own PR without operator approval.
+  the gates' delivery checks, keeps STATE.md current. Merges only under the endgame merge rule below.
 - **Implementer** (child agent): builds one ticket on its branch — code + data-rich tests. Runs se-gate.
 - **Tester** (child agent): enforces `gates/tester-gate.md` — data-rich fixtures, real seams,
   delete-the-fix proof. GREEN or back to Implementer.
 - **Reviewer** (child agent): enforces `gates/reviewer-gate.md` adversarially **before** the PR opens,
   so the operator's review starts clean.
+- **Merge-steward** (child agent): merges PRs that meet the endgame merge rule. It has no other authority.
+
+## Endgame policies (mirror of LOOP.md §Endgame policies; operator, 2026-10-12 11:58 PDT)
+Operator's direction: "limit scope, our goal is to win the hackathon".
+- **Deadline 16:00 PDT. Feature freeze 14:30 PDT.** Delivery gate (≥5 clean replays) and real metrics run 13:30–14:30.
+  Rehearsal runs 14:30–15:30, with the fallback video recorded last. 15:30–16:00 is buffer.
+- **Merge rule:** a reviewer or merge-steward agent may merge once the reviewer verdict is **APPROVE** and the **tests are green**. Never merge a NEEDS_WORK PR.
+  Humans can review at any time.
+- **Max 2 fix rounds per PR.** Anything still open after that goes under "Known limitations" in the PR, then merge.
+- **T3 frozen minimum:** honeytoken tripwire, destination provenance, full-payload fail-closed request-side scan, and T4 verdicts.
+  Everything else is stretch.
+- **Prevention boundary:** DVAA executes tools in-process, so the proxy blocks only request-side (pre-forward) attacks.
+  Response-side checks are **alert-only**. The pitch claim waits for the egress spike.
+- **Repo goes public:** judges get access now, and the public release comes later. No secrets or private notes in commits.
 
 ## Worktree rule (mirror of LOOP.md §Worktrees)
 - Each concurrently running ticket **MUST** use its own `git worktree` at `/home/gingy/crowdstrike-<ticket>`.
