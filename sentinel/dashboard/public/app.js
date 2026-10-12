@@ -219,7 +219,7 @@ function setStep(s) {
   renderTimeline(rp, v);
   renderFeed(rp, v);
   renderGauge(v.trust);
-  renderGraph($('graph'), rp, { revealed: v.revealed, focus: v.focus, selected: state.selected, onSelect: (n) => selectNode(n), fitWidth: $('graph-scroll').clientWidth - 18, minZoom: state.stageMode ? STAGE_MIN_ZOOM : 1 });
+  renderGraph($('graph'), rp, { revealed: v.revealed, focus: v.focus, selected: state.selected, onSelect: (n) => selectNode(n), fitWidth: $('graph-scroll').clientWidth - 18, minZoom: STAGE_MIN_ZOOM });
   if (!state.selected) renderSourcePreview(rp);
   // Keep the current step visible inside its own pane only; never scroll the page under the presenter.
   const cur = document.querySelector('#timeline .current');
