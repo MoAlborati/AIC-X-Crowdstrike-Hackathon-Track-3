@@ -146,7 +146,7 @@ test('finding 3: dvaaDrift flags a wrong commit, a dirty tree and unknown cleanl
   assert.equal(dvaaDrift({ source: 'replica-subset' }), null);
 });
 
-test('finding 3 (real seam): a dirty DVAA checkout via $DVAA_SRC warns and exits 1', async (t) => {
+test('finding 3 (real seam): a dirty DVAA checkout via $DVAA_SRC is refused before any DVAA code is imported', async (t) => {
   const pinned = await realDvaa();
   if (!pinned) return t.skip('no DVAA checkout');
   const clean = runScoring({ detectors: [pinned], iterations: 1 });
