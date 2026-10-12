@@ -22,7 +22,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { enforce, CorpusError } from './bounds.mjs';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -227,6 +227,61 @@ export function loadT6Variants(root = REPO_ROOT) {
   const c = manifest.counts;
   if (c && c.total !== cases.length) throw new CorpusError(`T6 manifest counts.total=${c.total} but ${cases.length} cases listed`);
   return { cases, excluded: [], present: true };
+}
+
+// --- T6c Hugging Face held-out set (captures/holdout-hf) ------------------------------------------
+// A SEPARATE labeled set, never mixed into the main corpus (loadCorpus(root, { set: 'holdout-hf' })).
+// Fixtures are built in memory from the committed verbatim sample (captures/holdout-hf/upstream/*.json)
+// by captures/holdout-hf/tools/build.mjs, then cross-checked id-by-id against manifest.json: any drift is fatal.
+export const SETS = Object.freeze(['main', 'holdout-hf']);
+
+export async function loadHoldoutHf(root = REPO_ROOT) {
+  const dir = path.join(root, 'captures', 'holdout-hf');
+  const manifestFile = path.join(dir, 'manifest.json');
+  const builder = path.join(dir, 'tools', 'build.mjs');
+  if (!existsSync(manifestFile) || !existsSync(builder)) throw new CorpusError(`holdout-hf set not found under ${dir}`);
+  const manifest = readJson(manifestFile);
+  if (!Array.isArray(manifest.cases)) throw new CorpusError(`${manifestFile}: cases[] missing`);
+  const { buildAll } = await import(pathToFileURL(builder).href);
+  const built = buildAll();
+  const byId = new Map(built.map((fx) => [fx.id, fx]));
+  if (built.length !== manifest.cases.length || manifest.counts?.total !== built.length) {
+    throw new CorpusError(`holdout-hf: built ${built.length} fixtures but manifest lists ${manifest.cases.length} (counts.total=${manifest.counts?.total}); rebuild the manifest`);
+  }
+  const cases = manifest.cases.map((entry) => {
+    const fx = byId.get(entry.id);
+    if (!fx) throw new CorpusError(`holdout-hf manifest case ${entry.id} not produced by build.mjs`);
+    const gt = fx.label?.groundTruth;
+    if (gt !== entry.groundTruth) throw new CorpusError(`holdout-hf ${fx.id}: manifest groundTruth ${entry.groundTruth} != fixture ${gt}`);
+    return {
+      id: fx.id,
+      source: 'hf-holdout',
+      group: entry.group,
+      channel: fx.channel,
+      agent: null,
+      groundTruth: gt,
+      labelBasis: `T6c label.groundTruth=${gt}`,
+      dvaa: normDvaa(fx.label.dvaa),
+      evadesBaseline: null,
+      request: { messages: fx.request.messages },
+      response: null,
+      notes: fx.notes ?? '',
+    };
+  });
+  return { cases, excluded: [], present: true };
+}
+
+export async function loadSet(root = REPO_ROOT, set = 'main') {
+  if (!SETS.includes(set)) throw new CorpusError(`unknown set "${set}" (expected ${SETS.join('|')})`);
+  if (set === 'main') return loadCorpus(root);
+  const h = await loadHoldoutHf(root);
+  enforce('MAX_CASES', h.cases.length, 'holdout-hf');
+  const seen = new Set();
+  for (const c of h.cases) {
+    if (seen.has(c.id)) throw new CorpusError(`duplicate case id ${c.id}`);
+    seen.add(c.id);
+  }
+  return { cases: h.cases, excluded: h.excluded, t6Present: true };
 }
 
 export function loadCorpus(root = REPO_ROOT) {

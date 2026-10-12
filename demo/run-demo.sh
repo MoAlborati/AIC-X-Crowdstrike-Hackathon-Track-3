@@ -185,16 +185,32 @@ headline_cmd() {
     "  prevention (pre-forward) recall \($h.prevention.recall|pct)  FP \($h.prevention.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.prevention.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.prevention.falsePositiveRate|pct)",
     "",
     "  8KB evasion: \(.beatsBaseline.byDetector.t3.beaten)/\(.beatsBaseline.eligible|length) fixtures (T3)",
-    "  in-detector latency: p95 \($d.t3.latencyMs.p95 * 100 | round / 100) ms over \($d.t3.latencyMs.n) cases (under half a millisecond)"' "$SCORE_JSON" || return 1
-  jq -e '.detectors.t3.latencyMs.p95 < 0.5' "$SCORE_JSON" >/dev/null || { echo "T3 p95 latency is no longer under half a millisecond: fix the spoken line"; return 1; }
-  # Every number in the static Beat 7 spoken line, checked against the file it comes from.
-  jq -e '.counts.attack == 189 and .counts.benign == 164
-         and ((.detectors["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate * 1000 | round) == 128)
-         and .headlineLenses.detection.falsePositiveRate == 0 and .headlineLenses.prevention.falsePositiveRate == 0
-         and .detectors["dvaa-baseline"].modes.enforce.prevention.recall > .headlineLenses.prevention.recall
-         and .detectors["dvaa-baseline"].modes.enforce.anyFinding.recall > .headlineLenses.detection.recall
-         and (.beatsBaseline.eligible | length) == 2 and .beatsBaseline.byDetector.t3.beaten == 2' "$SCORE_JSON" >/dev/null \
-    || { echo "results.json no longer matches the Beat 7 spoken line (189/164, baseline FP 12.8%, T3 FP 0, baseline higher recall, evasion 2/2): update the say line in run-demo.sh and SCRIPT.md together"; return 1; }
+    "  in-detector latency: median \($d.t3.latencyMs.median * 1000 | round / 1000) ms, p95 \($d.t3.latencyMs.p95 * 100 | round / 100) ms over \($d.t3.latencyMs.n) cases"' "$SCORE_JSON" || return 1
+  # Every number AND every comparison in the static Beat 7 spoken line, asserted against the file it comes from,
+  # so the line can never go false silently (it FAILS this row instead). One check per claim, named on failure.
+  local claims=(
+    '189 attacks and 164 benign runs|.counts.attack == 189 and .counts.benign == 164'
+    'we detect more than DVAA (detection recall)|.headlineLenses.detection.recall > $b.anyFinding.recall'
+    '"slightly" more: lead under 5 points|(.headlineLenses.detection.recall - $b.anyFinding.recall) < 0.05'
+    'zero false alarms (detection + prevention)|.headlineLenses.detection.fp == 0 and .headlineLenses.prevention.fp == 0'
+    'on 164 benign cases|.headlineLenses.detection.tn == 164 and .headlineLenses.prevention.tn == 164'
+    'versus its 21 (DVAA benign false alarms)|$b.anyFinding.fp == 21 and $b.anyFinding.negatives == 164'
+    'DVAA prevents more|$b.prevention.recall > .headlineLenses.prevention.recall'
+    '63 percent (DVAA prevention recall)|($b.prevention.recall * 100 | round) == 63'
+    'versus our 42 (T3 prevention recall)|(.headlineLenses.prevention.recall * 100 | round) == 42'
+    'DVAA prevention count includes benign hits|$b.prevention.fp > 0'
+    '12.8 percent of benign traffic (DVAA prevention FP)|($b.prevention.falsePositiveRate * 1000 | round) == 128'
+    '8KB evasion 2 out of 2|(.beatsBaseline.eligible | length) == 2 and .beatsBaseline.byDetector.t3.beaten == 2'
+    'median under a tenth of a millisecond|.detectors.t3.latencyMs.median < 0.1'
+    'p95 around half a millisecond (0.25 to under 1 ms)|.detectors.t3.latencyMs.p95 >= 0.25 and .detectors.t3.latencyMs.p95 < 1'
+  )
+  local c bad=0
+  for c in "${claims[@]}"; do
+    if ! jq -e '.detectors["dvaa-baseline"].modes.enforce as $b | '"${c#*|}" "$SCORE_JSON" >/dev/null; then
+      echo "Beat 7 spoken claim no longer true in results.json: ${c%%|*}"; bad=1
+    fi
+  done
+  [ "$bad" = 0 ] || { echo "update the Beat 7 say line in run-demo.sh and demo/SCRIPT.md together"; return 1; }
   echo "spoken Beat 7 numbers match results.json"
 }
 
@@ -606,7 +622,7 @@ advance
 # ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
-  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives: it flags 12.8 percent of benign traffic, and T3 flags none. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
+  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
   say "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 else
