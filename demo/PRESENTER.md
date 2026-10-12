@@ -7,11 +7,6 @@ If you need to shorten a line, drop sentences from it. Don't reword it.
 Judge answers: [`demo/QA-PREP.md`](QA-PREP.md). Read it once before 18:00.
 All commands run from the repo root. Under Colima the repo must be somewhere under `~`, because Colima only shares `$HOME`.
 
-> **If #70 (`mac-compat`) is not merged:** stock macOS bash 3.2 breaks `scripts/eval.sh` and `demo/run-demo.sh`
-> (`mapfile: command not found`). Before T-30, run `git fetch origin && git checkout mac-compat`, and run every
-> command below from that branch. The `doctor` macOS `fix:` lines and the Node 24 preference only exist there, so set
-> the Node 24 `PATH` export by hand.
-
 > **If #76 (`t5-stage`) is not merged:** there is no `?stage=1` and no `?capture=`. Open these tabs instead:
 > `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runA` (vulnerable) and `…&run=runB` (AIM twin). For the
 > proxy-blocked view, stay on the terminal; Beat 4 prints the block and the T4 alert there. There is also no
