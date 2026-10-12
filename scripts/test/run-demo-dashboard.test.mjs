@@ -26,6 +26,47 @@ async function holdPort() {   // a foreign process answering 200 on the port, as
   return { port, close: () => child.kill() };
 }
 
+// A foreign process holding a CONTIGUOUS BLOCK of `count` ports (base .. base+count-1), each answering 200 — i.e.
+// "no free port to move to". Holding ONE port is not enough to force the FAIL path: run-demo scans the next
+// DEMO_DASHBOARD_PORT_SCAN ports and moves to the first free neighbour, so a lone busy port only exercises the
+// "moves to a free port" path. On macOS a free neighbour let the dashboard start and the run still reported "demo
+// run clean" with an empty right-hand screen (bug #85). Reserving the whole scanned window makes the no-free-port
+// precondition genuinely hold on ANY OS, instead of leaning on a port-probe assumption that differs across platforms.
+async function holdPortBlock(count) {   // all `count` ports held in one child; returns the block's base port
+  const code = `
+    const http = require('node:http');
+    const COUNT = ${count}, MAX_ATTEMPTS = 60;
+    const make = (port) => new Promise((resolve, reject) => {
+      const s = http.createServer((q, r) => { r.writeHead(200); r.end('not ours'); });
+      s.once('error', reject);
+      s.listen(port, '127.0.0.1', () => resolve(s));
+    });
+    (async () => {
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const servers = [];
+        try {
+          const first = await make(0);                        // OS picks a free base port
+          servers.push(first);
+          const base = first.address().port;
+          for (let i = 1; i < COUNT; i++) servers.push(await make(base + i));  // the contiguous window above it
+          process.stdout.write(base + '\\n');                 // whole block held; listeners keep the loop alive
+          return;
+        } catch {
+          for (const s of servers) { try { s.close(); } catch {} }
+          await new Promise((r) => setTimeout(r, 15));         // a neighbour was taken; retry from a fresh base
+        }
+      }
+      process.stderr.write('could not secure a contiguous port block\\n');
+      process.exit(3);
+    })();`;
+  const child = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const base = await new Promise((resolve, reject) => {
+    child.stdout.once('data', (d) => resolve(Number(String(d).trim())));
+    child.once('exit', (c) => reject(new Error(`port block holder exited ${c}`)));
+  });
+  return { base, count, close: () => child.kill() };
+}
+
 function runDemo(env) {
   const e = { ...process.env, ...env };
   delete e.EVAL_OUT; delete e.EVAL_REPO;   // behave as on stage: the runner's own repo and .eval/
@@ -33,16 +74,31 @@ function runDemo(env) {
   return { status: res.status, out: `${res.stdout ?? ''}${res.stderr ?? ''}` };
 }
 
-test('busy dashboard port and no free port to move to: run FAILS, never "demo run clean"', async () => {
-  const srv = await holdPort();
-  const busy = srv.port;
+test('busy dashboard port and no free port to move to: run FAILS, never "demo run clean"', async (t) => {
+  // Force the no-free-port condition deterministically on any OS: hold the base port AND the whole window run-demo
+  // scans above it (base+1 .. base+SCAN), so the port-fallback has nowhere to land and the dashboard genuinely
+  // cannot start. (Previously this held one port with DEMO_DASHBOARD_PORT_SCAN=0; on macOS the run moved to a free
+  // neighbour and printed "demo run clean" anyway — bug #85, a test-environment assumption, not a product bug.)
+  const SCAN = 4;              // run-demo scans base+1 .. base+SCAN
+  const BLOCK = SCAN + 1;      // base + the entire scanned window, all held
+  let held;
   try {
-    const { status, out } = runDemo({ EVAL_DASHBOARD_PORT: String(busy), DEMO_DASHBOARD_PORT_SCAN: '0' });
+    held = await holdPortBlock(BLOCK);
+  } catch (e) {
+    // Only reachable if the host cannot spare a contiguous free block right now; skip loudly rather than hard-fail.
+    t.skip(`could not reserve a contiguous ${BLOCK}-port block to force no-free-port (${e.message})`);
+    return;
+  }
+  try {
+    const { status, out } = runDemo({
+      EVAL_DASHBOARD_PORT: String(held.base),
+      DEMO_DASHBOARD_PORT_SCAN: String(SCAN),
+    });
     assert.doesNotMatch(out, /demo run clean/, 'a run with no dashboard must not report clean');
     assert.notEqual(status, 0, `exit code must be non-zero, got ${status}`);
     assert.match(out, /preflight: dashboard\s+FAIL/, 'the dashboard row must be a FAIL in the Summary');
   } finally {
-    srv.close();
+    held.close();
   }
 });
 
