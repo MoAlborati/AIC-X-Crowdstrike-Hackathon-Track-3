@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SentinelProxy Live Deck</title>
+<title>Tourniquet Live Deck</title>
 <!--
   Live, data-driven deck. Every number is fetched from the repo's committed result files at load time and derived by
   demo/slides/deck-data.mjs (the same module demo/slides/test/deck-data.test.mjs checks). Nothing is hard-coded: a
@@ -133,9 +133,9 @@
 <section class="slide" data-title="Cover">
   <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
     <div class="kicker">CrowdStrike Track 3 · Santa Clara University</div>
-    <h1 style="font-size:120px;margin-bottom:24px">SentinelProxy</h1>
-    <p style="font-size:52px;margin-bottom:46px">A drop-in egress guard for tool-using agents</p>
-    <p style="font-size:34px">Team SentinelProxy · presented by Catherine</p>
+    <h1 style="font-size:120px;margin-bottom:24px">Tourniquet</h1>
+    <p style="font-size:52px;margin-bottom:46px">It stops the data bleed: a drop-in egress guard for tool-using agents</p>
+    <p style="font-size:34px">Team Tourniquet · presented by Catherine</p>
     <p class="small">Deterministic sandbox (DVAA, offline, canned replies). No LLM in the loop.</p>
   </div>
   <aside class="notes" data-budget="8">
@@ -187,7 +187,7 @@
 <!-- ============================================ 4. Live ============================================ -->
 <section class="slide" data-title="Live">
   <div class="kicker"><span class="badge live">LIVE</span>&nbsp; Beat 4 then Beat 4b · <span class="mono">demo/run-demo.sh</span> drives both</div>
-  <h1>Same document, through SentinelProxy</h1>
+  <h1>Same document, through Tourniquet</h1>
   <div class="row grow">
     <div class="col">
       <h2>① Request check: 200, then 403</h2>
@@ -209,7 +209,7 @@ ENCORE PASS</span></div>
   </div>
   <aside class="notes" data-budget="40">
     <p>Beat 4 (live 200 then 403). Dashboard tab <code>?stage=1&amp;capture=proxy-blocked&amp;step=last</code>.</p>
-    <p><q>Same agent, same document, now through SentinelProxy. First, a normal question: it passes.</q> … <q>Now the attack.</q></p>
+    <p><q>Same agent, same document, now through Tourniquet. First, a normal question: it passes.</q> … <q>Now the attack.</q></p>
     <p><q>Refused before the agent ever saw it: the document slipped in an order to send data somewhere the user never named.</q></p>
     <p>Beat 4b (live, started in the background at Beat 4). Tab <code>?stage=1&amp;capture=egress-blocked&amp;step=last</code>.</p>
     <p><q>Live now, in its own sandbox: an agent that reads the poison itself.</q></p>
@@ -223,7 +223,7 @@ ENCORE PASS</span></div>
   <div class="kicker"><span class="badge rec">RECORDED</span>&nbsp; <span data-m="contrast.attackId"></span> against live DVAA · captured <span data-m="contrast.capturedAt"></span></div>
   <h1>Same attack: vulnerable, rebuilt, or guarded from outside</h1>
   <div id="contrast-table" class="grow"></div>
-  <p class="small">Rebuilding the agent works if you own the code. SentinelProxy protects the unmodified agent from outside.</p>
+  <p class="small">Rebuilding the agent works if you own the code. Tourniquet protects the unmodified agent from outside.</p>
   <aside class="notes" data-budget="13">
     <p>Beat 5a. Slide only, no dashboard tab.</p>
     <p><q>Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't.</q></p>
@@ -244,7 +244,7 @@ ENCORE PASS</span></div>
     <div class="node">internet</div>
   </div>
   <div class="row">
-    <div class="col card"><b>① Request check (SentinelProxy)</b><br>Refuses a request whose content orders data sent somewhere the user never named. Narrow on purpose: it reads words, so wording can slip past it.</div>
+    <div class="col card"><b>① Request check (Tourniquet)</b><br>Refuses a request whose content orders data sent somewhere the user never named. Narrow on purpose: it reads words, so wording can slip past it.</div>
     <div class="col card heldb"><b class="held">② Default-deny egress</b><br>Decides on the destination, not the words. A guest list, not a lie detector: it holds against every non-allowlisted destination we tried.</div>
   </div>
   <aside class="notes" data-budget="14">
@@ -259,7 +259,7 @@ ENCORE PASS</span></div>
   <div class="kicker">Scored · <span data-m="scoring.corpus.positives"></span> attacks + <span data-m="scoring.corpus.negatives"></span> benign cases, labelled by DVAA's ground truth and the published benchmarks</div>
   <h1>Scored against DVAA's own scanner</h1>
   <table>
-    <thead><tr><th></th><th class="num">SentinelProxy (T3)</th><th class="num">DVAA baseline</th></tr></thead>
+    <thead><tr><th></th><th class="num">Tourniquet (T3)</th><th class="num">DVAA baseline</th></tr></thead>
     <tbody>
       <tr><td>Detection recall (any finding)</td><td class="num t-ours" data-m="scoring.detection.t3.recall"></td><td class="num t-base" data-m="scoring.detection.dvaa.recall"></td></tr>
       <tr><td>Prevention recall (request-side block, detector only)</td><td class="num t-ours" data-m="scoring.prevention.t3.recall"></td><td class="num t-base" data-m="scoring.prevention.dvaa.recall"></td></tr>
@@ -312,7 +312,7 @@ ENCORE PASS</span></div>
   <div id="track3a-table" class="grow"></div>
   <aside class="notes" data-budget="35">
     <p>Beat 8 (cut first if running long, after Beat 10). Terminal: <code>node track3a/run-demo.mjs</code> (about 2 s). Fallback: open track3a/RESULTS.md.</p>
-    <p><q>That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified SentinelProxy, a different agent.</q></p>
+    <p><q>That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified Tourniquet, a different agent.</q></p>
   </aside>
 </section>
 
@@ -338,7 +338,7 @@ ENCORE PASS</span></div>
   <div class="kicker">Ciocca Venture · 2 of 3</div>
   <h1>How it stands apart</h1>
   <table style="font-size:28px">
-    <thead><tr><th style="width:24%">Existing tool</th><th style="width:36%">What it decides on</th><th>What SentinelProxy adds</th></tr></thead>
+    <thead><tr><th style="width:24%">Existing tool</th><th style="width:36%">What it decides on</th><th>What Tourniquet adds</th></tr></thead>
     <tbody>
       <tr><td><b>SASE / SWG egress allowlists</b><br><span class="small">Zscaler, Netskope, Squid</span></td><td>Host-level policy. Blind to the agent turn and to what the user actually asked for.</td><td>Agent-aware context (which turn, which tool, did the user name this destination), honeytoken matching, AIDR-shaped alerts.</td></tr>
       <tr><td><b>Prompt-content classifiers</b><br><span class="small">Lakera Guard, Prompt Guard, Prompt Security, Lasso</span></td><td>Does this text look like an attack? An attacker can reword it.</td><td>We decide on where data goes, not how the text reads. Pair us with one. We haven't benchmarked them.</td></tr>
@@ -376,7 +376,7 @@ ENCORE PASS</span></div>
 <section class="slide" data-title="Thank you">
   <div class="kicker">Close</div>
   <h1 style="font-size:72px">A document can ask. Only the user can authorize.</h1>
-  <p style="font-size:40px">SentinelProxy: a drop-in egress guard for tool-using agents. Flagging isn't stopping; default-deny egress is the control.</p>
+  <p style="font-size:40px">Tourniquet: a drop-in egress guard for tool-using agents. Flagging isn't stopping; default-deny egress is the control.</p>
   <div class="row" style="margin-top:20px">
     <div class="col">
       <h2>If time: SOC handoff (offline, no model key)</h2>
@@ -434,7 +434,7 @@ ENCORE PASS</span></div>
   <h1>Payload hidden in the middle of a long document</h1>
   <p>DVAA's scanner reads only the first and last 8 KB. Two fixtures put the injection in the gap.</p>
   <table>
-    <thead><tr><th></th><th class="num">SentinelProxy (T3)</th><th class="num">DVAA baseline</th></tr></thead>
+    <thead><tr><th></th><th class="num">Tourniquet (T3)</th><th class="num">DVAA baseline</th></tr></thead>
     <tbody>
       <tr><td>Detected</td><td class="num t-ours" data-m="scoring.evasion.t3.detected" data-f="frac"></td><td class="num t-base" data-m="scoring.evasion.dvaa" data-f="frac"></td></tr>
       <tr><td>Prevented</td><td class="num t-ours" data-m="scoring.evasion.t3.prevented" data-f="frac"></td><td class="num t-base">—</td></tr>
@@ -511,7 +511,7 @@ function buildContrast(model) {
   const t = document.createElement('table');
   header(t, ['Agent', 'Outcome', 'Attacker canary hits'], 2);
   const tb = t.createTBody();
-  const verdict = { vulnerable: ['LEAKED', 'leak'], observe: ['FLAGGED, STILL LEAKED', 'leak'], block: ['BLOCKED by SentinelProxy', 'held'], aim: ['BLOCKED by a rebuild', 'held'], securebot: ['BLOCKED by a rebuild', 'held'] };
+  const verdict = { vulnerable: ['LEAKED', 'leak'], observe: ['FLAGGED, STILL LEAKED', 'leak'], block: ['BLOCKED by Tourniquet', 'held'], aim: ['BLOCKED by a rebuild', 'held'], securebot: ['BLOCKED by a rebuild', 'held'] };
   for (const r of c.rows) {
     const tr = tb.insertRow();
     cell(tr, span(r.agent));

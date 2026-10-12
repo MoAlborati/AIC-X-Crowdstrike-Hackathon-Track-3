@@ -195,7 +195,7 @@ export const HOLDOUT_SPECS = Object.freeze({
     label: "hackmyagent (DVAA authors' own battery)",
     section: /^##\s+Headline\b/,
     sectionName: 'Headline',
-    ours: /^\|\s*\*\*SentinelProxy T3\*\*/,
+    ours: /^\|\s*\*\*(?:SentinelProxy|Tourniquet) T3\*\*/,
     base: /^\|\s*DVAA baseline\b/,
     det: /^detection/i,
     prev: /^prevention/i,
@@ -275,7 +275,7 @@ export function deriveHoldouts(mds) {
 /** Display names for the stack ids in track3a/runs/results.json (the wording of track3a/RESULTS.md). */
 export const STACK_LABELS = Object.freeze({
   undefended: 'Undefended OpsBot',
-  'chat-proxy': '+ SentinelProxy chat proxy',
+  'chat-proxy': '+ Tourniquet chat proxy',
   'proxy+egress': '+ chat proxy + egress guard',
   hardened: 'Hardened OpsBot (mandate only)',
   full: 'Hardened + chat proxy + egress guard',
