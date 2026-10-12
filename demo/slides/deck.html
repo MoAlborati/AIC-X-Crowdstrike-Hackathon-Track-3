@@ -154,7 +154,6 @@
     <div class="card leakb"><b class="leak">A way out</b>any tool that can send data to the internet</div>
   </div>
   <p class="quote">"The 'lethal trifecta': private data, untrusted content, external communication (Simon Willison, Jun 2025)."</p>
-  <p class="quote" style="font-size:30px">"AI is rewriting the enterprise attack surface at breakneck speed. Each prompt becomes an entry point for the adversary." — George Kurtz, CEO &amp; founder</p>
   <p class="tiny">Quotes verbatim from planning/CITATIONS.md "Safe slide wording". Confused deputy: Hardy, "The Confused Deputy", ACM SIGOPS OSR 22(4):36–38, 1988.</p>
   <aside class="notes" data-budget="30">
     <p><q>It's a deterministic sandbox, no LLM.</q></p>
@@ -200,8 +199,9 @@
     </div>
     <div class="col">
       <h2>② Egress guard, live: <span class="mono" style="font-size:30px">scripts/encore-two-layer.sh block</span></h2>
+      <p class="small" style="margin-bottom:6px">What a passing run prints (watch the terminal for the real one):</p>
       <div class="term"><span class="out">LAYER1_PROXY_HTTP 403   (flags the reply only after the tool ran)
-LAYER2_EGRESS: deny · deny · deny
+LAYER2_EGRESS: deny  (every unlisted destination)
 GROUND_TRUTH canary hits: 0
 ENCORE PASS</span></div>
       <p class="small" style="margin-top:14px">Recorded block run: <b data-m="egress.denies"></b> egress requests denied, <b data-m="egress.passes"></b> let through; attacker canary hits <b data-m="egress.canaryHits"></b> <span class="tag held">BLOCKED</span></p>
@@ -219,9 +219,9 @@ ENCORE PASS</span></div>
 </section>
 
 <!-- ============================================ 5. Three outcomes ============================================ -->
-<section class="slide" data-title="Same attack, three outcomes">
+<section class="slide" data-title="Same attack: pwned, defended, guarded">
   <div class="kicker"><span class="badge rec">RECORDED</span>&nbsp; <span data-m="contrast.attackId"></span> against live DVAA · captured <span data-m="contrast.capturedAt"></span></div>
-  <h1>Same attack, three outcomes</h1>
+  <h1>Same attack: vulnerable, rebuilt, or guarded from outside</h1>
   <div id="contrast-table" class="grow"></div>
   <p class="small">Rebuilding the agent works if you own the code. SentinelProxy protects the unmodified agent from outside.</p>
   <aside class="notes" data-budget="13">
@@ -264,8 +264,7 @@ ENCORE PASS</span></div>
       <tr><td>Detection recall (any finding)</td><td class="num t-ours" data-m="scoring.detection.t3.recall"></td><td class="num t-base" data-m="scoring.detection.dvaa.recall"></td></tr>
       <tr><td>Prevention recall (request-side block, detector only)</td><td class="num t-ours" data-m="scoring.prevention.t3.recall"></td><td class="num t-base" data-m="scoring.prevention.dvaa.recall"></td></tr>
       <tr><td>Benign requests blocked</td><td class="num t-ours" data-m="scoring.prevention.t3.fp"></td><td class="num t-base" data-m="scoring.prevention.dvaa.fp"></td></tr>
-      <tr><td><b>Where data actually leaves</b>: exfil attempts prevented</td><td class="num t-ours" data-m="scoring.exfil.t3"></td><td class="num t-base" data-m="scoring.exfil.dvaa"></td></tr>
-      <tr><td>In-detector latency, median · p95</td><td class="num t-ours"><span data-m="scoring.latency.t3.median" data-f="ms"></span> · <span data-m="scoring.latency.t3.p95" data-f="ms2"></span></td><td class="num t-base"><span data-m="scoring.latency.dvaa.median" data-f="ms"></span> · <span data-m="scoring.latency.dvaa.p95" data-f="ms2"></span></td></tr>
+      <tr><td>Exfil-labelled attacks prevented (request-side)</td><td class="num t-ours" data-m="scoring.exfil.t3"></td><td class="num t-base" data-m="scoring.exfil.dvaa"></td></tr>
     </tbody>
   </table>
   <p class="tiny">Egress is not in the scoring harness: these are request-side detector numbers. Our benign set was also used for tuning, so 0 blocked is a small-sample result, not a guarantee.</p>
@@ -286,7 +285,7 @@ ENCORE PASS</span></div>
     <div class="col">
       <b>Honest limits</b>
       <ul class="b small" style="margin-top:4px;font-size:24px">
-        <li>A plain "send it to my URL" phrasing walks past the request check (1 of 22 in our test).</li>
+        <li>A plain "send it to my URL" phrasing usually walks past the request check: it blocked only 1 of 22 in our test.</li>
         <li>Data sent to an allowlisted host still passes; the egress guard doesn't read TLS.</li>
         <li>Egress isn't scored on a corpus yet: it holds against every non-allowlisted destination we tried.</li>
       </ul>
@@ -365,10 +364,10 @@ ENCORE PASS</span></div>
     <li><b>Managed policy and alert routing (paid):</b> hosted allowlists and a honeytoken registry, alerts routed to the tools a team already uses. Price comes from design partners, not a guess.</li>
     <li><b>SOC:</b> alerts into analyst triage. Works offline today as a prototype with Track 1's SOC Brief.</li>
   </ol>
-  <p class="card" style="margin-top:8px">Evidence, paired: where data actually leaves we prevent <b data-m="scoring.exfil.t3" data-f="of"></b> exfil attempts with <b data-m="scoring.prevention.t3.fp" data-f="of"></b> legitimate requests blocked. DVAA's scanner prevents <span data-m="scoring.exfil.dvaa" data-f="of"></span> but blocks <span data-m="scoring.prevention.dvaa.fp" data-f="of"></span>.</p>
+  <p class="card" style="margin-top:8px">Evidence, paired: on exfil-labelled attacks our request-side check prevents <b data-m="scoring.exfil.t3" data-f="of"></b> with <b data-m="scoring.prevention.t3.fp" data-f="of"></b> legitimate requests blocked. DVAA's scanner prevents <span data-m="scoring.exfil.dvaa" data-f="of"></span> but blocks <span data-m="scoring.prevention.dvaa.fp" data-f="of"></span>.</p>
   <aside class="notes" data-budget="29">
     <p>Beat 9, part 3 of 3. If you skip Beat 10, say "Thank you." here.</p>
-    <p><q>Our path to launch: today, a prototype against the sandbox and our own OpsBot; next, an open-source sidecar that design partners run in observe mode on real traffic; then a paid managed tier for hosted allowlists and alert routing; then SOC integration. Where data actually leaves, we prevent 57 of 71 exfil attempts with zero of 164 legitimate requests blocked; the sandbox's scanner prevents 64 of 71 but blocks 21 of 164.</q></p>
+    <p><q>Our path to launch: today, a prototype against the sandbox and our own OpsBot; next, an open-source sidecar that design partners run in observe mode on real traffic; then a paid managed tier for hosted allowlists and alert routing; then SOC integration. On exfil-labelled attacks, our request-side check alone prevents 57 of 71 with zero of 164 legitimate requests blocked; the sandbox's scanner prevents 64 of 71 but blocks 21 of 164.</q></p>
     <p>Read the numbers off the slide if they differ.</p>
   </aside>
 </section>
