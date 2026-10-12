@@ -1,5 +1,5 @@
 {
-  "_comment": "T8 STAND-IN inspector config for SentinelProxy (T2 skeleton). NOT the T3 detector. Two needles: (1) '/api/canary/' is the path of DVAA's own exfil canary sink, i.e. a known-bad egress destination named inside untrusted content (request phase); (2) 'dvaa-admin-secret' is the planted honeytoken from captures/attack/aim-ab.demo.json (response phase). This proves the proxy's block path on a real exchange, not detection quality. Replace with the T3 detector once origin/t3-detector-core exists. listen.port / target.port / mode / capture.path are overridden by run-contrast.sh.",
+  "_comment": "T8 STAND-IN inspector config for Tourniquet (T2 skeleton). NOT the T3 detector. Two needles: (1) '/api/canary/' is the path of DVAA's own exfil canary sink, i.e. a known-bad egress destination named inside untrusted content (request phase); (2) 'dvaa-admin-secret' is the planted honeytoken from captures/attack/aim-ab.demo.json (response phase). This proves the proxy's block path on a real exchange, not detection quality. Replace with the T3 detector once origin/t3-detector-core exists. listen.port / target.port / mode / capture.path are overridden by run-contrast.sh.",
   "listen": { "host": "127.0.0.1", "port": 7099 },
   "target": { "host": "127.0.0.1", "port": 7005 },
   "mode": "block",

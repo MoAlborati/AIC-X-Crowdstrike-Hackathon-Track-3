@@ -46,10 +46,11 @@ before(async () => {
   process.env.SENTINEL_CAPTURES_DIR = path.join(outDir, 'captures');
   process.env.SENTINEL_ALERTS_DIR = path.join(outDir, 'alerts');
   process.env.SENTINEL_HIDE_PLACEHOLDERS = '1';
+  process.env.SENTINEL_HIDE_STAGE = '1'; // T5-stage recordings (sentinel/dashboard/stage) are not pipeline output
 });
 
 after(() => {
-  for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_PLACEHOLDERS']) {
+  for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_PLACEHOLDERS', 'SENTINEL_HIDE_STAGE']) {
     if (savedEnv[k] === undefined) delete process.env[k]; else process.env[k] = savedEnv[k];
   }
 });

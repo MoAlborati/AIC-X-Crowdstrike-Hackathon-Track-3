@@ -138,7 +138,7 @@
         "Timestamp": "2026-10-12T19:00:00.000Z",
         "State": "new",
         "CaseCard": {
-          "Narrative": "Instruction originated in repo-local config file (untrusted; body not recorded in T1 capture) → influenced tool call http:post(beat2:ledger:4) → toward http:http://127.0.0.1:43015/api/canary/collect → blocked by rule taint.untrusted_read_to_external_send",
+          "Narrative": "Instruction originated in repo-local config file (untrusted; body not recorded in T1 capture) → influenced tool call http:post(beat2:ledger:4) → toward http://127.0.0.1:43015/api/canary/collect → blocked by rule taint.untrusted_read_to_external_send",
           "OriginatedIn": "repo-local config file (untrusted; body not recorded in T1 capture)",
           "InfluencedToolCall": "http:post(beat2:ledger:4)",
           "DecidedByRule": "taint.untrusted_read_to_external_send",

@@ -1,4 +1,4 @@
-// SentinelProxy T4 — AIDR/Falcon-shaped alert builder.
+// Tourniquet T4 — AIDR/Falcon-shaped alert builder.
 //
 //   buildAlert(verdict, opts) -> frozen alert object (JSON-serializable)
 //
@@ -88,7 +88,7 @@ export class AlertOverflowError extends Error {
 /** Machine-readable description of the emitted alert (the "documented schema"). */
 export const ALERT_SCHEMA = Object.freeze({
   $id: SCHEMA_VERSION,
-  description: 'SentinelProxy AIDR/Falcon-shaped detection alert',
+  description: 'Tourniquet AIDR/Falcon-shaped detection alert',
   required: [
     'SchemaVersion', 'AlertId', 'DetectName', 'DetectDescription', 'Category', 'RuleId', 'Severity',
     'SeverityName', 'Tactic', 'TacticId', 'Technique', 'TechniqueId', 'MitreAtlas', 'MitreAttack',
@@ -267,6 +267,16 @@ function boundString(str, cap, field, truncations, warn) {
  * @param {object} verdict  see header comment / VERDICT_SHAPE
  * @param {{ onWarning?: (msg: string, detail: object) => void, now?: () => Date }} [opts]
  */
+/**
+ * Human sink text for the narrative. A destination that already carries its scheme ("http://h/p") is
+ * shown as-is; prefixing the type gave "http:http://h/p". A bare host gets the type in parentheses.
+ */
+export function sinkPhrase(sink) {
+  const dest = String(sink?.destination ?? '');
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(dest) || !sink?.type) return dest;
+  return `${dest} (${sink.type})`;
+}
+
 export function buildAlert(verdict, opts = {}) {
   const warn = opts.onWarning ?? defaultWarn;
   const issues = validate(verdict);
@@ -348,7 +358,7 @@ export function buildAlert(verdict, opts = {}) {
   const narrative =
     cc.narrative ??
     `Instruction originated in ${originatedIn} → influenced tool call ${influencedToolCall}` +
-      (e.sink ? ` → toward ${e.sink.type}:${e.sink.destination}` : '') +
+      (e.sink ? ` → toward ${sinkPhrase(e.sink)}` : '') +
       ` → ${verb} by rule ${decidedByRule}`;
 
   const primary = mapping.MitreAtlas[0];

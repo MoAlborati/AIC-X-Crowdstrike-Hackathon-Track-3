@@ -2,9 +2,13 @@
 
 How the agents in this autonomous loop relate. Read with `GOAL.md`, `LOOP.md`, `STATE.md`, `BACKLOG.md`.
 This is an **authorized, sanctioned CrowdStrike × Santa Clara University hackathon** (Track 3, "Secure:
-Attack & Defend the Agent"). We build a **defensive** detector/guardrail (SentinelProxy) against DVAA, an
+Attack & Defend the Agent"). We build a **defensive** detector/guardrail (Tourniquet) against DVAA, an
 **organizer-provided, intentionally-vulnerable training sandbox** running on localhost. All work is
 defensive and scoped to this repo + the authorized local DVAA target.
+
+**Cold start or post-compaction:** read [`RESUME.md`](RESUME.md) first. Reusable child-agent roles
+(dispatch templates, output contracts, time boxes) are indexed in [`prompts/archetypes/README.md`](prompts/archetypes/README.md).
+**Clock:** deadlines are PDT and the machine clock is CDT, so check the time with `TZ=America/Los_Angeles date`.
 
 ## Roles
 - **Operator** (humans): final authority. Reviews PRs, approves/merges, answers Blockers in STATE.md.

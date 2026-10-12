@@ -1,8 +1,8 @@
 {
-  "name": "@sentinelproxy/scoring",
+  "name": "@tourniquet/scoring",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy T7 scoring harness: replays T1 captures + T6 variants through detectors, scores verdicts against dvaa{} ground truth. Zero dependencies.",
+  "description": "Tourniquet T7 scoring harness: replays T1 captures + T6 variants through detectors, scores verdicts against dvaa{} ground truth. Zero dependencies.",
   "type": "module",
   "main": "src/harness.mjs",
   "engines": { "node": ">=22" },

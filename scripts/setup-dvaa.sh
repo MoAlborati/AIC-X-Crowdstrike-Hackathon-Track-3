@@ -3,7 +3,7 @@
 #
 # DVAA ("Damn Vulnerable AI Agent") is the organizer-provided, intentionally
 # vulnerable training sandbox for the CrowdStrike x SCU hackathon (Track 3).
-# It runs ONLY on localhost. SentinelProxy is a purely defensive detector that
+# It runs ONLY on localhost. Tourniquet is a purely defensive detector that
 # consumes DVAA's behavior; we do not attack any real system.
 #
 # This script clones DVAA at a PINNED commit and runs it via its own

@@ -1,4 +1,4 @@
-# SentinelProxy — reverse proxy (T2)
+# Tourniquet — reverse proxy (T2)
 
 A reverse proxy in front of a DVAA agent's OpenAI-compatible HTTP API (DVAA is the organizer-provided,
 intentionally vulnerable sandbox on `127.0.0.1`). It logs every exchange in full, runs the inspector set
@@ -61,6 +61,7 @@ Nothing is silently truncated. Every overflow is refused and ALERTed (stderr + c
 | `maxRequestBytes` | `413 request_too_large`, never forwarded, ALERT `{payload_size, cap, action}`. Declared `Content-Length` over the cap with `Expect: 100-continue` is refused before upload. An over-cap upload is drained (not buffered) up to `DRAIN_LIMIT_BYTES` (16 MiB) so the client reads the 413, then the socket is closed. |
 | `maxResponseBytes` | `502 response_too_large`, upstream aborted, the reply is never returned uninspected. |
 | decoded size (gzip/deflate/br) | Bounded by the same caps (zip-bomb safe). Over the cap: 413/502. More than `MAX_ENCODING_LAYERS` (4), unknown or corrupt codings: block mode refuses (`uninspectable_encoding`), observe forwards + ALERT. |
+| binary request body (#157) | A request body that is not valid UTF-8 after content-decoding (octet-stream, binary multipart, unknown binary types): block mode refuses 415 `uninspectable_content` before forwarding; observe forwards + ALERT. Text bodies of any content-type are inspected as before. Responses are unchanged (alert-only boundary). |
 | `inspectorTimeoutMs` | block: `503 inspector_timeout` (fail closed); observe: forwarded + ALERT. |
 | `upstreamTimeoutMs` | `504 upstream_timeout`; a closed port gives `502 upstream_unreachable`. |
 | `clientTimeoutMs` | Slow-drip clients get `408 client_timeout` + ALERT, never forwarded. |
@@ -76,12 +77,15 @@ Nothing is silently truncated. Every overflow is refused and ALERTed (stderr + c
 | verdict `alert:true` or disposition `report` (not flagged) | ALERT `detector_alert`, never refused | same |
 | capture write fails | `503 capture_unavailable` | `503 capture_unavailable` (no unaudited side effect) |
 
-Every path is inspected and forwarded; there is no allow-list that a path variant could bypass.
+Every path is passed to every inspector and forwarded; there is no route allow-list. Depth differs by route: T3 parses
+only `/v1/chat/completions` and `/chat/completions`. Every other route (DVAA `POST /chat`, A2A `/a2a/message`, MCP)
+gets the honeytoken backstops only: exact canary values in body, headers and URL in both phases, plus percent/hex/base64
+canaries in non-chat POST bodies (#126).
 
 ## Refusal shape
 
 ```json
-{ "error": { "type": "sentinel_blocked", "code": "flagged_request", "message": "SentinelProxy refused this request: flagged_request" },
+{ "error": { "type": "sentinel_blocked", "code": "flagged_request", "message": "Tourniquet refused this request: flagged_request" },
   "sentinel": { "request_id": "…", "blocked": true, "mode": "block", "phase": "request|response|forward|capture|proxy",
                 "reason": "<REFUSAL_CODES>", "verdict_count": 1, "detail": { "payload_size": 0, "cap": 0, "upstream_tool_calls_already_executed": true } } }
 ```

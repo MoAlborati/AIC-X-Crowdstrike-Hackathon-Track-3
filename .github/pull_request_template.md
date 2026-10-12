@@ -1,4 +1,4 @@
-<!-- SentinelProxy — Track 3 DVAA defense. One ticket = one PR. Do not merge without operator approval. -->
+<!-- Tourniquet — Track 3 DVAA defense. One ticket = one PR. Do not merge without operator approval. -->
 
 ## Ticket
 <!-- e.g. T3 — Detector core. Link BACKLOG.md entry. -->

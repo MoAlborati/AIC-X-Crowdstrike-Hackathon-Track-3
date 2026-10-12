@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SentinelProxy dashboard server. Zero dependencies, node:http only, binds 127.0.0.1 by default.
+// Tourniquet dashboard server. Zero dependencies, node:http only, binds 127.0.0.1 by default.
 //   node sentinel/dashboard/server.mjs [--port 9100] [--host 127.0.0.1]
 // Replays recorded captures. No live LLM or DVAA calls happen here.
 
@@ -15,6 +15,8 @@ import { stageAlerts } from './lib/stage.mjs';
 import { buildReplay } from './lib/replay.mjs';
 import { loadScoring } from './lib/scoring.mjs';
 import { BOUNDS, BoundExceededError } from './lib/bounds.mjs';
+import { resolveStage } from './lib/stage-set.mjs';
+import { exportAlert } from './lib/alert-export.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(HERE, 'public');
@@ -26,6 +28,7 @@ const STATIC = new Map([
   ['/replay-view.js', ['replay-view.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/headline-view.js', ['headline-view.js', 'text/javascript; charset=utf-8']],
+  ['/stage-view.js', ['stage-view.js', 'text/javascript; charset=utf-8']],
 ]);
 
 // ---- DNS-rebinding defense -------------------------------------------------------------------
@@ -98,7 +101,7 @@ export async function replayPayload(index, id, runKey, { dev = true } = {}) {
         bytes: capture.bytes, canaryHits: capture.canaryHits,
       },
       run: { key: run.key, label: run.label, role: run.role, agent: run.agent, outcome: run.outcome, exchanges: run.exchanges, toolResults: run.toolResults },
-      runs: capture.runs.map(r => ({ key: r.key, label: r.label, role: r.role, outcome: r.outcome })),
+      runs: capture.runs.map(r => ({ key: r.key, label: r.label, role: r.role, twinTitle: r.twinTitle ?? null, outcome: r.outcome })),
       alerts,
       alertSource: { origin: src.origin, placeholder: src.placeholder, note: src.note, validator: validatorOrigin },
       ...replay,
@@ -157,11 +160,16 @@ export function createServer({ roots = defaultRoots() } = {}) {
       if (url.pathname === '/api/captures') {
         const index = await indexCaptures(roots);
         const { items, hiddenPlaceholders } = await listPayload(index, { dev: isDev(url) });
-        return send(res, 200, { captures: items, hiddenPlaceholders, dev: isDev(url), bounds: BOUNDS });
+        return send(res, 200, { captures: items, hiddenPlaceholders, stage: resolveStage(items), dev: isDev(url), bounds: BOUNDS });
       }
       if (url.pathname === '/api/replay') {
         const index = await indexCaptures(roots);
         const r = await replayPayload(index, url.searchParams.get('id') ?? '', url.searchParams.get('run'), { dev: isDev(url) });
+        return send(res, r.status, r.body);
+      }
+      if (url.pathname === '/api/alert-export') {
+        const index = await indexCaptures(roots);
+        const r = await exportAlert(index, url.searchParams.get('id') ?? '', url.searchParams.get('run'), url.searchParams.get('alert') ?? '', { dev: isDev(url) });
         return send(res, r.status, r.body);
       }
       if (url.pathname === '/api/scoring') {
@@ -193,5 +201,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.error(`[sentinel-dashboard] ERROR ${err.message}`);
     process.exit(2);
   }
-  createServer().listen(port, host, () => console.log(`SentinelProxy dashboard → http://${host}:${port}`));
+  createServer().listen(port, host, () => console.log(`Tourniquet dashboard → http://${host}:${port}`));
 }

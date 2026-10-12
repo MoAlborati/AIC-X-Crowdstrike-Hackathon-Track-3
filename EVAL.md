@@ -1,4 +1,4 @@
-# EVAL — evaluate SentinelProxy locally with one command
+# EVAL — evaluate Tourniquet locally with one command
 
 For teammates and judges. Everything runs on your machine against DVAA, the organizers'
 intentionally vulnerable training sandbox, published on `127.0.0.1` only. No API keys are needed and no
@@ -74,13 +74,13 @@ which is the setting for judging the final build.
 | `EVAL_DASHBOARD_PORT` | `9100` | Dashboard port (always bound to 127.0.0.1) |
 | `DVAA_DIR`, `DVAA_PROJECT`, `DVAA_PIN` | `.dvaa/dvaa-target`, `dvaa-t1`, pinned | Passed through to `scripts/setup-dvaa.sh` |
 
-`scripts/eval.sh track3a` runs the Track 3 Path A demo (`node track3a/run-demo.mjs`, PR #62); it prints NOT YET MERGED while `track3a/` is not on the branch, and is not part of `all` because it rewrites `track3a/runs/`. `test` also discovers suites under `track3a/` and `track1/` and reports a missing dir as `not present`.
+`scripts/eval.sh track3a` runs the Track 3 Path A demo (`node track3a/run-demo.mjs`, PR #62); it prints NOT YET MERGED while `track3a/` is not on the branch, and writes its run outputs to the gitignored `.eval/track3a/` (override `TRACK3A_OUT`; before #113 it rewrote `track3a/runs/`). It needs Node >= 24 (`nvm use 24`; v24.16.0 on the team box) and exits 2 on Node < 24, so it is not part of `all`. `test` also discovers suites under `track3a/` and `track1/` and reports a missing dir as `not present`.
 
 `scripts/eval.sh down` stops the fleet. Don't run it on a shared machine while others are using `dvaa-t1`.
 
 ## SOC handoff
 
-SentinelProxy's alerts go to Track 1's SOC Brief, which turns them into a plain-English analyst brief. It runs offline, with no LLM key and no network.
+Tourniquet's alerts go to Track 1's SOC Brief, which turns them into a plain-English analyst brief. It runs offline, with no LLM key and no network.
 
 ```bash
 scripts/soc-handoff.sh            # prints the brief and writes .eval/soc-handoff/brief.md
@@ -91,9 +91,30 @@ node --test scripts/test/soc-handoff.test.mjs
   - the proxy-blocked T3 alert: `captures/contrast/runs/proxy-block.t4-alerts.json`
   - four egress-deny alerts: `sentinel/egress/evidence-block.jsonl`
   - the highest-severity post-execution (report-only) alert: `captures/contrast/runs/proxy-observe.proxy.jsonl`
-- **Output** gives, for each alert: the verdict, priority, what happened, the SentinelProxy stage, the recommended action, and the MITRE ATLAS/ATT&CK and OWASP LLM/Agentic tags. The expected overall verdict is `ESCALATE · P1` across 6 alerts.
+- **Output** gives, for each alert: the verdict, priority, what happened, the Tourniquet stage, the recommended action, and the MITRE ATLAS/ATT&CK and OWASP LLM/Agentic tags. The expected overall verdict is `ESCALATE · P1` across 6 alerts.
 - **Safety:** placeholder sidecars are refused. If the rendered brief contains any known honeytoken value, the script exits 3 and writes nothing. Canaries appear by id only.
-- **Known SOC Brief limit:** it uses one wording for every SentinelProxy alert ("the proxy stopped the send"). For the report-only alert, the brief adds a handoff note saying the data should be treated as already sent.
+- **Known SOC Brief limit:** it uses one wording for every Tourniquet alert ("the proxy stopped the send"). For the report-only alert, the brief adds a handoff note saying the data should be treated as already sent.
+
+## Submission snapshot (#73)
+
+The judged repo is a NEW public repo holding **one commit** with main's exact tree, so this repo's history stays private.
+
+```bash
+git checkout --detach origin/main     # clean tree, HEAD == origin/main, or the script refuses
+scripts/make-submission-snapshot.sh   # [--skip-tests] [--no-fetch] [--force]
+```
+
+1. It checks that the tree is clean and that HEAD == `origin/main` after a fetch.
+2. It runs `scripts/eval.sh test` (`--skip-tests` skips this). Run it from a checkout outside `/tmp`, since two isolation tests assert repo-local paths.
+3. It writes a parentless commit of `HEAD^{tree}`, "Tourniquet — CrowdStrike Track 3 submission (squashed snapshot of main @ <sha>)", with the Co-Authored-By trailer.
+4. It scans that tree, minus gitignored paths, for three things:
+   - secrets (`gitleaks` if installed, else a built-in regex set; `SNAPSHOT_NO_GITLEAKS=1` forces the regex set);
+   - local home or scratch paths;
+   - internal tooling words.
+
+   URLs are not checked for paths or words. Known-inert test data and benchmark strings (honeytokens, AWS's documented example key, fake key shapes in tests, see `captures/variants/LICENSES.md`) are listed in `scripts/submission-scan-allowlist.tsv`. Each entry has a path glob, the exact literal, and a reason. **Any other hit fails the run, and no branch or tag is created.**
+5. It creates the local branch `submission-snapshot` and the annotated tag `v1.0-submission`, then re-checks that there is 1 commit and that `git diff main submission-snapshot` is empty.
+6. It prints the owner's publish commands. **It never pushes.** The owner pushes `submission-snapshot:main` and the tag to the new repo (`gh repo create <owner>/AIC-X-Crowdstrike-Hackathon-Track-3-submission --public`, then `git push <url> submission-snapshot:main v1.0-submission`). Don't use `gh repo create --source . --push`: it pushes the current branch **with its full history**. Then set SUBMISSION.md's Repository link to `https://github.com/<owner>/AIC-X-Crowdstrike-Hackathon-Track-3-submission`.
 
 ## Troubleshooting
 

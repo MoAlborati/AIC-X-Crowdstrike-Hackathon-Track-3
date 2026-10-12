@@ -15,7 +15,7 @@
 //   noop            — clearly labeled NO-OP baseline: never fires. Floor for every metric.
 //   dvaa-baseline   — DVAA's own detectAttacks() (src/core/vulnerabilities.js, 8KB head/tail scan),
 //                     loaded from a real DVAA checkout through T6's bridge (captures/variants/tools/baseline.mjs).
-//   t3              — SentinelProxy T3 detector core (sentinel/detectors/index.js) when it is on the branch.
+//   t3              — Tourniquet T3 detector core (sentinel/detectors/index.js) when it is on the branch.
 // Any other detector: --detector-module <file.mjs> whose default export is (async) a harness detector.
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -152,7 +152,7 @@ export function toOpenAIResponse(c) {
  */
 export async function t3Detector({ root = REPO_ROOT, modulePath, policyPath } = {}) {
   const mod = modulePath ?? process.env.SENTINEL_T3_MODULE ?? path.join(root, 'sentinel', 'detectors', 'index.js');
-  const base = { name: 't3', kind: 'candidate', description: 'SentinelProxy T3 detector core (full-payload scan).' };
+  const base = { name: 't3', kind: 'candidate', description: 'Tourniquet T3 detector core (full-payload scan).' };
   if (!existsSync(mod)) {
     return { ...base, available: false, unavailableReason: `T3 detector not present at ${path.relative(root, mod)} (T3 not merged)`, provenance: {}, inspect: null };
   }

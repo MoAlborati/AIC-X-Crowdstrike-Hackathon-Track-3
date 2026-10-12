@@ -1,4 +1,4 @@
-// SentinelProxy T3 — linear-time text scanners for attacker-controlled input.
+// Tourniquet T3 — linear-time text scanners for attacker-controlled input.
 //
 // ReDoS rule (PR #3 review): no regex with an unbounded quantifier is ever run across attacker text.
 // Everything here is one of:
@@ -22,10 +22,14 @@ const URL_STOP = new Set([32, 9, 10, 13, 34, 39, 60, 62, 96, 41, 93, 125, 0]); /
 export function extractUrls(text) {
   const out = [];
   if (typeof text !== 'string' || text.length === 0) return out;
+  // Schemes are case-insensitive (RFC 3986 §3.1): `HTTP://` / `Https://` must not skip the destination checks
+  // (t3-url-case, #105). ASCII-only fold keeps the same length, so indices stay valid in the original text,
+  // and the URL itself is sliced from the original. hostOf() already lower-cases the host.
+  const lower = text.replace(/[A-Z]/g, (c) => c.toLowerCase());
   for (const scheme of ['http://', 'https://']) {
     let from = 0;
     for (;;) {
-      const i = text.indexOf(scheme, from);
+      const i = lower.indexOf(scheme, from);
       if (i === -1) break;
       let j = i + scheme.length;
       const limit = Math.min(text.length, i + MAX_URL_CHARS);
@@ -168,6 +172,165 @@ export function findIbans(text) {
   return out;
 }
 
+/**
+ * Spaced-out identifiers (issue #112): "U S 1 3 3 0 0 ...", "U.S.1.3...", "s k - d v a a", or single
+ * characters split by zero-width characters. Each run of >= MIN_SPACED_RUN single-character elements
+ * (one ASCII alnum, or one of @ : /, with no alnum neighbour), separated by up to MAX_SPACED_SEP chars
+ * of whitespace / zero-width / '.' / '-', is re-joined into two candidate tokens:
+ *   compact: every separator dropped              ("U.S.1.3" -> "US13", for IBANs / account numbers)
+ *   keep:    whitespace + zero-width dropped, '.' and '-' kept ("e v i l . c o m" -> "evil.com",
+ *            "s k - d v a a" -> "sk-dvaa", for hosts, emails and honeytokens)
+ * posCompact / posKeep map every output char back to its index in `text`, so callers can keep using the
+ * original offsets (e.g. the 120-char verb window before a destination).
+ * Linear: one forward pass, each char visited a bounded number of times; output is <= |text| chars per
+ * variant. No regex. Runs are never truncated (a run is as long as the input allows).
+ */
+export const MIN_SPACED_RUN = 6;
+const MAX_SPACED_SEP = 3;
+const isZeroWidth = (c) => c === 0x200b || c === 0x200c || c === 0x200d || c === 0x2060 || c === 0xfeff || c === 0x00ad;
+const isSpaceSep = (c) => c === 32 || c === 9 || c === 0xa0 || isZeroWidth(c);
+const isPunctSep = (c) => c === 46 || c === 45; // . -
+const isSpacedElem = (c) => isAlnum(c) || c === 64 || c === 58 || c === 47; // @ : /
+function isSingleAt(text, i) {
+  const n = text.length;
+  if (i >= n || !isSpacedElem(text.charCodeAt(i))) return false;
+  if (i > 0 && isAlnum(text.charCodeAt(i - 1))) return false;
+  return !(i + 1 < n && isAlnum(text.charCodeAt(i + 1)));
+}
+export function findSpacedRuns(text) {
+  const out = [];
+  if (typeof text !== 'string') return out;
+  const n = text.length;
+  let cbuf = null; // element offsets of the current run (compact variant)
+  let kbuf = null; // element + kept '.'/'-' offsets (keep variant)
+  let i = 0;
+  while (i < n) {
+    if (!isSingleAt(text, i)) {
+      i++;
+      continue;
+    }
+    if (cbuf === null) (cbuf = new Int32Array(n)), (kbuf = new Int32Array(n));
+    let nc = 0;
+    let nk = 0;
+    cbuf[nc++] = i;
+    kbuf[nk++] = i;
+    let last = i;
+    for (;;) {
+      let k = last + 1;
+      const mark = nk;
+      while (k < n && k - last - 1 < MAX_SPACED_SEP) {
+        const c = text.charCodeAt(k);
+        if (isPunctSep(c)) kbuf[nk++] = k;
+        else if (!isSpaceSep(c)) break;
+        k++;
+      }
+      if (!isSingleAt(text, k)) {
+        nk = mark;
+        break;
+      }
+      cbuf[nc++] = k;
+      kbuf[nk++] = k;
+      last = k;
+    }
+    if (nc >= MIN_SPACED_RUN) {
+      const posCompact = cbuf.slice(0, nc);
+      const compact = gather(text, posCompact);
+      // keep === compact (same string) when the run had no '.'/'-': callers scan it once.
+      const posKeep = nk === nc ? posCompact : kbuf.slice(0, nk);
+      out.push({ index: i, compact, keep: nk === nc ? compact : gather(text, posKeep), posCompact, posKeep });
+    }
+    i = last + 1;
+  }
+  return out;
+}
+/**
+ * All runs from findSpacedRuns joined into ONE text per variant ('\n' between runs, never part of a token,
+ * URL or email), with one offset map back to the source (-1 at the joints). Callers scan each variant
+ * once instead of once per run (#122 review: per-run calls cost ~2 us each, 20k runs = 40 ms). Linear.
+ * `compact` is null when no run had a '.'/'-' (it would equal `keep`).
+ */
+export function joinSpacedRuns(runs) {
+  if (!runs.length) return null;
+  const build = (key, posKey) => {
+    let len = runs.length - 1;
+    for (const r of runs) len += r[key].length;
+    const pos = new Int32Array(len);
+    let at = 0;
+    runs.forEach((r, k) => {
+      if (k) pos[at++] = -1;
+      pos.set(r[posKey], at);
+      at += r[posKey].length;
+    });
+    return { text: runs.map((r) => r[key]).join('\n'), pos };
+  };
+  const keep = build('keep', 'posKeep');
+  return { keep, compact: runs.some((r) => r.keep !== r.compact) ? build('compact', 'posCompact') : null };
+}
+/** The ASCII chars of `text` at `pos`, as one string (latin1 is exact for ASCII). */
+function gather(text, pos) {
+  const b = Buffer.allocUnsafe(pos.length);
+  for (let j = 0; j < pos.length; j++) b[j] = text.charCodeAt(pos[j]);
+  return b.toString('latin1');
+}
+
+/**
+ * Homoglyph fold (#112 critic B): Cyrillic/Greek letters that render like Latin ones ("ѕend", "trаnsfer")
+ * are mapped to ASCII, but ONLY inside a word that also contains an ASCII letter (mixed script), so
+ * genuine Cyrillic/Greek prose is left alone. NFKC first (fullwidth, ligatures, compatibility forms), then
+ * \p{Cf} format chars (zero-width, soft hyphen, bidi) are removed (issue #126 #3).
+ * ASCII-only input is returned unchanged (one charCode scan). Linear; output length = NFKC length.
+ */
+const CONFUSABLE = new Map(Object.entries({
+  а: 'a', в: 'b', е: 'e', о: 'o', р: 'p', с: 'c', у: 'y', х: 'x', і: 'i', ј: 'j', ѕ: 's', ԁ: 'd', һ: 'h', ӏ: 'l', ԛ: 'q', ԝ: 'w',
+  А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', Ѕ: 'S', І: 'I', Ј: 'J', У: 'Y',
+  α: 'a', ο: 'o', ν: 'v', ρ: 'p', ι: 'i', κ: 'k', υ: 'u',
+  Α: 'A', Β: 'B', Ε: 'E', Ζ: 'Z', Η: 'H', Ι: 'I', Κ: 'K', Μ: 'M', Ν: 'N', Ο: 'O', Ρ: 'P', Τ: 'T', Χ: 'X', Υ: 'Y',
+}).map(([k, v]) => [k.charCodeAt(0), v.charCodeAt(0)]));
+const CF_RE = /\p{Cf}/gu;
+const isAsciiLetter = (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+const isGreekCyrillic = (c) => c >= 0x0370 && c <= 0x052f;
+export function foldConfusables(text) {
+  if (typeof text !== 'string') return text;
+  let i = 0;
+  const n0 = text.length;
+  while (i < n0 && text.charCodeAt(i) < 128) i++;
+  if (i === n0) return text;
+  // NFKC, then drop format chars (\p{Cf}: ZWSP/ZWJ/ZWNJ, soft hyphen, BOM, bidi controls). Linear regex, no backtracking.
+  // COMP-1: Unicode TAG chars (also \p{Cf}) are mapped to ASCII FIRST, so tag-smuggled text is scanned, not erased.
+  const t = stripInvisible(text.normalize('NFKC')).replace(CF_RE, '');
+  const n = t.length;
+  let buf = null; // UTF-16 code units of t, allocated on the first mixed-script word only
+  i = 0;
+  while (i < n) {
+    let c = t.charCodeAt(i);
+    if (!isAsciiLetter(c) && !isGreekCyrillic(c)) {
+      i++;
+      continue;
+    }
+    const start = i;
+    let latin = false;
+    let mapped = false;
+    do {
+      if (isAsciiLetter(c)) latin = true;
+      else if (CONFUSABLE.has(c)) mapped = true;
+      i++;
+      c = i < n ? t.charCodeAt(i) : 0;
+    } while (i < n && (isAsciiLetter(c) || isGreekCyrillic(c)));
+    if (latin && mapped) {
+      if (buf === null) {
+        buf = new Uint16Array(n);
+        for (let j = 0; j < n; j++) buf[j] = t.charCodeAt(j);
+      }
+      for (let j = start; j < i; j++) {
+        const m = CONFUSABLE.get(buf[j]);
+        if (m !== undefined) buf[j] = m;
+      }
+    }
+  }
+  return buf === null ? t : UTF16.decode(buf);
+}
+const UTF16 = new TextDecoder('utf-16le');
+
 /** Shannon entropy in bits/char. Linear in token length. */
 export function entropy(s) {
   if (!s) return 0;
@@ -222,7 +385,12 @@ export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
     if (seen.has(s)) continue;
     seen.add(s);
     out.push({ text: s, encoding: enc });
-    const children = decodeOnce(s, enc, minRun);
+    const all = decodeOnce(s, enc, minRun);
+    // COMP-1 review: invisible / unicode_tag normalization is depth-FREE (queued at the same depth). It is
+    // idempotent and strictly shortens the text, so it terminates; charging it a level let one ZWSP push a
+    // 3x-%-encoded honeytoken past maxDecodeDepth (and made benign emoji ZWJ raise decode_depth_exhausted).
+    for (const c of all) if (c.norm) queue.push({ s: c.s, d, enc: c.enc });
+    const children = all.filter((c) => !c.norm);
     if (d >= depth) {
       const further = children.filter((c) => !seen.has(c.s));
       if (further.length) {
@@ -271,7 +439,55 @@ function decodeOnce(s, enc, minRun) {
   }
   if (hex.length) children.push({ s: hex.join('\n'), enc: tag('hex') });
   if (b64.length) children.push({ s: b64.join('\n'), enc: tag('base64') });
+  // Invisible-character / Unicode-tag smuggling (COMP-1): only when stripping actually changes the text.
+  const inv = stripInvisibleInfo(s);
+  if (inv.text !== s) children.push({ s: inv.text, enc: tag(inv.tagChars ? 'unicode_tag' : 'invisible'), norm: true });
   return children;
+}
+
+// ---- invisible characters / Unicode-tag "ASCII smuggling" (COMP-1) -------------------------------
+// Zero-width (U+200B..U+200F, U+2060..U+2064, U+FEFF, U+180E), soft hyphen (U+00AD), Arabic letter mark
+// (U+061C) and bidi embedding/override/isolate controls (U+202A..U+202E, U+2066..U+2069) are dropped.
+// Unicode TAG characters U+E0020..U+E007E (UTF-16: high surrogate 0xDB40 + low 0xDC20..0xDC7E) map 1:1 to
+// ASCII 0x20..0x7E; the remaining tags (U+E0000..U+E001F, U+E007F CANCEL TAG) are dropped. One linear
+// charCode pass, no regex; the common case (nothing invisible) returns the input string unchanged.
+const isInvisible = (c) =>
+  c === 0x00ad || c === 0x061c || c === 0x180e || c === 0xfeff ||
+  (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e) || (c >= 0x2060 && c <= 0x2064) || (c >= 0x2066 && c <= 0x2069);
+
+function stripInvisibleInfo(s) {
+  if (typeof s !== 'string' || s.length === 0) return { text: s, tagChars: false };
+  const n = s.length;
+  let parts = null; // lazily allocated on the first invisible char
+  let runStart = 0;
+  let tagChars = false;
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    let repl = null;
+    let width = 1;
+    if (c === 0xdb40 && i + 1 < n) {
+      const lo = s.charCodeAt(i + 1);
+      if (lo >= 0xdc00 && lo <= 0xdc7f) {
+        width = 2;
+        tagChars = true;
+        repl = lo >= 0xdc20 && lo <= 0xdc7e ? String.fromCharCode(lo - 0xdc00) : '';
+      }
+    } else if (isInvisible(c)) repl = '';
+    if (repl === null) continue;
+    if (parts === null) parts = [];
+    if (i > runStart) parts.push(s.slice(runStart, i));
+    if (repl) parts.push(repl);
+    i += width - 1;
+    runStart = i + 1;
+  }
+  if (parts === null) return { text: s, tagChars: false };
+  if (runStart < n) parts.push(s.slice(runStart));
+  return { text: parts.join(''), tagChars };
+}
+
+/** `s` with zero-width / bidi / soft-hyphen characters removed and Unicode TAG characters mapped to ASCII. Linear. */
+export function stripInvisible(s) {
+  return stripInvisibleInfo(s).text;
 }
 
 function isMostlyPrintable(s) {
@@ -512,12 +728,23 @@ const INJECTION_PHRASES = [
   'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
 ];
 
-/** Instruction-like phrases in (untrusted) text. Linear: lower-case once, indexOf per phrase. */
+/**
+ * Instruction-like phrases in (untrusted) text. Normalized first (issue #126 #3): NFKC, \p{Cf} stripped,
+ * mixed-script homoglyphs folded (foldConfusables), every whitespace run (double space, newline, NBSP, tab)
+ * collapsed to one space. Unicode TAG characters are mapped to ASCII before the \p{Cf} strip (COMP-1, in
+ * foldConfusables), and when zero-width separators stand in for spaces ("ignore\u200Bprevious") a second
+ * view with them turned into spaces is matched too. Linear: at most two folds, lower-case, indexOf per phrase.
+ */
 export function findInjectionPhrases(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
-  const lower = text.toLowerCase();
-  return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
+  const norm = (t) => foldConfusables(t).replace(/\s+/g, ' ').toLowerCase();
+  const views = [norm(text)];
+  const spaced = text.replace(ZW_SEPARATORS, ' ');
+  if (spaced !== text) views.push(norm(spaced));
+  return INJECTION_PHRASES.filter((p) => views.some((v) => v.indexOf(p) !== -1));
 }
+// Zero-width chars an attacker can use in place of a space (single-char class, global: linear replace).
+const ZW_SEPARATORS = /[\u200B\u200C\u200D\u2060\uFEFF\u180E]/g;
 
 // ---- lookalike destinations ----------------------------------------------------------------------
 

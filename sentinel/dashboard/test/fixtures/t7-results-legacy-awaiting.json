@@ -979,7 +979,7 @@
     },
     "t3": {
       "kind": "candidate",
-      "description": "SentinelProxy T3 detector core (full-payload scan).",
+      "description": "Tourniquet T3 detector core (full-payload scan).",
       "available": false,
       "unavailableReason": "T3 detector not present at sentinel/detectors/index.js (T3 not merged)",
       "provenance": {}

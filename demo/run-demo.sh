@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# demo/run-demo.sh — deterministic driver for the SentinelProxy demo (ticket T9).
+# demo/run-demo.sh — deterministic driver for the Tourniquet demo (ticket T9).
 #
 # Drives the beats of demo/SCRIPT.md on THIS machine, in order, from the committed
 # captures/ fixtures. Nothing here makes a live LLM or external API call inside the demo
@@ -93,6 +93,13 @@ advance() {
     printf '\n  (no TTY; advancing)\n'
   fi
 }
+# Mid-beat pause (interactive only): one Enter used to print all of Beat 4 (about 54 rows), so the live 200/403
+# scrolled off before it was narrated (#124). --auto and no-TTY runs go straight through.
+pause_mid() {
+  [ "$AUTO" = 1 ] && return 0
+  [ -t 0 ] || return 0
+  local ans; printf '\n  %s--> %s (Enter)%s ' "$B" "$1" "$Z"; read -r ans
+}
 
 # =================================================================================
 # WIRING REGISTRY  ---  the ONE place to finalize at feature-freeze (14:30).
@@ -116,7 +123,12 @@ STAGE_CAPTURES="$STAGE_DIR/captures"
 STAGE_ALERTS="$STAGE_DIR/pipe/alerts"
 INC_PROXY="live/proxy-7005"          # request-side block: High 70 IndirectPromptInjection · Blocked · pre-forward
 INC_EGRESS="live/egress-boundary"    # 4 x Blocked · egress deny (RAGBot 7005 + RepoBot 7022 + telemetry)
-dash_link() { printf 'http://127.0.0.1:%s/?id=%s&run=run&step=last' "$DASH_PORT" "$1"; }
+# Stage-mode deep links (?stage=1: no stat tiles, no replay warnings), each opened at its LAST step so the judges see
+# the finished graph, not step 1/10. Keys are sentinel/dashboard/lib/stage-set.mjs STAGE_ENTRIES.
+STAGE_VULNERABLE="vulnerable"        # Beat 3:  stage capture attack/aim-ab.demo runA
+STAGE_PROXY="proxy-blocked"          # Beat 4:  stage capture stage/proxy-blocked-t3 (High IndirectPromptInjection · Blocked)
+STAGE_EGRESS="egress-blocked"        # Beat 4b: stage capture stage/egress-blocked-t12 (egress denies, attacker got nothing)
+dash_link() { printf 'http://127.0.0.1:%s/?stage=1&capture=%s&step=last' "$DASH_PORT" "$1"; }
 dash_note() {   # incident  what-it-shows -> point the right-hand screen at the incident that really shows the block
   if [ "${STAGE_OK:-0}" = 1 ] && [ "$STARTED_DASHBOARD" = 1 ]; then
     printf '  %sDASHBOARD%s  %s  (%s)\n' "$B" "$Z" "$(dash_link "$1")" "$2"
@@ -137,6 +149,8 @@ stage_build() {   # -> rc 0 iff .eval/stage holds the merged captures + both inc
 stage_verify() {   # -> rc 0 iff the RUNNING dashboard serves both incidents with the real block verdicts
   node --input-type=module - "$DASH_PORT" "$INC_PROXY" "$INC_EGRESS" <<'JS'
 const [port, incProxy, incEgress] = process.argv.slice(2);
+// The stage-mode tabs the presenter opens (dash_link): their captures must carry blocked alerts too.
+const STAGE_TABS = [['stage/proxy-blocked-t3', 'IndirectPromptInjection'], ['stage/egress-blocked-t12', 'HoneytokenExfiltrationAttempt']];
 const get = async (id) => (await fetch(`http://127.0.0.1:${port}/api/replay?id=${encodeURIComponent(id)}&run=run`)).json();
 const fmt = (a) => `${a.severityName} ${a.severity} ${a.detectName} · ${a.disposition}${a.hints?.direction ? ' · ' + a.hints.direction + '-side' : ''}`;
 let bad = 0;
@@ -151,6 +165,12 @@ if (ea.length < 1 || !ea.every(a => a.blocked)) {
   console.log(`  ${incEgress}: expected only blocked egress alerts, got ${ea.length} (source: ${e.alertSource?.origin})`); bad++;
 }
 if (p.alertSource?.placeholder || e.alertSource?.placeholder) { console.log('  alerts came from a PLACEHOLDER source'); bad++; }
+for (const [id, name] of STAGE_TABS) {
+  const s = await get(id);
+  const sa = (s.alerts ?? []).filter(a => !a.invalid);
+  if (!sa.some(a => a.detectName === name && a.blocked)) { console.log(`  stage tab ${id}: no blocked ${name} alert`); bad++; }
+  else console.log(`  ${id}: ${sa.length} blocked alert(s) incl. ${name}`);
+}
 process.exit(bad ? 1 : 0);
 JS
 }
@@ -171,16 +191,22 @@ evasion_t3_cmd() {   # "8KB evasion: 2/2 fixtures" (never a blanket "beats basel
   jq -rc '.beatsBaseline | {evasionFixtures:(.eligible|length), t3Caught:.byDetector.t3.beaten,
            t3Prevented:.byDetector.t3.beatenPrevention, cases:.byDetector.t3.cases}' "$SCORE_JSON" || return 1
   jq -e '.beatsBaseline | (.eligible|length) == 2 and .byDetector.t3.beaten == 2' "$SCORE_JSON" >/dev/null \
-    || { echo "results.json no longer shows 8KB evasion 2/2: fix the spoken line"; return 1; }
+    || { echo "results.json no longer shows 8KB evasion 2/2: fix the slide (say \"2 of 2\" only if asked)"; return 1; }
+  # Spoken Beat 3b: "reads only the first and last 8 KB" and "our median check takes under a tenth of a millisecond".
+  jq -se 'all(.[]; .baseline8kb.DETECTION_EDGE == 8192 and .baseline8kb.inMiddleGap == true)' "${EVASION_MID[@]}" >/dev/null \
+    || { echo "Beat 3b spoken claim no longer true: DVAA scans the first and last 8 KB, payload in the middle"; return 1; }
+  jq -e '.detectors.t3.latencyMs.median < 0.1' "$SCORE_JSON" >/dev/null \
+    || { echo "Beat 3b spoken claim no longer true in results.json: median under a tenth of a millisecond"; return 1; }
+  echo "spoken Beat 3b claims match the fixtures and results.json"
 }
 # Beat 7: two headline rows (detection, prevention), T3 vs DVAA's own baseline, with FP, + the evasion result.
 headline_cmd() {
   jq -r '
     def pct: (. * 1000 | round) as $x | "\($x / 10 | floor).\($x % 10)%";
     .detectors as $d | .headlineLenses as $h | .counts as $c |
-    "corpus: \($c.attack) attack + \($c.benign) benign cases, scored against DVAA ground-truth labels",
+    "corpus: \($c.attack) attack + \($c.benign) benign cases, labelled by DVAA ground truth (T1 captures) and the published benchmarks (T6)",
     "",
-    "                         T3 (SentinelProxy)          DVAA baseline",
+    "                         T3 (Tourniquet)          DVAA baseline",
     "  detection (any finding)  recall \($h.detection.recall|pct)  FP \($h.detection.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.anyFinding.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate|pct)",
     "  prevention (pre-forward) recall \($h.prevention.recall|pct)  FP \($h.prevention.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.prevention.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.prevention.falsePositiveRate|pct)",
     "",
@@ -189,7 +215,8 @@ headline_cmd() {
   # Every number AND every comparison in the static Beat 7 spoken line, asserted against the file it comes from,
   # so the line can never go false silently (it FAILS this row instead). One check per claim, named on failure.
   local claims=(
-    '189 attacks and 164 benign runs|.counts.attack == 189 and .counts.benign == 164'
+    '189 attacks and 164 benign cases|.counts.attack == 189 and .counts.benign == 164'
+    'labelled by DVAA ground truth and the published benchmarks|(.corpus.bySource | has("t1-capture") and has("t6-variant"))'
     'we detect more than DVAA (detection recall)|.headlineLenses.detection.recall > $b.anyFinding.recall'
     '"slightly" more: lead under 5 points|(.headlineLenses.detection.recall - $b.anyFinding.recall) < 0.05'
     'zero false alarms (detection + prevention)|.headlineLenses.detection.fp == 0 and .headlineLenses.prevention.fp == 0'
@@ -198,8 +225,14 @@ headline_cmd() {
     'DVAA prevents more|$b.prevention.recall > .headlineLenses.prevention.recall'
     '63 percent (DVAA prevention recall)|($b.prevention.recall * 100 | round) == 63'
     'versus our 42 (T3 prevention recall)|(.headlineLenses.prevention.recall * 100 | round) == 42'
-    'DVAA prevention count includes benign hits|$b.prevention.fp > 0'
-    '12.8 percent of benign traffic (DVAA prevention FP)|($b.prevention.falsePositiveRate * 1000 | round) == 128'
+    'its scanner also blocks benign traffic|$b.prevention.fp > 0'
+    'blocks 12.8 percent of benign traffic (DVAA prevention FP)|($b.prevention.falsePositiveRate * 1000 | round) == 128'
+    'it blocks one in eight normal requests (DVAA prevention FP, 1/8 = 12.5%)|(1 / $b.prevention.falsePositiveRate | round) == 8'
+    'we blocked zero (of 164 normal requests, prevention + detection)|.headlineLenses.prevention.fp == 0 and .headlineLenses.detection.fp == 0 and .headlineLenses.prevention.tn == 164'
+    'we prevent 57 of 71 exfil attempts|.detectors.t3.recallByPositiveKindPrevention.exfil | .tp == 57 and .positives == 71'
+    'with 0 of 164 legitimate requests blocked (T3 prevention FP)|.headlineLenses.prevention.fp == 0 and .headlineLenses.prevention.tn == 164'
+    'DVAA prevents 64 of 71 exfil attempts|.detectors["dvaa-baseline"].recallByPositiveKindPrevention.exfil | .tp == 64 and .positives == 71'
+    'but blocks 21 of 164 legitimate requests (DVAA prevention FP)|$b.prevention.fp == 21 and $b.prevention.negatives == 164'
     '8KB evasion 2 out of 2|(.beatsBaseline.eligible | length) == 2 and .beatsBaseline.byDetector.t3.beaten == 2'
     'median under a tenth of a millisecond|.detectors.t3.latencyMs.median < 0.1'
     'p95 around half a millisecond (0.25 to under 1 ms)|.detectors.t3.latencyMs.p95 >= 0.25 and .detectors.t3.latencyMs.p95 < 1'
@@ -210,6 +243,18 @@ headline_cmd() {
       echo "Beat 7 spoken claim no longer true in results.json: ${c%%|*}"; bad=1
     fi
   done
+  # Closing line: "Flagging isn't stopping: in our watch-only run, the attacker still got the key." The recorded observe-mode
+  # egress run flagged the FAKE AWS key (honeytoken_match) and still forwarded it to the attacker host.
+  jq -se 'any(.[]; .mode == "observe" and .action == "forward" and (.reasons | index("honeytoken_match")) and (.canary_ids | index("DVAA-AWS-KEY-ID")))' \
+    "$REPO/sentinel/egress/evidence-observe.jsonl" >/dev/null \
+    || { echo "closing spoken claim no longer true in sentinel/egress/evidence-observe.jsonl: watch-only run flagged and forwarded the key"; bad=1; }
+  # Held-out admission line: "on a held-out set of injections that do name a destination, our front-door rule stops only
+  # 3 percent; the sandbox's scanner stops 51" comes from captures/holdout-ipi/RESULTS.md (#142): T3 prevention 0.032
+  # (12/370), DVAA 0.514 (190/370).
+  local ipi="$REPO/captures/holdout-ipi/RESULTS.md"
+  grep -Eq '^\| \*\*T3\*\* \(Tourniquet\) \| [^|]* \| \*\*0\.032\*\* \(12/370\)' "$ipi" 2>/dev/null \
+    && grep -Eq '^\| DVAA baseline \| 0\.514 \(190/370\) \| 0\.514 \(190/370\)' "$ipi" \
+    || { echo "Beat 7 spoken claim no longer true in captures/holdout-ipi/RESULTS.md: front-door 3 percent vs scanner 51"; bad=1; }
   [ "$bad" = 0 ] || { echo "update the Beat 7 say line in run-demo.sh and demo/SCRIPT.md together"; return 1; }
   echo "spoken Beat 7 numbers match results.json"
 }
@@ -253,7 +298,7 @@ live_proxy_start() {
     [ -n "$LIVE_PORT" ] && break; sleep 0.1
   done
   [ -n "$LIVE_PORT" ] || { echo "proxy did not report a listening port"; live_proxy_stop; return 1; }
-  echo "SentinelProxy (shipped CLI, block) on 127.0.0.1:$LIVE_PORT -> 7005, inspectors $(head -1 "$LIVE_DIR/stdout" | jq -c .inspectors)"
+  echo "Tourniquet (shipped CLI, block) on 127.0.0.1:$LIVE_PORT -> 7005, inspectors $(head -1 "$LIVE_DIR/stdout" | jq -c .inspectors)"
 }
 live_proxy_stop() {
   [ -n "$LIVE_PID" ] || return 0
@@ -346,8 +391,77 @@ egress_block_cmd() {
 }
 egress_truth_cmd() {
   grep -E '^RESULT (block|repobot block):|^--- attacker server|^\(no canary hits\)' "$EGRESS_GROUND_TRUTH" || return 1
+  # Spoken Beat 4b: "The attacker received nothing."
+  # Spoken Beat 4b: "in this run no secret reached the attacker", "our proxy only flags it after the tool has run",
+  # "denied every unlisted destination". Spoken Beat 6: "a guest list, not a lie detector ... whatever the words say"
+  # (a deny with no content match at all: destination only).
+  local bad=0
+  grep -q '^(no canary hits)' "$EGRESS_GROUND_TRUTH" \
+    || { echo "Beat 4b spoken claim no longer true: the attacker server shows canary hits"; bad=1; }
+  grep -q 'in-agent read, chat proxy can only alert' "$EGRESS_GROUND_TRUTH" \
+    || { echo "Beat 4b spoken claim no longer backed: the recording no longer says the chat proxy can only alert on an in-agent read"; bad=1; }
+  jq -se 'length > 0 and all(.[]; .action == "deny" and (.reasons | index("destination_not_allowlisted")))' "$EGRESS_BLOCK_JSONL" >/dev/null \
+    || { echo "Beat 4b spoken claim no longer true: not every egress decision is a deny of an unlisted destination"; bad=1; }
+  jq -se 'any(.[]; .action == "deny" and .reasons == ["destination_not_allowlisted"] and (.canary_ids | length) == 0)' "$EGRESS_BLOCK_JSONL" >/dev/null \
+    || { echo "Beat 6 spoken claim no longer shown: no deny decided on the destination alone (guest list, not a lie detector)"; bad=1; }
+  [ "$bad" = 0 ] && echo "spoken Beat 4b + Beat 6 claims match the recorded egress run"
   grep -q '^RESULT block: PREVENTED' "$EGRESS_GROUND_TRUTH" && grep -q '^RESULT repobot block: PREVENTED' "$EGRESS_GROUND_TRUTH" \
     || { echo "recorded run does not show both RAGBot and RepoBot PREVENTED"; return 1; }
+}
+# Beat 4b LIVE (critic A pass 2, #138: the climax should be live; Catherine, #131). The real two-layer encore
+# (scripts/encore-two-layer.sh block, PR #139): user turn -> Tourniquet (block) -> RepoBot 7022 -> poisoned AGENTS.md
+# -> tool egress -> egress inspector (block) -> canary. Ground truth is the canary (attacker server) log: the script exits
+# 0 in block mode only if the attacker got 0 hits AND the inspector logged a deny; exit 3 = Docker or the DVAA image is
+# missing. Cold start is about 22 s: warm it at T-5 by running the same command once. A watchdog (no `timeout` on stock
+# macOS) stops it after EGRESS_LIVE_TIMEOUT seconds (default 45) and the beat falls back to the recording (WARN).
+# rc: 0 = live PASS; 1 = live run let a secret out or the proxy prevented (spoken claim false): FAIL; 2 = infra: WARN.
+ENCORE="$REPO/scripts/encore-two-layer.sh"
+EGRESS_LIVE_DIR="$REPO/.eval/beat4b-live"
+egress_live_cmd() {
+  [ "${DEMO_LIVE_EGRESS:-1}" = 1 ] || { echo "live egress disabled (DEMO_LIVE_EGRESS=0)"; return 2; }
+  [ -f "$ENCORE" ] || { echo "scripts/encore-two-layer.sh absent (PR #139)"; return 2; }
+  mkdir -p "$EGRESS_LIVE_DIR"; : > "$EGRESS_LIVE_DIR/out.txt"
+  bash "$ENCORE" block stage >"$EGRESS_LIVE_DIR/out.txt" 2>&1 &
+  local pid=$! waited=0 limit="${EGRESS_LIVE_TIMEOUT:-45}" rc
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge "$((limit * 2))" ]; then
+      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+      echo "live run did not finish in ${limit}s"; return 2
+    fi
+    sleep 0.5; waited=$((waited + 1))
+  done
+  wait "$pid"; rc=$?
+  grep -E '^LAYER1_PROXY_HTTP|^  PROXY|^LAYER2_EGRESS|^  (deny|forward|allow) |^GROUND_TRUTH|^ENCORE (PASS|FAIL)|^SKIP|^FAIL' "$EGRESS_LIVE_DIR/out.txt" \
+    | cut -c1-200
+  [ "$rc" = 3 ] && { echo "prerequisites missing (Docker or the DVAA image)"; return 2; }
+  if [ "$rc" != 0 ]; then
+    grep -q '^GROUND_TRUTH' "$EGRESS_LIVE_DIR/out.txt" && { echo "encore block run: attacker got hits or no deny"; return 1; }
+    echo "encore exited $rc before a result (infra)"; return 2
+  fi
+  # Spoken Beat 4b: "our proxy only flags that after the tool has run" (no proxy verdict prevents), "the egress guard
+  # denied every unlisted destination" (every layer-2 decision is a deny), "no secret reached the attacker" (0 hits).
+  grep -q '^GROUND_TRUTH canary hits for [^:]*: 0 ' "$EGRESS_LIVE_DIR/out.txt" || { echo "attacker got canary hits"; return 1; }
+  if grep -E '^  PROXY' "$EGRESS_LIVE_DIR/out.txt" | grep -q 'prevents=true'; then
+    echo "the proxy prevented this run: the spoken 'only flags after the tool has run' is false"; return 1
+  fi
+  if sed -n '/^LAYER2_EGRESS:/,/^GROUND_TRUTH/p' "$EGRESS_LIVE_DIR/out.txt" | grep -E '^  (forward|allow) ' | grep -q .; then
+    echo "layer 2 forwarded a destination: 'denied every unlisted destination' is false"; return 1
+  fi
+  echo "live: proxy only alerted after the tool ran; egress denied every destination; attacker got 0 hits"
+}
+# The encore takes about 20 s even warm (it recreates its stack every run), longer than Beat 4b. So it starts in the
+# background when Beat 4 starts, runs live during Beat 4, and Beat 4b collects its result.
+EGRESS_BG_PID=""
+egress_live_start() {
+  mkdir -p "$EGRESS_LIVE_DIR"; rm -f "$EGRESS_LIVE_DIR/rc"
+  ( egress_live_cmd >"$EGRESS_LIVE_DIR/shown" 2>&1; echo $? >"$EGRESS_LIVE_DIR/rc" ) &
+  EGRESS_BG_PID=$!
+}
+egress_live_collect() {   # -> rc of egress_live_cmd (2 if it was never started)
+  [ -n "$EGRESS_BG_PID" ] || { egress_live_start; }
+  wait "$EGRESS_BG_PID" 2>/dev/null; EGRESS_BG_PID=""
+  [ -f "$EGRESS_LIVE_DIR/rc" ] && return "$(cat "$EGRESS_LIVE_DIR/rc")"
+  return 2
 }
 # =================================================================================
 
@@ -395,7 +509,12 @@ PY
 }
 if [ "$CHECK_ONLY" = 1 ]; then script_sync_cmd; exit $?; fi
 
-STARTED_DASHBOARD=0; STARTED_DVAA=0
+STARTED_DASHBOARD=0; STARTED_DVAA=0; DASH_MOVED_FROM=""
+# Dashboard port handling. A busy port (another agent's or an earlier dashboard on :9100) used to WARN and still end
+# in "demo run clean", so the presenter could walk on stage with no dashboard. Now: try the next free port (up to
+# DEMO_DASHBOARD_PORT_SCAN ports above it, default 20) and print the new URL everywhere; if none starts, FAIL.
+port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+start_dashboard() { EVAL_DASHBOARD_PORT="$DASH_PORT" bash "$EVAL" dashboard 2>&1 | sed 's/^/  /'; }
 teardown() {
   live_proxy_stop
   hdr "Teardown"
@@ -422,14 +541,18 @@ print_summary() {
   local fails
   fails=$(printf '%s\n' ${SUMMARY[@]+"${SUMMARY[@]}"} | awk -F'|' '$2=="FAIL"' | wc -l | tr -d ' ')
   echo
-  if [ "$fails" = 0 ]; then ok "demo run clean — no failing beats"
+  if [ "$fails" = 0 ] && [ "$STARTED_DASHBOARD" = 1 ] && [ -n "$DASH_MOVED_FROM" ]; then
+    warn "dashboard port $DASH_MOVED_FROM was busy: the dashboard is on :$DASH_PORT, so use the links printed above, not :$DASH_MOVED_FROM"
+  fi
+  if [ "$fails" = 0 ] && [ "$STARTED_DASHBOARD" = 1 ]; then ok "demo run clean — no failing beats · dashboard http://127.0.0.1:$DASH_PORT/"
+  elif [ "$fails" = 0 ]; then ok "demo run clean — no failing beats"
   else bad "$fails beat(s) FAILED — this is not a clean replay"; FINAL_RC=1; fi
 }
 
 # =================================================================================
 # PRE-FLIGHT (not part of the 3-minute stage clock)
 # =================================================================================
-hdr "SentinelProxy demo  ·  mode=$([ "$AUTO" = 1 ] && echo AUTO || echo interactive)"
+hdr "Tourniquet demo  ·  mode=$([ "$AUTO" = 1 ] && echo AUTO || echo interactive)"
 note "repo: $REPO"
 note "SCRIPT: demo/SCRIPT.md    (deterministic replay from captures/)"
 
@@ -473,7 +596,7 @@ else
 fi
 advance
 
-hdr "Preflight 3/3 — real SentinelProxy alerts (T10 pipeline) + the T5 dashboard (loopback)"
+hdr "Preflight 3/3 — real Tourniquet alerts (T10 pipeline) + the T5 dashboard (loopback)"
 STAGE_OK=0
 if [ -f "$PIPELINE_CLI" ] && [ -f "$PROXY_BLOCK_JSONL" ] && [ -f "$EGRESS_BLOCK_JSONL" ]; then
   printf '  %s$ node sentinel/pipeline/cli.mjs convert %s --egress %s --out .eval/stage/pipe%s\n' \
@@ -490,29 +613,46 @@ else
   record "preflight: stage alerts" "NOT YET MERGED" "pipeline or evidence absent"
 fi
 if [ -x "$EVAL" ] && [ -f "$REPO/sentinel/dashboard/server.mjs" ]; then
-  if bash "$EVAL" dashboard 2>&1 | sed 's/^/  /'; then
-    STARTED_DASHBOARD=1; ok "dashboard up: http://127.0.0.1:$DASH_PORT/"; record "preflight: dashboard" PASS "up :$DASH_PORT"
+  if start_dashboard; then STARTED_DASHBOARD=1
+  else
+    # Any start failure (port held by another process, or a server that would not bind): try the next free port.
+    # A port nobody answers on can still be bound (e.g. the local end of an outbound socket in the ephemeral range:
+    # EADDRINUSE), so keep trying the next candidate instead of giving up after the first.
+    want="$DASH_PORT"
+    for p in $(seq $((want + 1)) $((want + ${DEMO_DASHBOARD_PORT_SCAN:-20}))); do
+      port_busy "$p" && continue
+      warn "dashboard did not start on :$DASH_PORT (port busy or server error); trying :$p instead"
+      DASH_PORT="$p"
+      if start_dashboard; then STARTED_DASHBOARD=1; DASH_MOVED_FROM="$want"; break; fi
+    done
+    [ "$STARTED_DASHBOARD" = 1 ] || DASH_PORT="$want"
+  fi
+  if [ "$STARTED_DASHBOARD" = 1 ]; then
+    ok "dashboard up: http://127.0.0.1:$DASH_PORT/"
+    record "preflight: dashboard" PASS "up :$DASH_PORT${DASH_MOVED_FROM:+ (moved from busy :$DASH_MOVED_FROM)}"
     if [ "$STAGE_OK" = 1 ] && ! stage_verify >/dev/null 2>&1; then
       # eval.sh reuses an already-running dashboard; one started without the stage dirs would hide the alerts.
       warn "running dashboard does not serve the stage alerts (started earlier without them?); restarting it"
       bash "$EVAL" dashboard-stop >/dev/null 2>&1
-      bash "$EVAL" dashboard 2>&1 | sed 's/^/  /'
+      start_dashboard || bad "dashboard restart failed on :$DASH_PORT"
     fi
     if [ "$STAGE_OK" = 1 ]; then
       if stage_verify; then
-        ok "dashboard shows the real SentinelProxy alerts (not placeholders)"
+        ok "dashboard shows the real Tourniquet alerts (not placeholders)"
         record "preflight: stage alerts" PASS "IndirectPromptInjection blocked + egress denies on dashboard"
       else
         bad "dashboard does not show the real block alerts"
         record "preflight: stage alerts" FAIL "dashboard missing pipeline alerts"
       fi
-      note "deep links (open these on the right-hand screen):"
-      note "  Beat 4  request-side block : $(dash_link "$INC_PROXY")"
-      note "  Beat 4b egress boundary    : $(dash_link "$INC_EGRESS")"
+      note "deep links (open these on the right-hand screen; each opens at its last step):"
+      note "  Beat 3  exploit            : $(dash_link "$STAGE_VULNERABLE")"
+      note "  Beat 4  request-side block : $(dash_link "$STAGE_PROXY")"
+      note "  Beat 4b egress boundary    : $(dash_link "$STAGE_EGRESS")"
+      note "  Beat 5a                    : no tab. Slide 6 only."
     fi
   else
-    warn "dashboard did not come up; beats still replay in the terminal"
-    record "preflight: dashboard" WARN "did not start"
+    bad "dashboard did not start on :$DASH_PORT (or any free port above it): the right-hand screen would be empty"
+    record "preflight: dashboard" FAIL "did not start (port $DASH_PORT busy or server error)"
   fi
 else
   nym "T5 dashboard (sentinel/dashboard/server.mjs) — PR #11"
@@ -526,14 +666,14 @@ advance
 
 # ---- Beat 3 — EXPLOIT, red (RAGBot 7005) --------------------------------------
 hdr "Beat 3 — EXPLOIT (red) · RAGBot 7005"
-say "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
-say "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
+say "Recorded. A deliberately vulnerable agent from the organizers' sandbox gets one document with a hidden instruction."
 if [ -f "$CAP_ATTACK" ]; then
   run_cmd "exploit: tool call + exfil executed" \
     jq -r '.runA.toolCalls[0].function.name, .runA.dvaa.exfilExecuted' "$CAP_ATTACK"
   run_cmd "exploit: secret that left the building" \
     jq -r '.canary.hits[0].query.data' "$CAP_ATTACK"
-  say "It called submit_to_index, and the admin secret and an SSN just left the building."
+  say "It just sent the admin password and an SSN to the attacker's server."
+  dash_note "$STAGE_VULNERABLE" "the exploit graph, opened at its last step"
 else
   nym "T1 attack capture (captures/attack/aim-ab.demo.json)"
   record "Beat 3 exploit" "NOT YET MERGED" "capture absent"
@@ -542,11 +682,10 @@ advance
 
 # ---- Beat 3b — 8KB-evasion (DoD item 1, REQUIRED) -----------------------------
 hdr "Beat 3b — 8KB evasion · hide in the middle, DVAA's scanner sees nothing"
-say "DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
+say "Recorded. The sandbox's scanner reads only the first and last 8 KB, so attackers hide the payload in the middle. We read every byte, typically in under a tenth of a millisecond."
 if [ -f "${EVASION_MID[0]}" ] && [ -f "${EVASION_MID[1]}" ] && [ -f "$SCORE_JSON" ]; then
   run_cmd "evasion: injection sits between the 8KB head/tail windows (DVAA misses; full scan finds)" evasion_proof_cmd
   run_cmd "evasion: 8KB evasion 2/2 fixtures caught by T3 (sentinel/scoring/results.json)" evasion_t3_cmd
-  say "SentinelProxy scans the full payload and never truncates. 8KB evasion: 2 out of 2 fixtures caught."
 else
   nym "T6 evasion fixtures / T7 results (captures/variants/fixtures/evasion/, sentinel/scoring/results.json)"
   record "Beat 3b evasion" "NOT YET MERGED" "evasion fixtures or results absent"
@@ -554,8 +693,9 @@ fi
 advance
 
 # ---- Beat 4 — request-side BLOCK: shipped proxy + T3 detector (#14/#24/#41) -----
-hdr "Beat 4 — DETECT -> BLOCK (green) · SentinelProxy in front of 7005"
-say "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
+hdr "Beat 4 — DETECT -> BLOCK (green) · Tourniquet in front of 7005"
+egress_live_start   # Beat 4b's live two-layer run starts now, in the background (about 20 s)
+say "Same agent, same document, now through Tourniquet. First, a normal question: it passes."
 if [ -f "$PROXY_BLOCK_JSONL" ]; then
   printf '  %s$ live_proxy_start%s\n' "$B" "$Z"
   mkdir -p "$LIVE_DIR"
@@ -565,6 +705,8 @@ if [ -f "$PROXY_BLOCK_JSONL" ]; then
     say "Now the attack."
     run_cmd "live: attack refused before forwarding (HTTP 403), verdict from T3 (sentinel-t3)" live_attack_cmd
     live_proxy_stop
+    say "Refused before the agent ever saw it: the document slipped in an order to send data somewhere the user never named."
+    pause_mid "the live 200/403 is on screen: narrate it, then Cmd-K and Enter for the recorded evidence"
   else
     sed 's/^/    | /' "$LIVE_DIR/start.log"
     live_proxy_stop
@@ -573,18 +715,18 @@ if [ -f "$PROXY_BLOCK_JSONL" ]; then
     run_cmd "recorded: non-attack requests (health checks) forwarded untouched; the recording has no benign chat turn" \
       jq -rc 'select(.type=="exchange" and .action=="forwarded") | {action, path:.request.path, status:.response.status}' "$PROXY_BLOCK_JSONL"
     say "Now the attack."
+    say "Refused before the agent ever saw it: the document slipped in an order to send data somewhere the user never named."
+    pause_mid "the recorded block is on screen: narrate it, then Cmd-K and Enter for the rest of the evidence"
   fi
-  say "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side. If a honeytoken shows up in a response instead, the tool already ran (alert-only for prevention), but in block mode the reply is withheld, so the secret never reaches the client."
   run_cmd "response-side honeytoken: block mode withholds the reply (shipped inspectors, recorded observe exchange)" withhold_check_cmd
   run_cmd "recorded: same block on the live DVAA run (captures/contrast, detector:sentinel-t3)" proxy_block_cmd
   if [ -f "$PROXY_BLOCK_T4" ]; then
     run_cmd "recorded: the T4 alert built from that verdict (T10 pipeline)" t4_alert_cmd
-    dash_note "$INC_PROXY" "High 70 IndirectPromptInjection · Blocked · pre-forward"
+    dash_note "$STAGE_PROXY" "High IndirectPromptInjection · Blocked, opened at its last step"
   else
     nym "T4 alert from the T10 pipeline (captures/contrast/runs/proxy-block.t4-alerts.json)"
     record "Beat 4 T4 alert" "NOT YET MERGED" "alert sidecar absent"
   fi
-  say "Nothing was forwarded, so nothing could be exfiltrated."
 else
   nym "request-side proxy block (captures/contrast/runs/proxy-block.proxy.jsonl)"
   record "Beat 4 proxy block" "NOT YET MERGED" "proxy-block capture absent"
@@ -593,12 +735,26 @@ advance
 
 # ---- Beat 4b — egress guard BLOCK (T12, sentinel/egress/, PR #45) --------------
 hdr "Beat 4b — tool-boundary EGRESS GUARD · fail-closed on exfil"
-say "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
+say "Live now, in its own sandbox: an agent that reads the poison itself."
+EGRESS_LIVE_OK=0; mkdir -p "$EGRESS_LIVE_DIR"
+printf '  %s$ scripts/encore-two-layer.sh block%s   (live, started at Beat 4; warm it at T-5)\n' "$B" "$Z"
+egress_live_collect; elrc=$?
+sed 's/^/    | /' "$EGRESS_LIVE_DIR/shown"
+case "$elrc" in
+  0) EGRESS_LIVE_OK=1; ok "LIVE: both layers, attacker received 0 canary hits"; record "Beat 4b LIVE egress block" PASS "0 canary hits, live" ;;
+  1) bad "LIVE run contradicts the spoken line (see above)"; record "Beat 4b LIVE egress block" FAIL "spoken claim false on the live run" ;;
+esac
+if [ "$EGRESS_LIVE_OK" = 0 ]; then
+  warn "live egress run unavailable; showing the recording"
+  record "Beat 4b live egress" WARN "fell back to the recording"
+  say "That live run didn't come up; this is the same run, recorded."
+fi
+say "Our proxy only flags that after the tool has run. So the egress guard denied every unlisted destination, and in this run no secret reached the attacker."
+pause_mid "the result is on screen: narrate it, then Cmd-K and Enter for the recorded evidence (unspoken)"
 if [ -f "$EGRESS_BLOCK_JSONL" ] && [ -f "$EGRESS_GROUND_TRUTH" ]; then
   run_cmd "egress guard: deny decisions at the tool boundary (sentinel/egress/evidence-block.jsonl)" egress_block_cmd
-  say "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
   run_cmd "ground truth: attacker server received nothing, RAGBot 7005 and RepoBot 7022 (scripts/egress-demo.sh block)" egress_truth_cmd
-  dash_note "$INC_EGRESS" "4 x Blocked · egress deny"
+  dash_note "$STAGE_EGRESS" "egress denies · attacker received nothing, opened at its last step"
 else
   nym "T12 egress guard (sentinel/egress/evidence-block.jsonl + demo/captures/egress-demo-block.txt)"
   record "Beat 4b egress guard" "NOT YET MERGED" "egress evidence absent"
@@ -607,12 +763,12 @@ advance
 
 # ---- Beat 5a — the AIM twin (RAGBot-AIM 7014) ---------------------------------
 hdr "Beat 5a — secure-by-design twin · RAGBot-AIM 7014"
-say "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+say "Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't."
+printf '  %sSCREEN%s  Slide 6 only (red / green / green). No dashboard tab for this beat.\n' "$B" "$Z"
 if [ -f "$CAP_ATTACK" ]; then
   # runB has no exfilExecuted key (AIM denies before execution); default to false for a clean readout.
   run_cmd "AIM twin: exfil executed? + denial reason" \
     jq -r '(.runB.dvaa.exfilExecuted // false), .runB.dvaa.aim.denialReason' "$CAP_ATTACK"
-  say "Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
 else
   nym "T1 attack capture (captures/attack/aim-ab.demo.json)"
   record "Beat 5a AIM twin" "NOT YET MERGED" "capture absent"
@@ -622,9 +778,10 @@ advance
 # ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
-  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+  say "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
+  say "We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
-  say "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
+  say "Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you."
 else
   nym "T7 results (sentinel/scoring/results.json)"
   record "Beat 7 headline" "NOT YET MERGED" "results absent"

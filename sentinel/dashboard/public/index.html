@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SentinelProxy Incident Replay</title>
+  <title>Tourniquet Incident Replay</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
@@ -13,13 +13,14 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">◆</span>
       <div>
-        <h1>SentinelProxy · Incident replay</h1>
+        <h1>Tourniquet · Incident replay</h1>
         <p class="sub">Recorded DVAA captures, replayed deterministically. No live LLM calls.</p>
+        <p class="sub">A tourniquet stops the bleed: Tourniquet stops data exfiltration and other agent tool-misuse at the egress boundary.</p>
       </div>
     </div>
     <div class="controls">
       <label>Capture <select id="capture"></select></label>
-      <label>Run <select id="run"></select></label>
+      <label id="run-label">Run <select id="run"></select></label>
       <div class="replay-ctl" role="group" aria-label="Replay controls">
         <button id="first" title="First step (Home)">⏮</button>
         <button id="prev" title="Previous step (←)">◀</button>
@@ -44,7 +45,7 @@
     </div>
     <div class="big-tile" id="tile-prev">
       <div class="big-label">Prevented</div>
-      <div class="big-sub">stopped before forwarding</div>
+      <div class="big-sub">blocked pre-forward or reply withheld</div>
       <div class="big-value" id="prev-rate">—</div>
       <div class="big-base" id="prev-base"></div>
       <div class="big-fp" id="prev-fp"></div>
@@ -73,32 +74,32 @@
     </div>
   </section>
 
-  <main class="split">
+  <main class="stage-grid">
+    <section class="graph-wrap" aria-labelledby="graph-h">
+      <div class="graph-head">
+        <h2 id="graph-h">Incident graph <span class="muted graph-size" id="graph-size"></span></h2>
+        <div class="legend" aria-label="Legend">
+          <span><i class="sw sw-taint"></i> taint path (detector)</span>
+          <span><i class="sw sw-gt"></i> DVAA ground truth</span>
+          <span><i class="sw sw-mal"></i> ⚠ malicious node</span>
+          <span><i class="sw sw-trunc"></i> ⋯ truncated</span>
+        <span class="legend-unresolved"><i class="sw sw-trunc"></i> ? unresolved</span>
+        </div>
+      </div>
+      <div class="graph-scroll" id="graph-scroll"><svg id="graph" class="graph" aria-label="Incident graph"></svg></div>
+      <div id="detail" class="detail" aria-live="polite"><p class="muted">Select a node to see its recorded content.</p></div>
+    </section>
+    <section class="pane detector" aria-labelledby="det-h">
+      <h2 id="det-h"><span class="side-tag det">DETECTOR</span> Tourniquet alert feed</h2>
+      <div id="alert-source" class="alert-source"></div>
+      <div id="feed" class="feed"></div>
+    </section>
     <section class="pane attacker" aria-labelledby="att-h">
       <h2 id="att-h"><span class="side-tag att">ATTACKER / AGENT</span> What happened</h2>
       <div id="twin" class="twin"></div>
       <ol id="timeline" class="timeline"></ol>
     </section>
-    <section class="pane detector" aria-labelledby="det-h">
-      <h2 id="det-h"><span class="side-tag det">DETECTOR</span> SentinelProxy alert feed</h2>
-      <div id="alert-source" class="alert-source"></div>
-      <div id="feed" class="feed"></div>
-    </section>
   </main>
-
-  <section class="graph-wrap" aria-labelledby="graph-h">
-    <div class="graph-head">
-      <h2 id="graph-h">Incident graph <span class="muted graph-size" id="graph-size"></span></h2>
-      <div class="legend" aria-label="Legend">
-        <span><i class="sw sw-taint"></i> taint path (detector)</span>
-        <span><i class="sw sw-gt"></i> DVAA ground truth</span>
-        <span><i class="sw sw-mal"></i> ⚠ malicious node</span>
-        <span><i class="sw sw-trunc"></i> ⋯ truncated / ? unresolved</span>
-      </div>
-    </div>
-    <div class="graph-scroll"><svg id="graph" class="graph" aria-label="Incident graph"></svg></div>
-    <div id="detail" class="detail" aria-live="polite"><p class="muted">Select a node to see its recorded content.</p></div>
-  </section>
 
   <footer class="foot">
     <span id="bounds"></span>

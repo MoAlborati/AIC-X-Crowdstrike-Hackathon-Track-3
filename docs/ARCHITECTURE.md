@@ -1,4 +1,4 @@
-# SentinelProxy architecture
+# Tourniquet architecture
 
 This page covers the data flow, the components, and where each one prevents an attack versus only
 detecting it. Start with the [README](../README.md).
@@ -28,7 +28,7 @@ detecting it. Start with the [README](../README.md).
 | T10 | `sentinel/pipeline` | Turns proxy verdicts into T4 alerts and writes them to the dashboard sink | Display caps only (never change a verdict); overflow rotates to a new part or raises `PipelineBoundError`, never drops |
 | T5 | `sentinel/dashboard` | Deterministic replay, incident graph, alert feed on `127.0.0.1:9100` | Loopback only, DNS-rebinding guarded |
 | T7 | `sentinel/scoring` | Precision, recall, benign FP rate, latency and override rate for each detector | Missing detector → reported as unavailable, never scored as zero |
-| T8 | `captures/contrast` | Same attack against vulnerable DVAA, AIM-defended DVAA, and DVAA behind SentinelProxy | Every cell is checked against ground truth |
+| T8 | `captures/contrast` | Same attack against vulnerable DVAA, AIM-defended DVAA, and DVAA behind Tourniquet | Every cell is checked against ground truth |
 
 ## Where prevention happens
 
@@ -38,7 +38,8 @@ detecting it. Start with the [README](../README.md).
 - **At egress.** The agent decides some actions in-process (for example, a poisoned repo file read by
   RepoBot). The chat proxy can only raise an alert for those. The egress guard denies the outbound call
   itself. Its ground truth is what the attacker server received, not DVAA's own `exfilExecuted` flag.
-- **Response side.** This is alert-only, because DVAA executes tools inside the agent process.
+- **Response side.** This is alert-only for prevention, because DVAA executes tools inside the agent process.
+  In block mode the reply is withheld from the client, but the tool has already run.
 
 ## Bounds
 

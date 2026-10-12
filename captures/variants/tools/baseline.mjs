@@ -18,7 +18,7 @@
 /**
  * DVAA 8KB head/tail baseline bridge — REAL SEAM for the T6 evasion proof.
  *
- * SentinelProxy is a DEFENSIVE detector. This module lets the T6 corpus prove,
+ * Tourniquet is a DEFENSIVE detector. This module lets the T6 corpus prove,
  * against DVAA's own baseline scanner, that an evasion variant slips past the
  * 8KB head/tail window while still carrying an exfil signal (the thing our
  * full-payload detector, T3, must catch).

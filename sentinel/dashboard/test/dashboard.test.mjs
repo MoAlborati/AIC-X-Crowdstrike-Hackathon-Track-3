@@ -277,6 +277,26 @@ test('more than MAX_CAPTURE_FILES captures returns 507; the index never lists on
   }
 });
 
+test('MAX_CAPTURE_FILES is >= 2000 and 1201 captures (past the old 500 cap) all index with 200, none dropped (#112 C#3)', async () => {
+  assert.ok(BOUNDS.MAX_CAPTURE_FILES >= 2000, `cap ${BOUNDS.MAX_CAPTURE_FILES} must leave headroom over the ~358 real captures`);
+  const N = 1201;
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-dash-'));
+  try {
+    await mkdir(path.join(dir, 'many'));
+    const body = JSON.stringify({ request: { messages: [{ role: 'user', content: 'hi' }] }, response: {} });
+    await Promise.all(Array.from({ length: N }, (_, i) => writeFile(path.join(dir, 'many', `c${i}.json`), body)));
+    await withServer([{ dir, source: 'captures' }], async (base) => {
+      const r = await fetch(`${base}/api/captures`);
+      assert.equal(r.status, 200);
+      const ids = (await r.json()).captures.map((c) => c.id);
+      assert.equal(ids.length, N, 'every capture is listed');
+      for (const i of [0, 499, 500, 501, 1200]) assert.ok(ids.some((id) => id.endsWith(`/c${i}`) || id.includes(`c${i}.`) || id.endsWith(`c${i}`)), `capture c${i} listed`);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('unknown ids and path-traversal attempts are 404 (ids are map keys, never file paths)', async () => {
   await withServer(defaultRoots(), async (base) => {
     for (const id of ['nope', '../../etc/passwd', 'attack/../../package', '/etc/hosts', 'attack/aim-ab.demo.json', '..%2F..%2Fsentinel%2Fdashboard%2Fpackage']) {
@@ -304,7 +324,10 @@ test('static UI is served with a CSP and the UI never assigns innerHTML (capture
 });
 
 // ---- latency ----------------------------------------------------------------------------------
-test('latency: replay build median/p95 on the data-rich and long-path captures', async (t) => {
+// CPU time of this thread, not wall clock (flake fix): under merge-gate load wall clock measures the scheduler.
+const cpuUsage = typeof process.threadCpuUsage === 'function' ? (prev) => process.threadCpuUsage(prev) : (prev) => process.cpuUsage(prev);
+const cpuMs = (c) => (c.user + c.system) / 1000;
+test('latency: replay build median/p95 (CPU ms) on the data-rich and long-path captures', async (t) => {
   const index = await indexCaptures();
   for (const id of ['placeholder/data-rich-orders', 'placeholder/long-taint-path', 'attack/aim-ab.demo']) {
     const c = await loadCapture(index.get(id));
@@ -312,16 +335,16 @@ test('latency: replay build median/p95 on the data-rich and long-path captures',
     const { alerts } = await adaptAlerts((await import('../lib/alert-store.mjs').then(m => m.alertsFor(c, run.key))).alerts, id);
     const samples = [];
     for (let i = 0; i < 60; i++) {
-      const t0 = performance.now();
+      const c0 = cpuUsage();
       const rp = buildReplay({ id, agent: run.agent, exchanges: run.exchanges, toolResults: run.toolResults }, alerts, { canaryHits: c.canaryHits });
       layoutGraph(rp.graph);
-      samples.push(performance.now() - t0);
+      samples.push(cpuMs(cpuUsage(c0)));
     }
     samples.sort((a, b) => a - b);
     const med = percentile(samples, 50);
     const p95 = percentile(samples, 95);
-    t.diagnostic(`${id}: build+layout median ${med.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms (n=60)`);
-    assert.ok(p95 < 100, `${id} p95 ${p95.toFixed(1)} ms exceeds 100 ms`);
+    t.diagnostic(`${id}: build+layout median ${med.toFixed(2)} ms CPU, p95 ${p95.toFixed(2)} ms CPU (n=60)`);
+    assert.ok(p95 < 100, `${id} p95 ${p95.toFixed(1)} ms CPU exceeds 100 ms`);
   }
 });
 

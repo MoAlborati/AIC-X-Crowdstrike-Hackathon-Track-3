@@ -50,7 +50,7 @@ export function captureExchange(record, { proxyCapturePath, line } = {}) {
   if (record.action === 'blocked_request' || (!upstream && record.response?.status >= 400 && response?.error?.type?.startsWith?.('sentinel_'))) {
     const refusal = res.json;
     response = {
-      choices: [{ message: { role: 'assistant', content: `[SentinelProxy refused this request before it reached the agent: ${refusal?.sentinel?.reason ?? record.action}]` }, finish_reason: 'sentinel_blocked' }],
+      choices: [{ message: { role: 'assistant', content: `[Tourniquet refused this request before it reached the agent: ${refusal?.sentinel?.reason ?? record.action}]` }, finish_reason: 'sentinel_blocked' }],
       sentinelRefusal: refusal ?? null,
     };
   }
@@ -72,7 +72,7 @@ export function captureExchange(record, { proxyCapturePath, line } = {}) {
 
 function omittedExchange(record, bytes, cap, ref) {
   const where = ref?.path ? `${ref.path} line ${ref.line ?? '?'}` : 'the proxy JSONL';
-  const msg = `[SentinelProxy pipeline: exchange of ${bytes} B exceeds the display embed cap ${cap} B, so its bodies are not embedded here. Full bodies: ${where}, request_id=${record.request_id}. Verdicts were computed by the proxy on the full bodies.]`;
+  const msg = `[Tourniquet pipeline: exchange of ${bytes} B exceeds the display embed cap ${cap} B, so its bodies are not embedded here. Full bodies: ${where}, request_id=${record.request_id}. Verdicts were computed by the proxy on the full bodies.]`;
   return {
     request: { messages: [{ role: 'user', content: msg }] },
     response: { choices: [{ message: { role: 'assistant', content: msg }, finish_reason: null }] },

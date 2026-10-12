@@ -1,4 +1,4 @@
-// SentinelProxy T3 — the ONE policy.json (BACKLOG T3 "One config, not three").
+// Tourniquet T3 — the ONE policy.json (BACKLOG T3 "One config, not three").
 //
 // Mandate, destination provenance and per-tool policy are evaluated as one pure function over this
 // object: `static` (operator-authored per-tool limits, mode report-only|enforce) ∩ `mandate`

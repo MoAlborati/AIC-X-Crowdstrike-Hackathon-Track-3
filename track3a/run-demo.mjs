@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 // Track 3 Path A demo: build our own agent (OpsBot), attack it, defend it in layers.
-// Runs every defense stack against every scenario on 127.0.0.1 and writes runs/results.json + RESULTS.md.
-//   node track3a/run-demo.mjs [--quiet]
+// Runs every defense stack against every scenario on 127.0.0.1. Runtime output (results.json, RESULTS.md,
+// proxy captures, egress logs) goes to the gitignored .eval/track3a/ (override: TRACK3A_OUT), so a run never
+// dirties the tree. --write-results also refreshes the committed track3a/RESULTS.md + runs/results.json.
+//   node track3a/run-demo.mjs [--quiet] [--write-results]
+// Needs Node >= 24: the egress-guard stacks route tool egress through NODE_USE_ENV_PROXY.
 //
 // Stacks (each one adds or swaps a single layer):
 //   undefended     OpsBot, no defenses
-//   chat-proxy     SentinelProxy chat proxy (T2+T3, block mode) in front of OpsBot
-//   proxy+egress   + SentinelProxy egress guard (T12, block mode) on OpsBot's tool egress
-//   hardened       OpsBot with its own user-turn mandate (secure-by-design), no SentinelProxy
+//   chat-proxy     Tourniquet chat proxy (T2+T3, block mode) in front of OpsBot
+//   proxy+egress   + Tourniquet egress guard (T12, block mode) on OpsBot's tool egress
+//   hardened       OpsBot with its own user-turn mandate (secure-by-design), no Tourniquet
 //   full           hardened OpsBot + chat proxy + egress guard (defense in depth)
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -19,11 +22,12 @@ import { createCanary } from './canary.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
-const RUNS = join(HERE, 'runs');
+const RUNS = resolve(process.env.TRACK3A_OUT ?? join(ROOT, '.eval', 'track3a'));
+const MIN_NODE_MAJOR = 24;
 
 export const STACKS = [
   { id: 'undefended', label: 'Undefended OpsBot', hardened: false, proxy: false, egress: false },
-  { id: 'chat-proxy', label: '+ SentinelProxy chat proxy', hardened: false, proxy: true, egress: false },
+  { id: 'chat-proxy', label: '+ Tourniquet chat proxy', hardened: false, proxy: true, egress: false },
   { id: 'proxy+egress', label: '+ chat proxy + egress guard', hardened: false, proxy: true, egress: true },
   { id: 'hardened', label: 'Hardened OpsBot (mandate only)', hardened: true, proxy: false, egress: false },
   { id: 'full', label: 'Hardened + chat proxy + egress guard', hardened: true, proxy: true, egress: true },
@@ -107,7 +111,7 @@ async function runStack(stack, canary, canaryPort) {
     if (stack.proxy) {
       proxy = await start(['sentinel/proxy/cli.mjs', '--config', 'track3a/proxy.config.json'], {
         SENTINEL_LISTEN_PORT: '0', SENTINEL_TARGET_PORT: String(bot.port),
-        SENTINEL_CAPTURE_PATH: `track3a/runs/proxy-${tag}.jsonl`,
+        SENTINEL_CAPTURE_PATH: join(RUNS, `proxy-${tag}.jsonl`),
       }, jsonPort);
     }
     const entry = proxy ? proxy.port : bot.port;
@@ -141,6 +145,11 @@ async function runStack(stack, canary, canaryPort) {
 }
 
 export async function runMatrix() {
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major < MIN_NODE_MAJOR) {
+    // Fail loud: on older Node, NODE_USE_ENV_PROXY is ignored and the egress-guard rows would falsely read LEAKED.
+    throw new Error(`track3a needs Node >= ${MIN_NODE_MAJOR} (NODE_USE_ENV_PROXY); running ${process.version}`);
+  }
   mkdirSync(RUNS, { recursive: true });
   const canary = createCanary();
   const { port: canaryPort } = await canary.listen();
@@ -184,9 +193,20 @@ export function toMarkdown(rows) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const rows = await runMatrix();
-  writeFileSync(join(RUNS, 'results.json'), `${JSON.stringify(rows, null, 2)}\n`);
+  let rows;
+  try {
+    rows = await runMatrix();
+  } catch (err) {
+    process.stderr.write(`[track3a] ${err.message}\n`);
+    process.exit(2);
+  }
+  const json = `${JSON.stringify(rows, null, 2)}\n`;
   const md = toMarkdown(rows);
-  writeFileSync(join(HERE, 'RESULTS.md'), md);
+  writeFileSync(join(RUNS, 'results.json'), json);
+  writeFileSync(join(RUNS, 'RESULTS.md'), md);
+  if (process.argv.includes('--write-results')) {
+    writeFileSync(join(HERE, 'runs', 'results.json'), json);
+    writeFileSync(join(HERE, 'RESULTS.md'), md);
+  }
   if (!process.argv.includes('--quiet')) process.stdout.write(md);
 }

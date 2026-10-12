@@ -1,4 +1,4 @@
-// SentinelProxy reverse proxy (T2 skeleton). Zero deps, Node >= 22.
+// Tourniquet reverse proxy (T2 skeleton). Zero deps, Node >= 22.
 //
 // Pipeline per request:
 //   0. Admission: at most limits.maxInFlight exchanges at once (over -> 503 `overloaded` + ALERT).
@@ -8,6 +8,8 @@
 //      nothing is forwarded (fail-closed; we never forward or scan a truncated body).
 //   2. Decode `content-encoding` (gzip/deflate/br, bounded by the same cap) so inspectors see the
 //      plaintext. Unsupported/undecodable encoding: block -> refused; observe -> forward + ALERT.
+//      A decoded REQUEST body that is not valid UTF-8 (binary/unknown content): block -> 415
+//      `uninspectable_content`; observe -> forward + ALERT (#157).
 //   3. Run request-phase inspectors over the FULL decoded body + URL + headers, under a deadline
 //      (limits.inspectorTimeoutMs).
 //        block mode   + flagged -> structured 403 refusal, upstream is never contacted.
@@ -39,9 +41,11 @@ import { ConfigError, isLoopbackHost } from '../config/load.mjs';
 import { DISPOSITIONS } from '../alerts/index.js';
 import { prepareCanaries, redactDeep } from '../alerts/redact.js';
 
-// Every request and response is inspected, whatever its path. Keying inspection on an exact path
-// (e.g. only /v1/chat/completions) would let a path variant an upstream happens to accept, or a
-// non-OpenAI agent route (MCP/A2A), bypass the guard. Cost is one full-body scan per exchange.
+// The proxy runs every registered inspector on every request and response, whatever the path. What an
+// inspector then CHECKS depends on the inspector: T3 parses only the chat-completions paths and returns
+// null elsewhere. Other routes (DVAA `POST /chat`, A2A `/a2a/message`, MCP) get the honeytoken
+// backstops from default-inspectors.mjs (exact canary values in body/headers/URL, both phases, plus
+// encoded canaries in non-chat POST bodies), not T3's injection/mandate/egress analysis (#126).
 
 // RFC 7230 §6.1 hop-by-hop headers, plus ones we recompute ourselves.
 const HOP_BY_HOP = new Set([
@@ -61,7 +65,7 @@ export const CONNECTIONS_PER_IN_FLIGHT = 4;
 // The complete set of codes a client can ever see. Static strings; nothing inspector-derived.
 export const REFUSAL_CODES = Object.freeze([
   'flagged_request', 'flagged_response', 'inspector_error', 'inspector_timeout',
-  'request_too_large', 'response_too_large', 'uninspectable_encoding', 'capture_unavailable',
+  'request_too_large', 'response_too_large', 'uninspectable_encoding', 'uninspectable_content', 'capture_unavailable',
   'upstream_unreachable', 'upstream_timeout', 'overloaded', 'client_timeout', 'internal_error',
 ]);
 const STATIC_DETAIL_ACTIONS = new Set(['rejected_not_forwarded', 'rejected_not_returned']);
@@ -429,7 +433,7 @@ export function buildRefusal({ requestId, phase, reason, verdicts = [], mode, de
     error: {
       type: 'sentinel_blocked',
       code,
-      message: `SentinelProxy refused this ${phase}: ${code}`,
+      message: `Tourniquet refused this ${phase}: ${code}`,
     },
     sentinel: {
       request_id: requestId,
@@ -459,15 +463,24 @@ export function createProxy(config, deps = {}) {
   // deps.scrub: the CLI builds one scrubber over T3's honeytokens + flagSubstrings and shares it with T3's logger.
   const scrub = deps.scrub ?? makeLogScrubber(flagSubstringCanaries(config.inspect.flagSubstrings));
   const block = mode === 'block';
+  // deps.newRequestId: test seam only (pins a UUID the scrubber would mangle); production uses randomUUID.
+  const newRequestId = deps.newRequestId ?? randomUUID;
   let inFlight = 0;
 
+  // request_id is the proxy's own randomUUID(), never client data, and it is the ONLY key that joins an alert
+  // record to its exchange record (which is not scrubbed). The scrubber's payment-card / digit-run patterns
+  // match ~1 in 8,000 UUIDs (e.g. 41812006-4939-4383-…: a Luhn-valid run across the hyphens). A redacted
+  // id orphaned that alert from its exchange (pipeline flake: extra `proxy-unattributed` capture, ~2.5% of
+  // 210-request runs). So the id is re-pinned after scrubbing; every other field stays redacted.
+  const scrubAlert = (requestId, fields) => ({ ...scrub(fields), request_id: requestId });
+
   async function emitAlert(requestId, alert) {
-    const record = scrub({ type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
+    const record = scrubAlert(requestId, { type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
     logAlert(record);
     try {
       await sink.write(record);
     } catch (err) {
-      logAlert(scrub({ type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
+      logAlert(scrubAlert(requestId, { type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
     }
     return record;
   }
@@ -540,6 +553,17 @@ export function createProxy(config, deps = {}) {
         await emitAlert(requestId, { reason: 'uninspectable_encoding', phase, encoding: err.encoding, error: err.message, action: block ? 'fail_closed' : `${phase === 'request' ? 'forwarded' : 'returned'}_uninspected` });
         if (block) return { stop: refuse(phase === 'request' ? 415 : 502, phase, 'uninspectable_encoding') };
         return { decoded: null };
+      }
+      // #157: a request body that is not valid UTF-8 after content-decoding (octet-stream, binary
+      // multipart parts, images, unknown binary types) cannot be parsed by T3 and is only byte-scanned
+      // for raw canaries. Block mode refuses it before forwarding (fail-closed); observe forwards + ALERT.
+      // Text bodies of ANY content-type (JSON, text, form, base64 data URIs inside JSON) are inspected as before.
+      if (phase === 'request' && decoded.length > 0 && !isUtf8(decoded)) {
+        await emitAlert(requestId, {
+          reason: 'uninspectable_content', phase, content_type: String(headers['content-type'] ?? '').slice(0, 100),
+          bytes: decoded.length, action: block ? 'fail_closed' : 'forwarded_uninspected',
+        });
+        if (block) return { stop: refuse(415, phase, 'uninspectable_content') };
       }
       let verdicts;
       let alertOnly = [];
@@ -670,7 +694,7 @@ export function createProxy(config, deps = {}) {
   };
 
   function dispatch(req, res, opts) {
-    const requestId = randomUUID();
+    const requestId = newRequestId();
     if (inFlight >= limits.maxInFlight) {
       // Admission control: refuse before reading/buffering anything. The unread body is discarded
       // (no memory held); the connection closes after the reply.

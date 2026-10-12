@@ -233,29 +233,35 @@ export function loadT6Variants(root = REPO_ROOT) {
 // A SEPARATE labeled set, never mixed into the main corpus (loadCorpus(root, { set: 'holdout-hf' })).
 // Fixtures are built in memory from the committed verbatim sample (captures/holdout-hf/upstream/*.json)
 // by captures/holdout-hf/tools/build.mjs, then cross-checked id-by-id against manifest.json: any drift is fatal.
-export const SETS = Object.freeze(['main', 'holdout-hf']);
+// holdout-ipi (captures/holdout-ipi: LLMail-Inject + BIPIA) is a second held-out set with the same layout.
+// holdout-hackmyagent (captures/holdout-hackmyagent: the DVAA authors' own hackmyagent battery, 164 payloads
+// x 16 categories, placed direct + indirect) is a third held-out set with the same layout. It ships only
+// attack rows; benign negatives are reused from the main corpus (hackmyagent has none) — see loadSet.
+export const SETS = Object.freeze(['main', 'holdout-hf', 'holdout-ipi', 'holdout-hackmyagent']);
+const HOLDOUT_SOURCE = Object.freeze({ 'holdout-hf': 'hf-holdout', 'holdout-ipi': 'ipi-holdout', 'holdout-hackmyagent': 'hackmyagent-holdout' });
 
-export async function loadHoldoutHf(root = REPO_ROOT) {
-  const dir = path.join(root, 'captures', 'holdout-hf');
+export async function loadHoldoutHf(root = REPO_ROOT, set = 'holdout-hf') {
+  if (!HOLDOUT_SOURCE[set]) throw new CorpusError(`not a held-out set: ${set}`);
+  const dir = path.join(root, 'captures', set);
   const manifestFile = path.join(dir, 'manifest.json');
   const builder = path.join(dir, 'tools', 'build.mjs');
-  if (!existsSync(manifestFile) || !existsSync(builder)) throw new CorpusError(`holdout-hf set not found under ${dir}`);
+  if (!existsSync(manifestFile) || !existsSync(builder)) throw new CorpusError(`${set} set not found under ${dir}`);
   const manifest = readJson(manifestFile);
   if (!Array.isArray(manifest.cases)) throw new CorpusError(`${manifestFile}: cases[] missing`);
   const { buildAll } = await import(pathToFileURL(builder).href);
   const built = buildAll();
   const byId = new Map(built.map((fx) => [fx.id, fx]));
   if (built.length !== manifest.cases.length || manifest.counts?.total !== built.length) {
-    throw new CorpusError(`holdout-hf: built ${built.length} fixtures but manifest lists ${manifest.cases.length} (counts.total=${manifest.counts?.total}); rebuild the manifest`);
+    throw new CorpusError(`${set}: built ${built.length} fixtures but manifest lists ${manifest.cases.length} (counts.total=${manifest.counts?.total}); rebuild the manifest`);
   }
   const cases = manifest.cases.map((entry) => {
     const fx = byId.get(entry.id);
-    if (!fx) throw new CorpusError(`holdout-hf manifest case ${entry.id} not produced by build.mjs`);
+    if (!fx) throw new CorpusError(`${set} manifest case ${entry.id} not produced by build.mjs`);
     const gt = fx.label?.groundTruth;
-    if (gt !== entry.groundTruth) throw new CorpusError(`holdout-hf ${fx.id}: manifest groundTruth ${entry.groundTruth} != fixture ${gt}`);
+    if (gt !== entry.groundTruth) throw new CorpusError(`${set} ${fx.id}: manifest groundTruth ${entry.groundTruth} != fixture ${gt}`);
     return {
       id: fx.id,
-      source: 'hf-holdout',
+      source: HOLDOUT_SOURCE[set],
       group: entry.group,
       channel: fx.channel,
       agent: null,
@@ -274,8 +280,16 @@ export async function loadHoldoutHf(root = REPO_ROOT) {
 export async function loadSet(root = REPO_ROOT, set = 'main') {
   if (!SETS.includes(set)) throw new CorpusError(`unknown set "${set}" (expected ${SETS.join('|')})`);
   if (set === 'main') return loadCorpus(root);
-  const h = await loadHoldoutHf(root);
-  enforce('MAX_CASES', h.cases.length, 'holdout-hf');
+  const h = await loadHoldoutHf(root, set);
+  // hackmyagent ships no benign rows: reuse the main corpus's benign negatives so prevention/FP
+  // rate is measurable. These are DISCLOSED as reused (group "benign(reused:main)"), not held out.
+  if (set === 'holdout-hackmyagent') {
+    const benign = loadCorpus(root).cases
+      .filter((c) => c.groundTruth === 'negative')
+      .map((c) => ({ ...c, group: 'benign(reused:main)', source: `benign-reused(${c.source})` }));
+    h.cases.push(...benign);
+  }
+  enforce('MAX_CASES', h.cases.length, set);
   const seen = new Set();
   for (const c of h.cases) {
     if (seen.has(c.id)) throw new CorpusError(`duplicate case id ${c.id}`);

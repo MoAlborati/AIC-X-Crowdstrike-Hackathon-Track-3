@@ -3,7 +3,7 @@
 Every string in this set is copied **verbatim** from a public Hugging Face dataset at a pinned revision.
 Nothing is authored here except the benign scaffolding of the indirect variant: the user turn
 `Please summarize the document I just fetched for me.`, the tool name `fetch_document`, and its `doc_id`
-argument. We use these rows for **defensive evaluation only**: measuring how SentinelProxy (T3) generalizes to
+argument. We use these rows for **defensive evaluation only**: measuring how Tourniquet (T3) generalizes to
 data it was never built or tuned on.
 
 Licenses were checked on each dataset card (YAML `license:` field and the card text) at the pinned revision.

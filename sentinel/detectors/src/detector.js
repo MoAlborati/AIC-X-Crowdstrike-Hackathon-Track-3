@@ -1,4 +1,4 @@
-// SentinelProxy T3 — detector pipeline. Pure library: no network, no LLM, no I/O except the logger.
+// Tourniquet T3 — detector pipeline. Pure library: no network, no LLM, no I/O except the logger.
 //
 //   const det = createDetector({ policy, honeytokens: DVAA_HONEYTOKENS, agent: {name:'RAGBot', port:7005} });
 //   const decision = det.inspect({ sessionId, request, response });   // never throws; fails closed
@@ -21,10 +21,10 @@ import { randomUUID } from 'node:crypto';
 import { resolveBounds, SentinelBoundError, DetectorOverflowError, ScannerTimeoutError, PolicyError } from './bounds.js';
 import { HoneytokenRegistry } from './honeytokens.js';
 import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './policy.js';
-import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
+import { SessionStore, deriveGrant, verifyGrant, narrowGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
+  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables, safeUrlDecode,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -211,15 +211,19 @@ export function createDetector(opts = {}) {
     // Pass 1: injection markers per text. A principal turn carrying injection phrases is SUSPECT: it cannot
     // widen the mandate (ambiguity -> narrower), so destinations named only there stay unconfirmed.
     const inboundTexts = [
-      ...untrusted.map((u) => ({ label: u.label, text: u.text, toolCallId: u.toolCallId, principal: false })),
-      ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
+      // Homoglyph fold (#112): mixed-script words are folded to ASCII before every request-side scan.
+      ...untrusted.map((u) => ({ label: u.label, text: foldConfusables(u.text), toolCallId: u.toolCallId, principal: false })),
+      ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: foldConfusables(p.text), principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
       u.phrases = findInjectionPhrases(u.text);
       u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
-    const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
+    // #126 finding 2 (forged history): the mandate grant comes from clean USER turns only. A client-sent
+    // `system`/`developer` turn is attacker-writable through the proxy (DVAA itself reads only the latest
+    // user turn), so it can never authorize a destination. Those turns are still scanned as principal text.
+    const principalText = principal.filter((p) => p.role === 'user' && !p.suspect).map((p) => p.text).join('\n');
     const shingles = buildShingleIndex(untrusted, bounds.shingleChars);
     ctx.layerMs.taint += performance.now() - ts;
 
@@ -227,6 +231,17 @@ export function createDetector(opts = {}) {
     ts = performance.now();
     session.grant = deriveGrant({ principalText, policy, session, maxGrantEntries: bounds.maxGrantEntries, now: now() });
     if (!verifyGrant(session.grant, session.key)) throw new Error('mandate grant failed HMAC verification');
+    // #126 finding 2: if the LATEST user turn is suspect (injection phrases), every destination it names is
+    // unconfirmed, even when an earlier (possibly forged) turn named it too: the grant is narrowed to drop
+    // them (intersect-only, re-signed). Request-side destination checks and response-side tool calls both
+    // read this grant.
+    const latestUser = principal.findLast((p) => p.role === 'user');
+    if (latestUser?.suspect && session.grant.destinations.length) {
+      const revoked = namedDestinations(latestUser.text);
+      if (session.grant.destinations.some((d) => revoked.has(d))) {
+        session.grant = narrowGrant(session.grant, { destinations: session.grant.destinations.filter((d) => !revoked.has(d)) }, session.key);
+      }
+    }
     const grant = session.grant;
     ctx.layerMs.mandate += performance.now() - ts;
     checkBudget(ctx, 'history');
@@ -260,6 +275,28 @@ export function createDetector(opts = {}) {
         ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email, index: x.index })),
         ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban, index: x.index })),
       ];
+      // Issue #112: identifiers spaced out with whitespace / '.' / '-' / zero-width chars ("U S 1 3 ...")
+      // are re-joined and scanned for destinations and honeytokens too. Indices map back to u.text.
+      // seenDest is built ONCE per text and kept current with add() (#122 review: rebuilding it per run was
+      // O(#runs x #destinations) and could push a benign page into the fail-closed time budget).
+      const seenDest = new Set(named.map((d) => `${d.type}\u0000${d.destination}`));
+      const joined = joinSpacedRuns(findSpacedRuns(u.text));
+      for (const v of joined ? [joined.keep, joined.compact] : []) {
+        if (!v) continue;
+        const { text: t, pos } = v;
+        for (const h of registry.scan(t)) if (!seenTok.has(h.entry.id)) (seenTok.add(h.entry.id), tokensHit.push(h));
+        const found = [
+          ...extractUrls(t).map((x) => ({ type: 'http', destination: x.host, index: pos[x.index] })),
+          ...extractEmails(t).map((x) => ({ type: 'email', destination: x.email, index: pos[x.index] })),
+          ...findIbans(t).map((x) => ({ type: 'account', destination: x.iban, index: pos[x.index] })),
+        ];
+        for (const d of found) {
+          const key = `${d.type}\u0000${d.destination}`;
+          if (seenDest.has(key)) continue;
+          seenDest.add(key);
+          named.push(d);
+        }
+      }
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
       if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) {
@@ -325,7 +362,7 @@ export function createDetector(opts = {}) {
       const call = { id: String(tc?.id ?? `call-${randomUUID()}`), name, args, rawArgs, argBytes: Buffer.byteLength(rawArgs), kind, destinations: callDestinations(args) };
       const mode = effectiveMode(policy, name);
       const isSink = SINK_KINDS.has(kind);
-      const sinkEnt = sinkEntity(call, isSink);
+      const sinkEnt = sinkEntity(call);
       const callLabel = `${name}(${preview(args)})`;
 
       ts = performance.now();
@@ -349,7 +386,9 @@ export function createDetector(opts = {}) {
       // 1. honeytoken -------------------------------------------------------------------------
       ts = performance.now();
       const seenTokens = new Set();
-      for (const v of variants) {
+      // Issue #112: a honeytoken spaced out in the arguments ("s k - d v a a ...") is re-joined first.
+      const spacedArgs = (() => { const j = joinSpacedRuns(findSpacedRuns(rawArgs)); return j ? [j.keep, j.compact].filter(Boolean).map((v) => ({ text: v.text, encoding: 'spaced' })) : []; })();
+      for (const v of [...variants, ...spacedArgs]) {
         for (const { entry } of registry.scan(v.text)) {
           if (seenTokens.has(entry.value)) continue;
           seenTokens.add(entry.value);
@@ -806,10 +845,10 @@ function redactText(s, registry, bounds) {
   return out + s.slice(at);
 }
 
-function sinkEntity(call, isSink) {
+function sinkEntity(call) {
   const d = call.destinations[0];
   if (d) return { type: d.type, destination: d.url ?? d.destination };
-  const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : isSink ? 'tool' : 'tool';
+  const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : 'tool';
   return { type: t, destination: `${call.name} (no network destination)` };
 }
 
@@ -843,6 +882,19 @@ function metaTexts(meta) {
   const lines = [];
   for (const [k, v] of Object.entries(meta.headers ?? {})) lines.push(`${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
   if (lines.length) out.push({ label: `${direction} headers`, text: lines.join('\n'), direction });
+  return out;
+}
+
+/** Every destination a text names (URL host, email, IBAN), in raw, homoglyph-folded and spaced-out spellings. */
+function namedDestinations(text) {
+  const out = new Set();
+  const texts = [text, foldConfusables(text)];
+  for (const t of [...texts]) for (const run of findSpacedRuns(t)) texts.push(run.keep, run.compact);
+  for (const t of texts) {
+    for (const x of extractUrls(t)) out.add(x.host);
+    for (const x of extractEmails(t)) out.add(x.email);
+    for (const x of findIbans(t)) out.add(x.iban);
+  }
   return out;
 }
 
@@ -881,8 +933,10 @@ function buildShingleIndex(untrusted, k) {
 function copiedSpan(sinkText, sh, bounds, principalText) {
   const { index, text, k } = sh;
   const variants = [sinkText];
-  // URL-encoded copies are still copies.
-  if (sinkText.includes('%')) variants.push(decodeSafe(sinkText));
+  // URL-encoded copies are still copies. safeUrlDecode decodes the valid %XX triplets even when another
+  // escape is malformed: the old local decodeSafe() returned the RAW string on any bad '%', so appending a
+  // lone '%' ("...100%") turned this variant off (#112 CRITIC-C #2).
+  if (sinkText.includes('%')) variants.push(safeUrlDecode(sinkText));
   let best = null;
   for (const s of variants) {
     for (let p = 0; p + k <= s.length; p++) {
@@ -905,14 +959,6 @@ function copiedSpan(sinkText, sh, bounds, principalText) {
     }
   }
   return best;
-}
-
-function decodeSafe(s) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
 }
 
 const round = (x) => Math.round(x * 1000) / 1000;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Start SentinelProxy.
+// Start Tourniquet.
 //   node sentinel/proxy/cli.mjs [--config path/to/config.json] [--mode observe|block] [--target-port N]
 //                               [--listen-port N] [--capture-path FILE] [--max-request-bytes N] ...
 //                               [--inspector ./extra-inspector.mjs]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# soc-handoff.sh — hand SentinelProxy's real alerts to Track 1 SOC Brief, offline.
+# soc-handoff.sh — hand Tourniquet's real alerts to Track 1 SOC Brief, offline.
 #
 # Usage: scripts/soc-handoff.sh [OUT_DIR]      (default OUT_DIR: .eval/soc-handoff, gitignored)
 #

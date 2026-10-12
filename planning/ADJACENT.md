@@ -20,7 +20,7 @@ one-to-one role mapping and the **same goal** (Holyoak & Thagard [T3]).
 
 Our structure is the **confused deputy** (Hardy 1988 [T2]), which has three actors:
 
-| Role | In SentinelProxy / DVAA |
+| Role | In Tourniquet / DVAA |
 |---|---|
 | **Principal** owns the authority | the user / operator |
 | **Deputy** holds the authority and acts on it | the LLM agent and its tools |
@@ -122,7 +122,7 @@ stretch tickets.
 | CI (canary trap / barium meal, mountweazels, honeytokens); HACCP (lot codes) | Plant unique, never-legitimately-used markers and watch the exit | **Per-session canaries + seeded fake records:** `mintCanary(session, tool)` produces realistic per-session secrets, plus 3–5 "Agloe" records seeded into readable data. The egress scan also checks base64, hex and URL-decoded forms. Any hit names the session, the tool that fetched it, and the sink | T3 | **Partial.** Holds for detection. Weak spots: legitimate summaries can leak them (the "Agloe problem", so block vs alert is set per sink), and encode/split/paraphrase evades literal matching. The registry needs a TTL/LRU bound and must fail loud. |
 | CI (dead-man switch); reliability engineering (no silent degradation) | If the watchdog goes quiet, the action fires | **Fail-closed:** scanner timeout, crash, oversize input or a full registry → deny egress and raise ALERT. Never pass traffic silently | T3 | **Yes.** Purely an engineering property of the proxy. |
 | HACCP (CCP + critical limit + pre-decided corrective action); aviation (envelope protection, STPA unsafe-control-action table); software injection (CSP report-only → enforce) | Declarative per-control-point limits that no prompt can argue past | **Per-tool policy with report-only / enforce modes:** `policy.json` per tool (allowlist, path jail, byte cap, banned tools, pre-declared action `block` / `quarantine` / `require_human`). Rolled out in `report-only` (log + `/report`), then flipped to `enforce`. Pure function, no LLM | T3 (maps onto T2's observe/block config) | **Yes** for hard limits (destinations, paths, bytes, call order). **No** for semantic intent, which has no envelope. |
-| Fraud (velocity limits, anti-structuring); aviation (token-bucket rate limit) | Cumulative and near-threshold caps, not just single-call caps | **Cumulative caps:** a session ledger keyed `session+tool` covering count, summed amount/bytes, and N calls each just under the single-call cap → HOLD + alert | T3 | **Yes.** Deterministic. The ledger itself is bounded (firm rule) and overflow raises. |
+| Fraud (velocity limits, anti-structuring); aviation (token-bucket rate limit) | Cumulative and near-threshold caps, not just single-call caps | **Cumulative caps:** a session ledger keyed `session+tool` covering count, summed amount/bytes, and N calls each just under the single-call cap → HOLD + alert | T3 | **Yes.** Deterministic. The ledger itself is bounded (design rule) and overflow raises. |
 | Fraud (SAR narrative, link analysis); HACCP (one-up/one-down lot trace); immunology (contact tracing) | Every case gets a who/what/when/where/why story and a trace | **Narrative case card on alerts:** one paragraph, e.g. "Instruction originated in `ticket#4411` body → influenced `send_email(to=attacker@x)` → blocked by `payee_not_confirmed`", plus the provenance edges for the graph | T4 (field), T5 (render) | **Yes.** Attribution points at the tainted *source*, not just the session (CI caveat). |
 | Immunology (autoimmunity / peripheral tolerance); fraud (FP economics); aviation (approval fatigue) | False-positive budget is a first-class metric | **FP rate on benign runs as a headline metric**, shown next to detection rate | T7 (also T9 demo: one benign pass + one attack block) | **Yes.** Our FP tolerance is *lower* than a bank's, because nobody triages a demo. |
 
@@ -162,10 +162,10 @@ Narrative opener (pick one), then the structure, then the mechanisms (§5 patter
 
 - **Software injection (mechanism):** "In 1998 we tried to stop SQL injection by filtering for bad quotes.
   We lost for a decade, until parameterized queries kept code and data apart. AI agents are at their 1998
-  now. SentinelProxy doesn't try to out-guess the model. It tracks where every byte came from and
+  now. Tourniquet doesn't try to out-guess the model. It tracks where every byte came from and
   enforces what it's allowed to reach."
 - **BEC:** "Your agent just fell for a BEC scam, a roughly $3 billion-a-year fraud. It never felt suspicious, so
-  it never picked up the phone. SentinelProxy is the phone call."
+  it never picked up the phone. Tourniquet is the phone call."
 - **Fraud:** "Banks stopped asking *'is this really the customer?'*, because the customer is usually
   real and being scammed. They ask *'does this payment make sense?'* Every tool call is a transaction,
   and we score it before it settles." Short version: **"Confirmation of Payee for AI agents."**
@@ -383,18 +383,18 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 ### 10.4 New pitch lines
 
 - **Trading:** "Wall Street learned in 2010 that every order passes a broker's risk gate before it reaches the
-  market. SentinelProxy is that gate for AI agents."
+  market. Tourniquet is that gate for AI agents."
 - **Voice:** "In 2017 a San Diego TV anchor said 'Alexa ordered me a dollhouse' on air, and viewers' Echos tried
-  to order dollhouses. Today every web page your agent reads is that anchor. SentinelProxy is the purchase PIN."
+  to order dollhouses. Today every web page your agent reads is that anchor. Tourniquet is the purchase PIN."
 - **Medication:** "Pharmacies stopped forged prescriptions by never trusting the paper, only the callback.
   Content can request an action; only the principal's own channel can authorize it."
 - **Military:** "Militaries never let a radio message launch a missile. Orders come from the authenticated
   chain of command; everything else is intelligence."
 - **Supply chain:** "npm has a lockfile. Your agent's tools don't."
 - **OAuth:** "OAuth solved the confused deputy for apps by making authority explicit, scoped, audience-bound
-  and consented on a trusted channel. SentinelProxy does the same for every tool call."
+  and consented on a trusted channel. Tourniquet does the same for every tool call."
 - **Agency law (business framing):** "Your AI agent holds your power of attorney. The law already says the
-  principal pays (*Moffatt v. Air Canada*), so SentinelProxy limits what it can be talked into doing."
+  principal pays (*Moffatt v. Air Canada*), so Tourniquet limits what it can be talked into doing."
 - **Newsroom:** "Sources inform, they never assign."
 - **Empirical (for a judge who asks "why not a classifier?"):** "Spam filters lost to spammers because the
   attacker wrote the content being scored. DKIM won because the mail server enforced it. We enforce at the boundary."

@@ -1,4 +1,4 @@
-// SentinelProxy T3 — honeytoken tripwire registry.
+// Tourniquet T3 — honeytoken tripwire registry.
 //
 // Three kinds of planted markers, one index:
 //   static          operator-declared planted secrets (DVAA's SENSITIVE_DATA etc.). Never expire.

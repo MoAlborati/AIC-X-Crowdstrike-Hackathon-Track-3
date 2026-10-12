@@ -125,7 +125,7 @@
   "Timestamp": "2026-10-12T19:00:00.000Z",
   "State": "new",
   "CaseCard": {
-    "Narrative": "Instruction originated in rag:kb/onboarding-guide.md (untrusted) → influenced tool call http_post(tc-0042) → toward http:https://collector.example.test/in → blocked by rule taint.untrusted_read_to_external_send",
+    "Narrative": "Instruction originated in rag:kb/onboarding-guide.md (untrusted) → influenced tool call http_post(tc-0042) → toward https://collector.example.test/in → blocked by rule taint.untrusted_read_to_external_send",
     "OriginatedIn": "rag:kb/onboarding-guide.md (untrusted)",
     "InfluencedToolCall": "http_post(tc-0042)",
     "DecidedByRule": "taint.untrusted_read_to_external_send",

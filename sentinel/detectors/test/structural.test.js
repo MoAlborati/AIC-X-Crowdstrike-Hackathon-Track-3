@@ -137,11 +137,20 @@ test('bounds: one marker per rule (<= MAX_MARKERS); a sentence longer than the w
   assert.ok(rulesOf(longSentence).includes('structural.instruction_reset'));
 });
 
-test('linear time: 300 KB adversarial inputs scan well inside the detector time budget', () => {
+// CPU time of this thread, median of 3 (flake fix): wall clock under merge-gate load measures the scheduler.
+// A quadratic scan is 100x+ over 40 ms of CPU too, so the bound still catches the regression it exists for.
+const cpuUsage = typeof process.threadCpuUsage === 'function' ? (prev) => process.threadCpuUsage(prev) : (prev) => process.cpuUsage(prev);
+const cpuMs = (c) => (c.user + c.system) / 1000;
+test('linear time: 300 KB adversarial inputs scan well inside the detector time budget (< 40 ms CPU, median of 3)', () => {
   for (const t of ['ignore '.repeat(43000), 'previous instructions '.repeat(14000), 'you, the '.repeat(33000), '<|'.repeat(150000), 'a'.repeat(300000)]) {
-    const t0 = performance.now();
-    findStructuralMarkers(t, { untrusted: true });
-    assert.ok(performance.now() - t0 < 40, `scan took ${performance.now() - t0} ms`);
+    const runs = [];
+    for (let r = 0; r < 3; r++) {
+      const c0 = cpuUsage();
+      findStructuralMarkers(t, { untrusted: true });
+      runs.push(cpuMs(cpuUsage(c0)));
+    }
+    const med = runs.sort((a, b) => a - b)[1];
+    assert.ok(med < 40, `scan took ${med.toFixed(1)} ms CPU (median of 3)`);
   }
 });
 

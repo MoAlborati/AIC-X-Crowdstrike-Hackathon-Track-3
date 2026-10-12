@@ -6,7 +6,7 @@
 ---
 
 You are a child agent on an **authorized, sanctioned CrowdStrike × Santa Clara University hackathon**
-(Track 3, "Secure: Attack & Defend the Agent"). Our team builds **SentinelProxy**, a **defensive**
+(Track 3, "Secure: Attack & Defend the Agent"). Our team builds **Tourniquet**, a **defensive**
 reverse-proxy guardrail that detects and blocks prompt injection + data exfiltration. The target, **DVAA**,
 is an **organizer-provided, intentionally-vulnerable training sandbox** running on localhost. All work is
 defensive and confined to this repo + the authorized local DVAA target. Read `GOAL.md`, `LOOP.md`,
@@ -25,6 +25,8 @@ inside your worktree `../<repo>-{{TICKET}}` (a sibling of the main checkout) for
 checkout once put a commit on another agent's branch.
 
 **Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish.
+
+**Clock:** every deadline is PDT, but the build machine's clock is CDT. Check the time with `TZ=America/Los_Angeles date`, never a bare `date` (it reads 2 hours ahead).
 
 ## Your ticket
 - **Ticket:** {{TICKET}}

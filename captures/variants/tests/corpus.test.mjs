@@ -362,7 +362,8 @@ test('L1 default DVAA dir is repo-local (not /tmp) and is listed once', () => {
   const env = { PATH: process.env.PATH };
   const c = dvaaCandidates(env);
   assert.deepEqual(c.map((x) => x.root), [DEFAULT_DVAA_DIR]);
-  assert.ok(!c.some((x) => x.root.startsWith('/tmp/')), 'no world-writable /tmp default');
+  // Repo-local, not "not under /tmp": a judge's `cd /tmp && git clone` puts REPO_ROOT itself under /tmp (#112 CRITIC-C #1).
+  assert.ok(c.every((x) => x.root.startsWith(REPO_ROOT + path.sep)), 'default DVAA dir is inside the repo, never a shared /tmp path');
   assert.equal(dvaaCandidates({ DVAA_DIR: DEFAULT_DVAA_DIR }).length, 1, 'no duplicate candidate');
   assert.match(fs.readFileSync(path.join(REPO_ROOT, '.gitignore'), 'utf8'), /^\.dvaa\/$/m, '.dvaa/ is gitignored');
 });
