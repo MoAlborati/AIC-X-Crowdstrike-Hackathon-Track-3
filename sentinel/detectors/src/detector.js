@@ -26,7 +26,7 @@ import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
   findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
-import { findStructuralMarkers, extractBareHosts } from './structural.js';
+import { findStructuralMarkers } from './structural.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
 let warmedUp = false;
@@ -42,6 +42,7 @@ export const RULES = Object.freeze({
   'taint.instruction_in_untrusted_content': { category: 'indirect_prompt_injection', layer: 'taint' },
   'inbound.instruction_in_principal_turn': { category: 'indirect_prompt_injection', layer: 'taint' },
   'inbound.exfil_instruction': { category: 'indirect_prompt_injection', layer: 'taint' },
+  'taint.structural_injection_marker': { category: 'indirect_prompt_injection', layer: 'taint' },
   'egress.secret_pattern': { category: 'egress_secret_pattern', layer: 'egress' },
   'egress.pii_pattern': { category: 'egress_secret_pattern', layer: 'egress' },
   'egress.markdown_image_exfil': { category: 'egress_markdown_image', layer: 'egress' },
@@ -202,7 +203,8 @@ export function createDetector(opts = {}) {
       ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
-      u.phrases = [...findInjectionPhrases(u.text), ...findStructuralMarkers(u.text, { untrusted: !u.principal })];
+      u.phrases = findInjectionPhrases(u.text);
+      u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
     const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
@@ -220,6 +222,15 @@ export function createDetector(opts = {}) {
     // Pass 2: per untrusted (or suspect) text, decide pre-forward.
     ts = performance.now();
     for (const u of inboundTexts) {
+      // Structural markers: ALERT ONLY, and only when the lexicon did not already raise this text. They never
+      // block, never mark a principal turn suspect and never set the untrusted-input taint flag.
+      if (u.structural.length && !u.phrases.length) {
+        push(ctx, {
+          ruleId: 'taint.structural_injection_marker', action: 'alert', mode: policy.mode, direction: 'request',
+          evidence: `pre-forward scan of ${u.label} (${u.text.length} chars, full scan); structural injection markers: ${u.structural.join(', ')}`,
+          originatedIn: u.label, reason: 'structural_injection_marker', reasonCodes: ['structural_markers'],
+        });
+      }
       if (u.principal && !u.ref.suspect) continue; // a clean principal turn is the mandate, not a threat
       const phrases = u.phrases;
       // Honeytokens in raw AND decoded forms (%-decoded up to maxDecodeDepth, \u/\x, base64, hex): the
@@ -234,7 +245,6 @@ export function createDetector(opts = {}) {
         ...extractUrls(u.text).map((x) => ({ type: 'http', destination: x.host })),
         ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email })),
         ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban })),
-        ...bareHostDestinations(u.text, principalText),
       ];
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
@@ -727,16 +737,6 @@ function sinkEntity(call, isSink) {
   if (d) return { type: d.type, destination: d.url ?? d.destination };
   const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : isSink ? 'tool' : 'tool';
   return { type: t, destination: `${call.name} (no network destination)` };
-}
-
-/** Scheme-less `www.` hosts as http destinations; one the principal itself named counts as confirmed. Over the
- * host cap the overflow becomes an unconfirmable destination (fail-loud: never a silent drop). */
-function bareHostDestinations(text, principalText) {
-  const { hosts, overflow } = extractBareHosts(text);
-  const p = principalText.toLowerCase();
-  const out = hosts.filter((h) => !p.includes(h)).map((h) => ({ type: 'http', destination: h }));
-  if (overflow) out.push({ type: 'http', destination: 'bare-host-cap-exceeded.invalid' });
-  return out;
 }
 
 const EXFIL_VERBS = ['send', 'post ', 'upload', 'forward', 'submit', 'email', 'e-mail', 'transmit', 'exfiltrate', 'report ', 'sync ', 'share ', 'export', 'curl ', 'wget '];
