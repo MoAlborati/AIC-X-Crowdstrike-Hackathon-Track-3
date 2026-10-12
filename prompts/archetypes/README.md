@@ -23,6 +23,7 @@ Cold start or post-compaction: read [`../../RESUME.md`](../../RESUME.md) first.
 | Creative-thinker | [`creative-thinker.md`](creative-thinker.md) | read-only | new issue | 20 m | #105 |
 | Project-overseer | [`project-overseer.md`](project-overseer.md) | read-only | new issue | 25 m | #110 |
 | Critic | [`critic.md`](critic.md) | read-only | new issue | 25 m | #112 |
+| Custodian (cleanup + escalation) | [`custodian.md`](custodian.md) | removes merged worktrees, orphan PIDs/stacks; closes answered issues | new issue | 25 m | `Custodian: cleanup log + escalations` |
 | Resume a degraded child | long form [`../resume-from-handoff.md`](../resume-from-handoff.md) | as original role | as original | as original | `handoffs/` |
 | Orchestrator (not a child) | [`../orchestrator-kickoff.md`](../orchestrator-kickoff.md) + [`../../RESUME.md`](../../RESUME.md) | | | | |
 
