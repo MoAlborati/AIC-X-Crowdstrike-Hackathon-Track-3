@@ -123,8 +123,8 @@ jq -rc '.beatsBaseline | {evasionFixtures:(.eligible|length), t3Caught:.byDetect
 ```
 
 Expected: `evadesDvaaBaseline:true` + `fullScanFindsSignal:true` on both fixtures, and `t3Caught: 2` of 2.
-Say "8KB evasion: 2/2 fixtures". **Never** a blanket "beats the baseline": on the full corpus DVAA's baseline
-has the higher recall (Beat 7).
+Say "8KB evasion: 2/2 fixtures". **Never** a blanket "beats the baseline": on the full corpus T3 detects slightly
+more, but DVAA's baseline prevents more (Beat 7).
 This is DoD item 1 — **not optional**. `demo/run-demo.sh` Beat 3b drives it.
 
 ### Beat 4 — DETECT → ALERT → BLOCK, green (1:20–1:50) · terminal + dashboard
@@ -260,22 +260,25 @@ plus the evasion result. Every number is read from the committed `sentinel/scori
 
 ```
                          T3 (SentinelProxy)          DVAA baseline
-  detection (any finding)  recall 63.0%  FP 0.0%        recall 65.6%  FP 12.8%
+  detection (any finding)  recall 67.7%  FP 0.0%        recall 65.6%  FP 12.8%
   prevention (pre-forward) recall 41.8%  FP 0.0%        recall 63.0%  FP 12.8%
   8KB evasion: 2/2 fixtures (T3)
-  in-detector latency: p95 0.4 ms over 353 cases (under half a millisecond)
+  in-detector latency: median 0.082 ms, p95 0.42 ms over 353 cases
 ```
 
-(Values above are as of `results.json` on origin/main `6c4fdc7`: 189 attack + 164 benign cases. The spoken line is
-static, so the presenter can read it here word for word. Every number in it is checked against `results.json`, and
-Beat 7 FAILS if the file no longer supports it. Then update the line in `run-demo.sh` and here together.)
+(Values above are as of `results.json` on origin/main `a37e430` (after T3-recall #46): 189 attack + 164 benign cases.
+The spoken line is static, so the presenter can read it here word for word. **Every number and every comparison in
+it** ("we detect slightly more", "zero false alarms … versus its 21", "DVAA prevents more, 63 versus 42", "12.8
+percent", "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
+Beat 7 FAILS naming the claim if the file no longer supports it. Then update the line in `run-demo.sh` and here together.)
 
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives: it flags 12.8 percent of benign traffic, and T3 flags none. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
+> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 
-Quote **one** latency phrase: "under half a millisecond" (the p95 in `results.json` is 0.40 ms as of origin/main 4817aca; `run-demo.sh`
-fails Beat 7 if it ever is not).
+Latency: say exactly "median under a tenth of a millisecond, p95 around half a millisecond". The median (0.082 ms)
+is stable across rescoring; p95 moves between about 0.39 and 0.52 ms between runs, so never quote a sharper p95
+claim like "under half a millisecond". `run-demo.sh` fails Beat 7 if median ≥ 0.1 ms or p95 is outside 0.25–1 ms.
 
 *Hard stop at 3:00. The 8KB-evasion beat (3b) is DoD item 1 — **never cut it**. If running long, cut the
 benign pass in Beat 4 first, then trim Beat 6 to two mechanisms.*

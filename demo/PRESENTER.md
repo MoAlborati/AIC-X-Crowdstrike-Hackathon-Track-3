@@ -7,11 +7,6 @@ If you need to shorten a line, drop sentences from it. Don't reword it.
 Judge answers: [`demo/QA-PREP.md`](QA-PREP.md). Read it once before 18:00.
 All commands run from the repo root. Under Colima the repo must be somewhere under `~`, because Colima only shares `$HOME`.
 
-> **If #70 (`mac-compat`) is not merged:** stock macOS bash 3.2 breaks `scripts/eval.sh` and `demo/run-demo.sh`
-> (`mapfile: command not found`). Before T-30, run `git fetch origin && git checkout mac-compat`, and run every
-> command below from that branch. The `doctor` macOS `fix:` lines and the Node 24 preference only exist there, so set
-> the Node 24 `PATH` export by hand.
-
 > **If #76 (`t5-stage`) is not merged:** there is no `?stage=1` and no `?capture=`. Open these tabs instead:
 > `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runA` (vulnerable) and `…&run=runB` (AIM twin). For the
 > proxy-blocked view, stay on the terminal; Beat 4 prints the block and the T4 alert there. There is also no
@@ -120,7 +115,8 @@ Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut
 ## Claim wording (for Q&A; also see `demo/QA-PREP.md`)
 
 - **Scope the FP claim every time:** "0% FP on the 164-case benign corpus." Never say "zero false positives" without that scope.
-- **The recall one-liner:** "DVAA's baseline has higher recall; we trade recall for zero false alarms on the benign corpus, and we catch the 2 cases that evade its 8KB window."
+- **The recall one-liner:** "We now detect slightly more than DVAA's baseline, but it prevents more, at a 12.8% benign FP rate. We have 0 FP on the 164-case benign corpus, and we catch the 2 cases that evade its 8KB window."
+- **Held-out FP caveat:** "Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46."
 - Never say we "beat the baseline" across the board. Say "8KB evasion: 2/2 fixtures", which is the case we do win.
 - Latency: say only "under half a millisecond".
 

@@ -38,8 +38,6 @@ If anything here disagrees with `run-demo.sh`, the runner wins.
 | Final name | rename to `~/Desktop/fallback-demo-raw.mov`. §5 produces **`~/Desktop/fallback-demo.mov`**. | PRESENTER opens this exact path in QuickTime |
 | Where it must **not** go | anywhere inside the repo. `*.mov` is **not** gitignored, and `git add -A` would commit 100+ MB. | |
 
-> `demo/REHEARSAL.md` still says `demo/fallback-demo.mp4`. That's stale. #66 and PRESENTER set the path to `~/Desktop/fallback-demo.mov`.
-
 Stop the recording with the ⏹ in the menu bar, or **Cmd-Ctrl-Esc**.
 
 ## 3. Shot list (video time = stage clock)
