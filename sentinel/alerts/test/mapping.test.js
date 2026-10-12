@@ -22,6 +22,9 @@ test('ATLAS IDs verified against ATLAS 2026.09 data: names + technique->tactic l
   assert.deepEqual(t['AML.T0086'], { name: 'Exfiltration via AI Agent Tool Invocation', tactic: 'AML.TA0010' });
   assert.deepEqual(t['AML.T0057'], { name: 'LLM Data Leakage', tactic: 'AML.TA0010' });
   assert.deepEqual(t['AML.T0051.001'], { name: 'LLM Prompt Injection: Indirect', tactic: 'AML.TA0005' });
+  // ATLAS-2026.09: AML.T0051.000 "Direct" specializes AML.T0051, achieves AML.TA0005 (PR #15 follow-up)
+  assert.deepEqual(t['AML.T0051.000'], { name: 'LLM Prompt Injection: Direct', tactic: 'AML.TA0005' });
+  assert.equal(CATALOG.atlasTactics[t['AML.T0051.000'].tactic], 'Execution');
   assert.deepEqual(t['AML.T0068'], { name: 'LLM Prompt Obfuscation', tactic: 'AML.TA0007' });
   assert.equal(CATALOG.atlasTactics['AML.TA0010'], 'Exfiltration');
   for (const id of Object.keys(t)) assert.match(id, /^AML\.T\d{4}(\.\d{3})?$/);

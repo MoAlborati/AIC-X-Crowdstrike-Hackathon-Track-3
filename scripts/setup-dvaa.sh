@@ -12,6 +12,9 @@
 # path on this machine (Dockerfile pins node:24-alpine by digest).
 #
 # Usage:
+#   scripts/setup-dvaa.sh clone   # clone/checkout the pinned source only (no Docker); used by the
+#                                 # T6 corpus tests' real-DVAA seam (captures/variants/tools/baseline.mjs
+#                                 # finds it at $DVAA_DIR, default <repo>/.dvaa/dvaa-target)
 #   scripts/setup-dvaa.sh up      # clone (if needed), build, start, health-check
 #   scripts/setup-dvaa.sh down    # stop + remove the fleet
 #   scripts/setup-dvaa.sh health  # health-check the running fleet
@@ -20,7 +23,10 @@ set -euo pipefail
 DVAA_REPO="${DVAA_REPO:-https://github.com/opena2a-org/damn-vulnerable-ai-agent.git}"
 # v0.9.3 — "21 agents, 12 vulnerability categories". Pin for reproducibility.
 DVAA_PIN="${DVAA_PIN:-57918267d8d529ceec6d40fc9836ab09d128eee4}"
-DVAA_DIR="${DVAA_DIR:-${TMPDIR:-/tmp}/dvaa-target}"
+# Default clone dir is repo-local and gitignored (.dvaa/), not world-writable /tmp: the corpus tests
+# import code from this checkout (review L1). Override with DVAA_DIR.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DVAA_DIR="${DVAA_DIR:-$REPO_ROOT/.dvaa/dvaa-target}"
 PROJECT="${DVAA_PROJECT:-dvaa-t1}"
 IMAGE_TAG="${PROJECT}-dvaa"
 
@@ -35,9 +41,24 @@ clone() {
   if [ ! -d "$DVAA_DIR/.git" ]; then
     git clone "$DVAA_REPO" "$DVAA_DIR"
   fi
-  git -C "$DVAA_DIR" fetch --all --tags
+  # Fetch only when the pinned commit is missing, so an existing checkout works offline.
+  if ! git -C "$DVAA_DIR" cat-file -e "${DVAA_PIN}^{commit}" 2>/dev/null; then
+    git -C "$DVAA_DIR" fetch --all --tags
+  fi
   git -C "$DVAA_DIR" checkout "$DVAA_PIN"
-  echo "DVAA checked out at $(git -C "$DVAA_DIR" rev-parse --short HEAD)"
+  # Fail loud unless the checkout is exactly the pin with a clean tree (the same gate baseline.mjs
+  # applies before importing DVAA code).
+  local head dirty
+  head="$(git -C "$DVAA_DIR" rev-parse HEAD)"
+  if [ "$head" != "$DVAA_PIN" ]; then
+    echo "ERROR: $DVAA_DIR is at $head, expected $DVAA_PIN" >&2; exit 1
+  fi
+  dirty="$(git -C "$DVAA_DIR" status --porcelain --untracked-files=all)"
+  if [ -n "$dirty" ]; then
+    echo "ERROR: $DVAA_DIR tree is not clean:" >&2; echo "$dirty" | head -5 >&2; exit 1
+  fi
+  echo "DVAA checked out at $(git -C "$DVAA_DIR" rev-parse --short HEAD) (clean) in $DVAA_DIR"
+  echo "Corpus tests: DVAA_SRC=$DVAA_DIR DVAA_REQUIRE_REAL=1 node --test captures/variants/tests/*.test.mjs"
 }
 
 up() {
@@ -70,8 +91,9 @@ down() {
 }
 
 case "${1:-up}" in
+  clone) clone ;;
   up) up ;;
   down) down ;;
   health) health ;;
-  *) echo "usage: $0 {up|down|health}" >&2; exit 2 ;;
+  *) echo "usage: $0 {clone|up|down|health}" >&2; exit 2 ;;
 esac

@@ -5,3 +5,4 @@ node_modules/
 .dvaa-aim/
 scratchpad/
 captures/*.raw
+.eval/
