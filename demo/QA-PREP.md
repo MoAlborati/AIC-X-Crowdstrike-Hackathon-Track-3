@@ -65,6 +65,19 @@ miss is listed openly in RESULTS.md."
 **Proof:** RESULTS.md headline table (t3 against dvaa-baseline, both lenses), the 8KB-evasion (`evadesBaseline`) block, and
 the "False negatives" list. PR #46 has the before/after rescore table.
 
+**1b. "How are you different from the trained-classifier or WAF-style entries in this track?"**
+"Two things, and I'll keep them honest. First, where we're measured: our numbers come from the organizer's real DVAA
+target with a live default-deny egress boundary in the loop, not from a simulator we wrote ourselves. A guard
+validated only on its own mock — no live target, no tool execution, no real egress — has never had to survive a real
+network boundary; ours has. Second, what we decide on: a trained classifier or a WAF scores the *wording*, so an
+attacker rewrites it; we decide on the *destination*, and rewording doesn't change where the data goes. The honest
+flip side: on the held-out generic-jailbreak and indirect-injection sets we lose to DVAA on recall — detection drops
+to 28.5% and prevention to 0% on the 600-case jailbreak set, while we keep 0 benign blocked — so for pure text
+classification you'd pair us with one of those tools, not replace it. Our win is the real egress boundary and 0 of
+164 benign blocked versus the baseline's 21, both on the organizer's target."
+*Say only if a judge names another team:* describe the contrast as "simulator-tested vs organizer-target-tested" and never disparage a specific entry.
+**Proof:** RESULTS.md headline table and `evadesBaseline` block; `captures/holdout-hf/RESULTS.md` (28.5% / 0% held-out, 0/400 benign); `sentinel/egress/inspector.mjs` (host-allowlist CONNECT); the live egress check in SUBMISSION.md.
+
 **2. "The document arrived in the user turn. Isn't this just an input filter?"**
 "No. We decide on provenance, not keywords. The mandate is derived only from the principal's own words, and any
 document pasted inside that turn is treated as untrusted content. If that content asks to send data to a
@@ -229,8 +242,9 @@ grow into a SOC without rewriting anything. We haven't integrated with Falcon's 
 "The parts are simple on purpose, and the regex is not the moat: it's bypassable, and we showed that ourselves. The
 defensible pieces are the deployment shape and the evidence. A drop-in sidecar plus default-deny egress needs no app
 changes. Deterministic verdicts can be audited. And we have a scored, pinned corpus where 0 of 164 legitimate requests get
-blocked. Over time, the policy and honeytoken library, plus the integrations into alert routing, are what a competitor
-would have to rebuild. That's a hypothesis, not a proven moat."
+blocked. The policy is config, not runtime: the proxy target and allowlist load at startup and nothing in the untrusted
+data path can rewrite where traffic is allowed to go. Over time, the policy and honeytoken library, plus the integrations
+into alert routing, are what a competitor would have to rebuild. That's a hypothesis, not a proven moat."
 **Proof:** RESULTS.md (TN 164, FP 0); issue #112 (critic B: request side bypassed, egress still denies).
 
 **V4. "What do the next 90 days look like?"**

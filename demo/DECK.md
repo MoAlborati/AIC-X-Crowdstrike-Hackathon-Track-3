@@ -22,6 +22,7 @@
 **On slide**
 - **Tourniquet**
 - An exfil-focused guardrail for tool-using agents, at the tool boundary.
+- *The moat, in one line:* a real default-deny egress boundary — proven against the organizer's DVAA target, not a simulator we wrote ourselves.
 - *Why the name:* a tourniquet stops the bleed — Tourniquet stops data exfiltration and other agent tool-misuse at the egress boundary.
 - Small print: deterministic sandbox (DVAA, offline, canned replies), no LLM in the loop.
 - Team · CrowdStrike × Santa Clara University · Track 3: Secure — Attack & Defend the Agent
@@ -187,6 +188,8 @@ Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `se
 
 - Caption: "Labels: DVAA's `dvaa{}` ground truth for the 11 T1 captures, the published benchmarks' labels for the other 342, not our own judgment. Benign FP is measured on the
   164-case benign corpus."
+- **As a confusion matrix (detection):** T3 = 128 TP · 0 FP · 164 TN · 61 FN → precision 100.0%, recall 67.7%. DVAA baseline = 124 TP · 21 FP · 143 TN · 65 FN → precision 85.5%, recall 65.6%. Same corpus, same labels; the gap is the 21 benign requests the baseline blocks and we don't.
+- **Measured on the organizer's target, not a simulator:** every cell is scored against the organizer-provided DVAA with a real default-deny egress boundary in the loop — not a mock. (Say it only if a judge contrasts us with simulator-based entries; don't name other teams.)
 
 **Speaker notes**
 Beat 7, first half (2:03–2:20). The table is **not read aloud**. Spoken: "On 189 attacks and
