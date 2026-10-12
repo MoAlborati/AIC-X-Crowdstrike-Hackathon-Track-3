@@ -95,6 +95,27 @@ node --test scripts/test/soc-handoff.test.mjs
 - **Safety:** placeholder sidecars are refused. If the rendered brief contains any known honeytoken value, the script exits 3 and writes nothing. Canaries appear by id only.
 - **Known SOC Brief limit:** it uses one wording for every SentinelProxy alert ("the proxy stopped the send"). For the report-only alert, the brief adds a handoff note saying the data should be treated as already sent.
 
+## Submission snapshot (#73)
+
+The judged repo is a NEW public repo holding **one commit** with main's exact tree, so this repo's history stays private.
+
+```bash
+git checkout --detach origin/main     # clean tree, HEAD == origin/main, or the script refuses
+scripts/make-submission-snapshot.sh   # [--skip-tests] [--no-fetch] [--force]
+```
+
+1. It checks that the tree is clean and that HEAD == `origin/main` after a fetch.
+2. It runs `scripts/eval.sh test` (`--skip-tests` skips this). Run it from a checkout outside `/tmp`, since two isolation tests assert repo-local paths.
+3. It writes a parentless commit of `HEAD^{tree}`, "SentinelProxy — CrowdStrike Track 3 submission (squashed snapshot of main @ <sha>)", with the Co-Authored-By trailer.
+4. It scans that tree, minus gitignored paths, for three things:
+   - secrets (`gitleaks` if installed, else a built-in regex set; `SNAPSHOT_NO_GITLEAKS=1` forces the regex set);
+   - local home or scratch paths;
+   - internal tooling words.
+
+   URLs are not checked for paths or words. Known-inert test data and benchmark strings (honeytokens, AWS's documented example key, fake key shapes in tests, see `captures/variants/LICENSES.md`) are listed in `scripts/submission-scan-allowlist.tsv`. Each entry has a path glob, the exact literal, and a reason. **Any other hit fails the run, and no branch or tag is created.**
+5. It creates the local branch `submission-snapshot` and the annotated tag `v1.0-submission`, then re-checks that there is 1 commit and that `git diff main submission-snapshot` is empty.
+6. It prints the owner's publish commands. **It never pushes.** The owner pushes `submission-snapshot:main` and the tag to the new repo (`gh repo create <owner>/AIC-X-Crowdstrike-Hackathon-Track-3-submission --public`, then `git push <url> submission-snapshot:main v1.0-submission`). Don't use `gh repo create --source . --push`: it pushes the current branch **with its full history**. Then set SUBMISSION.md's Repository link to `https://github.com/<owner>/AIC-X-Crowdstrike-Hackathon-Track-3-submission`.
+
 ## Troubleshooting
 
 | Symptom | Fix |

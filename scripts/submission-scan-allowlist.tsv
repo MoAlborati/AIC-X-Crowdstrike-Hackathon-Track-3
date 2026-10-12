@@ -1,0 +1,16 @@
+# Inert strings the submission-snapshot scan (scripts/make-submission-snapshot.sh) may let through.
+# Format: <path glob>	<exact literal>	<why it is inert>. A hit passes only if its path matches the glob
+# and the hit sits inside this literal on the same line. Add test data only, never a real value.
+# Benchmark destinations (captures/variants/LICENSES.md "Destinations and secrets") need no entry: no
+# scan rule matches them. Anything matching a rule must be listed here explicitly.
+*	AKIAFAKEFAKEFAKEFAKE	DVAA honeytoken / fake AWS key used in detector fixtures and the egress demo
+*	AKIAIOSFODNN7EXAMPLE	AWS documentation example key
+*	sk-ant-dvaa-test-anthropic-key-67890	DVAA honeytoken (sentinel/detectors/src/honeytokens.js)
+sentinel/*/test/*	-----BEGIN RSA PRIVATE KEY-----	PEM header in redaction tests; bodies are placeholders (MIIEtestonly, MIIB...)
+sentinel/detectors/test/egress.test.js	sk-proj-abcdefghijklmnopqrstuvwxyz0123456789	fake key shape in egress test
+sentinel/detectors/test/review-t3fix.test.js	AKIAQWERTYUIOPASDFGH	fake key shape (keyboard row) in review test
+sentinel/egress/test/review45.test.mjs	ghp_aB3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6	fake GitHub token shape in egress test
+sentinel/detectors/test/mandate.test.js	/home/u/wallet.json	fake file-read target in a mandate test, not a real path
+demo/slides/VIDEO-CHECKLIST.md	/Users/<name>/	recording instruction telling the presenter to hide their path
+scripts/eval.sh	/Users/*|	case pattern detecting Docker Desktop shared paths on macOS
+planning/CITATIONS.md	worst delivery firm in the world	verbatim news quote (DPD chatbot incident), ordinary English
