@@ -13,13 +13,18 @@ sources.
 
 | Source | Fixtures | License | Pinned upstream | Exact locator |
 |--------|----------|---------|-----------------|---------------|
-| **deepset/prompt-injections** | `fixtures/deepset/*` | Apache-2.0 (HF repo license; the card's `dataset_info` block also lists `cc-by-4.0`) | revision `4f61ecb038e9c3fb77e21034b22511b523772cdd` | split `test`, `row_idx` 98, 15 (label 1) and 77 (label 0) |
-| **AgentDojo** (Debenedetti et al., NeurIPS 2024 D&B) | `fixtures/agentdojo/*`, `fixtures/evasion/eva-bench-*` | MIT, Copyright (c) 2024 Edoardo Debenedetti, Jie Zhang, Mislav Balunovic, Luca Beurer-Kellner, Marc Fischer, and Florian Tramèr | `ethz-spylab/agentdojo` @ `089ed468cf3ed0322acc66b0211f26d9d90dbf60` | attack `important_instructions_no_names` (`_JB_STRING` + `DEFAULT_USER_NAME`/`DEFAULT_MODEL_NAME`) × `v1/workspace` `InjectionTask3` and `v1/banking` `InjectionTask1`; user tasks `workspace/UserTask24`, `banking/UserTask0` |
-| **InjecAgent** (Zhan et al., ACL Findings 2024) | `fixtures/injecagent/*` | **MIT**, Copyright (c) 2023 Qiusi Zhan | `uiuc-kang-lab/InjecAgent` @ `f19c9f2c79a41046eb13c03c51a24c567a8ffa07` | `data/test_cases_ds_enhanced.json` cases 17 and 34 |
+| **deepset/prompt-injections** | `fixtures/deepset/*` | Apache-2.0 (HF repo license; the card's `dataset_info` block also lists `cc-by-4.0`) | revision `4f61ecb038e9c3fb77e21034b22511b523772cdd` | split `test`, `row_idx` 98, 15 (label 1) and 77 (label 0); **T6b: all 116 rows** (`tools/upstream-deepset.json`) |
+| **AgentDojo** (Debenedetti et al., NeurIPS 2024 D&B) | `fixtures/agentdojo/*`, `fixtures/evasion/eva-bench-*` | MIT, Copyright (c) 2024 Edoardo Debenedetti, Jie Zhang, Mislav Balunovic, Luca Beurer-Kellner, Marc Fischer, and Florian Tramèr | `ethz-spylab/agentdojo` @ `089ed468cf3ed0322acc66b0211f26d9d90dbf60` | attack `important_instructions_no_names` (`_JB_STRING` + `DEFAULT_USER_NAME`/`DEFAULT_MODEL_NAME`) × `v1/workspace` `InjectionTask3` and `v1/banking` `InjectionTask1`; user tasks `workspace/UserTask24`, `banking/UserTask0`. **T6b:** all `v1` suites. Attack strings come from AgentDojo's attack classes (`important_instructions_no_names`, `ignore_previous`, `injecagent`, `system_message`, `direct`). Benign ground-truth tool outputs come from `environment.yaml` data rendered by `tool_result_to_str` (`tools/upstream-agentdojo.json`) |
+| **InjecAgent** (Zhan et al., ACL Findings 2024) | `fixtures/injecagent/*` | **MIT**, Copyright (c) 2023 Qiusi Zhan | `uiuc-kang-lab/InjecAgent` @ `f19c9f2c79a41046eb13c03c51a24c567a8ffa07` | `data/test_cases_ds_enhanced.json` cases 17 and 34. **T6b:** `test_cases_ds_enhanced.json` + `test_cases_dh_enhanced.json`, index `a*17 + (a mod 17)` for each attacker case `a` (`tools/upstream-injecagent.json`) |
 | **DVAA** — damn-vulnerable-ai-agent | `fixtures/evasion/eva-pos-*`; replica code in `tools/baseline.mjs` | **Apache-2.0** (`LICENSE`, `package.json`), OpenA2A | `opena2a-org/damn-vulnerable-ai-agent` @ `57918267d8d529ceec6d40fc9836ab09d128eee4` | `src/payloads/agentpwn-mirror.js` `buildRagPoisonedDocument()` (APWN-DE-003); `src/core/vulnerabilities.js` (`DETECTION_EDGE`, `detectionText`, `ATTACK_PATTERNS` subset) |
 | synthetic benign (this repo) | `fixtures/benign/*`, `corpus/*`, evasion carrier text | this repo | — | authored, benign only |
 
 ## What we changed (restructuring only, no new attack text)
+
+- **T6b AgentDojo benign transcripts.** Each AgentDojo ground-truth call becomes an assistant `tool_calls`
+  entry plus a `role: "tool"` result, in order. The outputs are AgentDojo's own rendering. Only the
+  clock in the email/drive write tools is pinned (see README), which changes write-confirmation
+  timestamps and nothing else.
 
 - **Placement / channel.** For `tool_output` and `rag_document` fixtures, the upstream string is
   the content of a `role: "tool"` message answering an assistant `tool_calls` entry (OpenAI chat

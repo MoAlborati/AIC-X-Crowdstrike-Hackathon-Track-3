@@ -27,6 +27,11 @@
 // verdict. Even so, reasons must be secret-free: describe what matched (rule, offset, location),
 // never the matched value. Throwing is allowed: the proxy fails closed in block mode and logs an
 // ALERT in observe mode; the error message is logged, never returned to the client.
+//
+// Defence in depth: before any verdict, alert or error text reaches stderr or the capture JSONL, the
+// proxy passes it through sentinel/alerts redactDeep() with every configured flagSubstring as a canary
+// (raw, %-encoded, hex, base64 forms) plus T4's secret patterns. A detector that does leak a matched
+// value therefore logs a `[REDACTED:...]` marker instead. Exchange bodies are NOT redacted (evidence).
 
 // Bound on percent-decoding rounds for the URL scan (defeats double/triple encoding of a marker).
 export const MAX_URL_DECODE_ROUNDS = 3;
@@ -70,30 +75,39 @@ function headerLines(headers) {
  * in the decoded body, the header block, or (request phase) the URL in every decoded spelling.
  * Full-buffer scans via Buffer#indexOf, so a marker anywhere in a multi-MB body is found.
  * Headers/URL are bounded by Node's maxHeaderSize (16 KiB), so their scan is bounded too.
+ *
+ * The verdict carries ONLY ids (`flag-<index into flagSubstrings>`), locations, byte offsets and static
+ * reason codes, never the matched text: the verdict is logged to stderr and the capture JSONL, and a
+ * honeytoken copied into a log is a leaked honeytoken.
  * @param {readonly string[]} needles
  */
 export function substringInspector(needles) {
-  const encoded = needles.map((n) => ({ text: n, buf: Buffer.from(n, 'utf8') }));
+  const encoded = needles.map((n, i) => ({ id: flagSubstringId(i), buf: Buffer.from(n, 'utf8') }));
   return async function substring({ phase, path, headers, body }) {
     if (encoded.length === 0) return null;
     const meta = [];
     if (phase === 'request' && typeof path === 'string') meta.push({ where: 'url', buf: Buffer.from(urlVariants(path).join('\n'), 'utf8') });
     meta.push({ where: 'headers', buf: Buffer.from(headerLines(headers).join('\n'), 'utf8') });
     const hits = [];
-    for (const { text, buf } of encoded) {
+    for (const { id, buf } of encoded) {
       const at = body.indexOf(buf);
-      if (at !== -1) hits.push({ needle: text, where: 'body', offset: at });
+      if (at !== -1) hits.push({ needle_id: id, where: 'body', offset: at });
       for (const m of meta) {
         const mAt = m.buf.indexOf(buf);
-        if (mAt !== -1) hits.push({ needle: text, where: m.where, offset: mAt });
+        if (mAt !== -1) hits.push({ needle_id: id, where: m.where, offset: mAt });
       }
     }
     if (hits.length === 0) return null;
     return {
       flagged: true,
       detector: 'substring',
-      reasons: hits.map((h) => `matched configured substring in ${h.where} at byte ${h.offset}`),
+      reasons: hits.map((h) => `substring_match:${h.where}`),
       hits,
     };
   };
+}
+
+/** Stable id for flagSubstrings[i]; shared with the proxy's log-redaction canary list. */
+export function flagSubstringId(i) {
+  return `flag-${i}`;
 }

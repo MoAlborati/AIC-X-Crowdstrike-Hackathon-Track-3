@@ -1,7 +1,7 @@
 // Adversarial timing (ReDoS) tests AT the maximum payload size (PR #3 review: an unbounded `{8,}` JWT regex
 // took 14 s on 256K chars of repeated "eyJ"). Each detector layer must stay under LAYER_BUDGET_MS and the
 // whole inspection under the fail-closed time budget, for crafted inputs aimed at every scanner.
-// Median of 5 runs per case to keep CI noise out without hiding a quadratic blow-up (which is 100-1000x).
+// Median of 3 runs per case to keep CI noise out without hiding a quadratic blow-up (which is 100-1000x).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
@@ -9,16 +9,35 @@ import { createDetector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../index.js';
 import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
 import { quietLogger } from './helpers.js';
 
-// TWO DIFFERENT NUMBERS (review of PR #27):
-//   TOTAL_BUDGET_MS = 40  PERFORMANCE bound: a whole inspection of a 384 KiB adversarial turn (PERF_INPUT,
-//                         ~16x the ~23 KB demo payloads) must finish in < 40 ms (median of 5). A speed target
-//                         that catches quadratic regressions. It is NOT a reason to block traffic.
-//   timeBudgetMs (runtime) the fail-closed budget, derived from the proxy's real inspectorTimeoutMs (5000 ms ->
-//                         4000 ms) + its abort signal (bounds.js, inspector.js, review B3). Asserted separately
-//                         below on payloads at the full 2 MiB cap.
 const LAYER_BUDGET_MS = 50;
+// TWO DIFFERENT NUMBERS (review of PR #27):
+//   TOTAL_BUDGET_MS = 40  PERFORMANCE bound: a whole inspection of a 384 KiB adversarial turn (PERF_INPUT, ~16x
+//                         the ~23 KB demo payloads) must take < 40 ms of CPU (median of 5). A speed target that
+//                         catches quadratic regressions; it is NOT a reason to block traffic.
+//   DEFAULT_BOUNDS.timeBudgetMs (runtime, 4000 ms) the fail-closed budget, derived from the proxy's real
+//                         inspectorTimeoutMs (5000 ms -> 80%) + its abort signal (bounds.js, inspector.js, review
+//                         B3). Asserted separately below on payloads at the full 2 MiB cap.
 const TOTAL_BUDGET_MS = 40;
 const PERF_INPUT = 384 * 1024;
+// The 40 ms bound is asserted on CPU time (user+system delta, see cpuUsage below), not wall clock: the merge
+// gate runs ~13 agents in parallel (load ~10), and wall clock then measures the scheduler, not the
+// detector. A quadratic regression is 100x+ in CPU time too, so the bound stays strict. A generous
+// wall-clock ceiling still catches a real hang (sleep / blocking wait / lost wakeup).
+const WALL_CEILING_MS = 250;
+const RUNS = 5;
+// CPU of THIS thread (process.threadCpuUsage, Node >= 22.19): process.cpuUsage() is process-wide and
+// also bills V8's parallel GC helper threads, which can exceed wall time (measured 39 ms CPU vs 35 ms wall
+// on base64_tokens). Falls back to process.cpuUsage() on older Node.
+const cpuUsage = typeof process.threadCpuUsage === 'function' ? (prev) => process.threadCpuUsage(prev) : (prev) => process.cpuUsage(prev);
+/** CPU ms (user + system) and wall ms spent in fn(). */
+function measure(fn) {
+  const c0 = cpuUsage();
+  const w0 = performance.now();
+  const out = fn();
+  const wall = performance.now() - w0;
+  const c = cpuUsage(c0);
+  return { out, cpu: (c.user + c.system) / 1000, wall };
+}
 const MAX = PERF_INPUT;
 const SCANNER_INPUT = PERF_INPUT; // each scanner alone is held to 50 ms (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
 // The adversarial string appears twice (untrusted tool output + sink args), so each copy is ~45% of the cap.
@@ -53,7 +72,7 @@ function detectorWithBigRegistry() {
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-test('whole inspection < 40 ms (performance bound) and every layer < 50 ms on adversarial 384 KiB inputs (20k canaries)', { timeout: 60000 }, () => {
+test('whole inspection < 40 ms CPU (performance bound; wall-clock ceiling 250 ms; every layer < 50 ms) on adversarial 384 KiB inputs (20k canaries)', { timeout: 60000 }, () => {
   const det = detectorWithBigRegistry();
   const report = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
@@ -68,19 +87,22 @@ test('whole inspection < 40 ms (performance bound) and every layer < 50 ms on ad
     const res = { choices: [{ message: { role: 'assistant', content: s.slice(0, 4096), tool_calls: [{ id: 'c', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'http://x.test/a', body: s }) } }] } }] };
     const layerRuns = {};
     const totals = [];
-    for (let r = 0; r < 5; r++) {
-      const d = det.inspect({ sessionId: `adv-${name}-${r}`, request: req, response: res });
+    const walls = [];
+    for (let r = 0; r < RUNS; r++) {
+      const { out: d, cpu, wall } = measure(() => det.inspect({ sessionId: `adv-${name}-${r}`, request: req, response: res }));
       assert.equal(d.failClosed, false, `${name}: ${JSON.stringify(d.error)}`);
-      totals.push(d.stats.latencyMs);
+      totals.push(Math.round(cpu * 1000) / 1000);
+      walls.push(Math.round(wall * 1000) / 1000);
       for (const l of d.stats.layers) (layerRuns[l.layer] ??= []).push(l.latencyMs);
     }
     const layers = Object.fromEntries(Object.entries(layerRuns).map(([k, v]) => [k, median(v)]));
-    report.push({ name, total: median(totals), ...layers });
+    report.push({ name, total: median(totals), wall: median(walls), ...layers });
     for (const [layer, ms] of Object.entries(layers)) assert.ok(ms < LAYER_BUDGET_MS, `${name}: layer ${layer} took ${ms} ms`);
-    assert.ok(median(totals) < TOTAL_BUDGET_MS, `${name}: total ${median(totals)} ms >= ${TOTAL_BUDGET_MS} ms budget`);
+    assert.ok(median(totals) < TOTAL_BUDGET_MS, `${name}: total CPU ${median(totals)} ms >= ${TOTAL_BUDGET_MS} ms budget`);
+    assert.ok(median(walls) < WALL_CEILING_MS, `${name}: wall clock ${median(walls)} ms >= ${WALL_CEILING_MS} ms ceiling (hang?)`);
   }
-  console.log(`# adversarial timing @ ${MAX} B perf input (median of 5, ms):`);
-  for (const r of report) console.log(`#   ${r.name.padEnd(15)} total=${r.total} ${Object.entries(r).filter(([k]) => !['name', 'total'].includes(k)).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  console.log(`# adversarial timing @ ${MAX} B perf input (median of ${RUNS}; total = CPU ms, wall = wall-clock ms):`);
+  for (const r of report) console.log(`#   ${r.name.padEnd(15)} total=${r.total} wall=${r.wall} ${Object.entries(r).filter(([k]) => !['name', 'total', 'wall'].includes(k)).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 });
 
 test('every text scanner alone is linear: < 50 ms at the payload cap on its own worst-case input', { timeout: 15000 }, () => {

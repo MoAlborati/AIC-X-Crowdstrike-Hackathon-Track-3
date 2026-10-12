@@ -29,7 +29,7 @@ import {
 } from '../tools/baseline.mjs';
 import { CHANNELS, PAYLOAD_ROLE, FRAMEWORKS_BY_CATEGORY, PENDING_T4_CATALOG, payloadIndex, sha256 } from '../tools/fixture-lib.mjs';
 import { CATALOG } from '../../../sentinel/alerts/mapping.js';
-import { DEEPSET, AGENTDOJO, INJECAGENT, DVAA, renderAgentDojo } from '../tools/upstream-cases.mjs';
+import { DEEPSET, AGENTDOJO, INJECAGENT, DVAA, renderAgentDojo, allUpstreamStrings, AGENTDOJO_RUN, INJECAGENT_SAMPLE } from '../tools/upstream-cases.mjs';
 import { verifyUpstream } from '../tools/verify-upstream.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,13 +59,8 @@ const LICENSE_BY_BENCHMARK = {
   'DVAA (organizer sandbox)': 'Apache-2.0',
 };
 
-// Every verbatim upstream string the corpus may contain (from upstream-cases.mjs).
-const UPSTREAM_STRINGS = new Set([
-  ...Object.values(DEEPSET.rows).map((r) => r.text),
-  ...Object.values(AGENTDOJO.cases).map((c) => renderAgentDojo(c.goal)),
-  ...INJECAGENT.cases.map((c) => c.toolResponse),
-  DVAA.document,
-]);
+// Every verbatim upstream string the corpus may contain (from upstream-cases.mjs, incl. T6b extracts).
+const UPSTREAM_STRINGS = allUpstreamStrings();
 
 /** The attack part of a verbatim fixture that must sit in the payload message. */
 function attackPart(up) {
@@ -74,7 +69,7 @@ function attackPart(up) {
 
 test('corpus is non-empty and covers all required sources', () => {
   const groups = new Set(fixtures.map((f) => f.group));
-  for (const g of ['deepset', 'agentdojo', 'injecagent', 'benign', 'evasion']) {
+  for (const g of ['deepset', 'agentdojo', 'agentdojo-benign', 'injecagent', 'benign', 'evasion']) {
     assert.ok(groups.has(g), `missing fixture group: ${g}`);
   }
   assert.ok(fixtures.length >= 13, `expected >=13 fixtures, got ${fixtures.length}`);
@@ -124,7 +119,8 @@ test('F5 channel fidelity: tool_output / rag_document payloads arrive in a role:
       const atk = attackPart(doc.source.upstream).trim();
       for (const u of userTexts(doc)) assert.ok(!u.includes(atk), `${file}: attack text found in a user turn`);
     }
-    for (const u of userTexts(doc)) assert.ok(u.length < 500, `${file}: user turn should be a short request, payload goes in the tool message`);
+    // Upstream user-task prompts run up to ~0.7KB (AgentDojo workspace); the payload is never in them.
+    for (const u of userTexts(doc)) assert.ok(u.length < 1024, `${file}: user turn should be a short request, payload goes in the tool message`);
   }
   assert.ok(toolChannel >= 10, `expected >=10 tool/RAG-channel fixtures, got ${toolChannel}`);
 });
@@ -170,6 +166,41 @@ test('data-rich: benign long doc >16KB and tool output has hundreds of rows', ()
   const rows = fixtures.find((f) => f.doc.id === 'BEN-TOOLROWS-001').doc;
   assert.ok(rows.dataRich.rows >= 300, 'tool output must have hundreds of rows');
   assert.equal(JSON.parse(payloadOf(rows)).length, rows.dataRich.rows, 'every row is in the tool message');
+});
+
+test('T6b: data-rich corpus, >=60 attack and >=60 benign, every source and template represented', () => {
+  const pos = fixtures.filter((f) => f.doc.label.groundTruth === 'positive');
+  const neg = fixtures.filter((f) => f.doc.label.groundTruth === 'negative');
+  assert.ok(pos.length >= 60, `expected >=60 attack cases, got ${pos.length}`);
+  assert.ok(neg.length >= 60, `expected >=60 benign cases, got ${neg.length}`);
+  // Benign must not be only short user turns: >=60 benign cases arrive through the tool channel.
+  const toolBenign = neg.filter((f) => f.doc.channel !== 'user_message');
+  assert.ok(toolBenign.length >= 60, `expected >=60 tool-channel benign cases, got ${toolBenign.length}`);
+  // Every extracted upstream case became a fixture (no silent drop), every suite + template is present.
+  const ids = new Set(fixtures.map((f) => f.doc.id));
+  assert.equal(fixtures.filter((f) => f.group === 'agentdojo-benign').length, AGENTDOJO_RUN.benign.length, 'one benign fixture per AgentDojo user task');
+  for (const k of INJECAGENT_SAMPLE.cases) {
+    const tag = k.file.includes('_ds_') ? 'DS' : 'DH';
+    assert.ok(ids.has(`IA-${tag}-E${String(k.caseIndex).padStart(3, '0')}`), `InjecAgent ${tag} ${k.caseIndex} missing`);
+  }
+  assert.equal(fixtures.filter((f) => f.group === 'deepset').length, Object.keys(DEEPSET.rows).length, 'every deepset split=test row');
+  const adAttack = fixtures.filter((f) => f.group === 'agentdojo').map((f) => f.doc.source.upstream);
+  for (const suite of AGENTDOJO_RUN.suites) {
+    const inSuite = fixtures.filter((f) => f.group === 'agentdojo' && f.doc.source.caseRef.includes(` x ${suite}/`));
+    const tasks = new Set(AGENTDOJO_RUN.attacks.filter((a) => a.suite === suite).map((a) => a.injectionTask));
+    const covered = new Set(inSuite.map((f) => f.doc.source.upstream.injectionTask));
+    for (const t of tasks) assert.ok(covered.has(t), `AgentDojo ${suite}/${t} has no attack fixture`);
+  }
+  for (const a of [AGENTDOJO_RUN.primaryAttack, ...AGENTDOJO_RUN.extraAttacks]) assert.ok(adAttack.some((u) => u.attack === a), `AgentDojo attack template ${a} missing`);
+  // Data-rich benign tool outputs: multi-call transcripts and large outputs exist and are carried whole.
+  const adb = fixtures.filter((f) => f.group === 'agentdojo-benign').map((f) => f.doc);
+  assert.ok(adb.some((d) => d.dataRich.toolCalls >= 3), 'expected multi-call benign transcripts');
+  assert.ok(adb.some((d) => d.dataRich.toolOutputChars > 16 * 1024), 'expected a benign tool output > 16KB');
+  for (const d of adb) {
+    const tools = d.request.messages.filter((m) => m.role === 'tool');
+    assert.equal(tools.length, d.dataRich.toolCalls, `${d.id}: every ground-truth call has its tool message`);
+    assert.deepEqual(tools.map((m) => sha256(m.content)), d.source.upstream.toolOutputSha256, `${d.id}: tool outputs are the upstream bytes`);
+  }
 });
 
 /** Shared evasion assertions for one baseline implementation. */
@@ -234,22 +265,36 @@ test('benign negatives are clean on a FULL scan; exfil positives carry a detecta
   // DVAA_REQUIRE_REAL=1 without a checkout) fails this test too instead of silently using the replica.
   const baseline = await loadBaseline();
   console.log(`[full-scan] patterns from ${baseline.source}`);
+  // Hard guards apply to what THIS repo authored (benign carriers) and to T6's original exfil cases.
+  // T6b's verbatim upstream rows are NOT filtered by DVAA's patterns: a benchmark benign row that trips
+  // them is a real baseline false positive, and an upstream attack the patterns miss is a real baseline
+  // miss. Filtering on either would cherry-pick the corpus toward (or against) the baseline. Counted below.
+  const T6_EXFIL = new Set(['AD-EXFIL-001', 'AD-EXFIL-002', 'IA-DS-001', 'IA-DS-002']);
   let beyondBaseline = 0;
+  let upstreamBenignFlagged = 0;
+  let exfilMissedByPatterns = 0;
   for (const { file, doc } of fixtures) {
     const content = doc.request.messages.map((m) => m.content).join('\n');
     const full = baseline.scanFull(content);
     if (doc.label.groundTruth === 'negative') {
-      assert.equal(full.hasAttack, false, `${file}: benign must not trip the patterns (false-positive guard)`);
+      if (doc.source.fidelity === 'authored') {
+        assert.equal(full.hasAttack, false, `${file}: authored benign must not trip the patterns (false-positive guard)`);
+      } else if (full.hasAttack) upstreamBenignFlagged++;
       continue;
     }
     if (doc.label.dvaa.exfilTargetUrl) {
-      assert.equal(full.hasAttack, true, `${file}: exfil positive must be detectable on full scan`);
       assert.ok(payloadOf(doc).includes(doc.label.dvaa.exfilTargetUrl), `${file}: exfil target appears in the payload`);
+      assert.ok(!userTexts(doc).some((u) => u.includes(doc.label.dvaa.exfilTargetUrl)), `${file}: exfil target must not come from the user turn`);
+      if (T6_EXFIL.has(doc.id) || doc.group === 'evasion') {
+        assert.equal(full.hasAttack, true, `${file}: exfil positive must be detectable on full scan`);
+      } else if (!full.hasAttack) exfilMissedByPatterns++;
     } else if (!full.hasAttack) {
       beyondBaseline++; // PI phrased outside DVAA's patterns: exercises detection beyond the baseline
     }
   }
   console.log(`[corpus] prompt-injection cases beyond DVAA's baseline patterns: ${beyondBaseline}`);
+  console.log(`[corpus] upstream benign rows DVAA's patterns flag (baseline FPs): ${upstreamBenignFlagged}`);
+  console.log(`[corpus] upstream exfil cases DVAA's patterns miss on a full scan: ${exfilMissedByPatterns}`);
   assert.ok(beyondBaseline >= 1, 'corpus should include at least one case beyond DVAA baseline patterns');
 });
 
@@ -417,5 +462,25 @@ test('L2 deepset: rows file is checked against the pinned parquet sha256 when DE
     assert.match(DEEPSET.parquetFile, /^data\/test-.*\.parquet$/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ---- T6b: the verifier catches a changed upstream string (not just a missing source) -------------
+test('T6b verify-upstream: a deepset rows file that differs from the committed extract is a MISMATCH', async () => {
+  const { DEEPSET_ALL } = await import('../tools/upstream-cases.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 't6b-rows-'));
+  const rowsFile = path.join(dir, 'rows.jsonl');
+  const write = (rows) => fs.writeFileSync(rowsFile, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  try {
+    write(DEEPSET_ALL.rows);
+    const ok = (await verifyUpstream({ DEEPSET_ROWS: rowsFile })).find((r) => r.source.startsWith('deepset'));
+    assert.equal(ok.status, 'ok', ok.detail);
+    // flip one T6b row (not one of T6's original three) by one character
+    write(DEEPSET_ALL.rows.map((r) => (r.idx === 101 ? { ...r, text: r.text + ' ' } : r)));
+    const bad = (await verifyUpstream({ DEEPSET_ROWS: rowsFile })).find((r) => r.source.startsWith('deepset'));
+    assert.equal(bad.status, 'mismatch');
+    assert.match(bad.detail, /row 101/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
