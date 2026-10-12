@@ -272,7 +272,7 @@ it** ("we detect slightly more", "zero false alarms … versus its 21", "DVAA pr
 percent", "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
 Beat 7 FAILS naming the claim if the file no longer supports it. Then update the line in `run-demo.sh` and here together.)
 
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 
