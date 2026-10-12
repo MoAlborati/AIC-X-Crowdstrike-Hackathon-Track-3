@@ -22,6 +22,25 @@ Label rule: T1 captures: positive iff the data-exfil action was attempted (dvaa.
 
 **Layered lens (T13, derived per case from this file's perCase rows; no new attack content).** t3 stays the only blocker; a DVAA `detectAttacks()` hit that t3 did not block would go to a human review queue instead of being rejected (scoring label; no live queue is wired). Rule: prevented = t3 prevents; detected = t3 detects OR dvaa-baseline detects; dvaa-baseline-only hits are queued for human review, never blocked; detection FP = benign flagged by either layer; prevention FP = t3 auto-blocks only. Detection 74.6% (141/189; 13 of those only DVAA detected) at precision 87.0%, benign flagged 21/164 (12.8%) · prevention 41.8% (79/189, unchanged: DVAA never blocks here) · benign auto-blocked 0/164 · **benign that would be queued for review 21/164 (12.8%)**: these legitimate requests wait for a human, they are not passed silently · attacks that would be queued for review 46/189. The headline numbers above are t3 alone.
 
+### Confusion matrix & precision / recall / F1 (headline lenses, enforce)
+
+Derived from the committed counts in results.json — no new scoring run. Positives = 189 attack cases, negatives = 164 benign cases. Precision = TP/(TP+FP), recall = TP/(TP+FN), F1 = 2·P·R/(P+R), accuracy = (TP+TN)/total.
+
+Detection lens (any finding) confusion matrix:
+
+|  | predicted attack | predicted benign |
+|---|---|---|
+| **actual attack** (189) | TP 128 | FN 61 |
+| **actual benign** (164) | FP 0 | TN 164 |
+
+| lens | precision | recall | F1 | accuracy | TP | FP | TN | FN |
+|---|---|---|---|---|---|---|---|---|
+| detection (any finding) | 100.0% | 67.7% | 80.8% | 82.7% | 128 | 0 | 164 | 61 |
+| prevention (prevents:true) | 100.0% | 41.8% | 59.0% | 68.8% | 79 | 0 | 164 | 110 |
+| rule-intent block (legacy `recall`) | 100.0% | 44.4% | 61.5% | 70.3% | 84 | 0 | 164 | 105 |
+
+**Zero false positives across all 164 benign cases → precision is exactly 100.0% in every lens.**
+
 | detector | kind | mode | precision | recall | benign FP rate | TP | FP | TN | FN | median latency | p95 latency |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | noop | noop | enforce/block | n/a | 0.0% | 0.0% | 0 | 0 | 164 | 189 | 0.000 ms | 0.000 ms |

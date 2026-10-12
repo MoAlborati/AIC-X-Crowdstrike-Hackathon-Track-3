@@ -24,6 +24,20 @@ export function rates(m) {
   };
 }
 
+// F1 = harmonic mean of precision and recall. Display-only derivation from an existing confusion block:
+// null if either input is null (no data), 0 when both are 0 (defined, not "missing").
+export function f1(precision, recall) {
+  if (precision === null || precision === undefined || recall === null || recall === undefined) return null;
+  const denom = precision + recall;
+  return denom > 0 ? round((2 * precision * recall) / denom, 4) : 0;
+}
+
+// Accuracy = (TP+TN)/total; null when there are no cases.
+export function accuracy(m) {
+  const total = m.tp + m.fp + m.tn + m.fn;
+  return total > 0 ? round((m.tp + m.tn) / total, 4) : null;
+}
+
 export function round(x, places = 4) {
   if (x === null || !Number.isFinite(x)) return null;
   const f = 10 ** places;
