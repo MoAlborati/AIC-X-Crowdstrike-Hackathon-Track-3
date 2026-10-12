@@ -104,7 +104,7 @@ scripts/egress-demo.sh both   # egress guard live: observe (exfil lands), then b
 
 - [`EVAL.md`](EVAL.md) explains what each step shows and how to fix failures.
 - [`CHAT.md`](CHAT.md) explains how to ask the team's orchestrator agent a question through GitHub Issues.
-- **Demo videos:** [`demo/videos/`](demo/videos/README.md) — offline screen recordings of every track (Track 3 Tourniquet, Track 3 Path A OpsBot, Track 1 SOC Brief, and the "403 that lied" encore), with an index of SHA, duration and what each one shows.
+- **Demo videos:** [`demo/videos/`](demo/videos/README.md) — offline screen recordings (Track 3 Tourniquet, Track 3 Path A OpsBot, and the "403 that lied" encore), with an index of SHA, duration and what each one shows.
 
 ## Results
 
@@ -145,11 +145,14 @@ so it can't go stale. How to read them:
 - Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
   An injection that never attempts exfiltration may be flagged without being blocked.
 
-## Track 1: SOC Brief
+## Track 1: SOC Brief (separate repo)
 
-[`track1/`](track1/) is our Track 1 entry, a SOC alert briefing. It is **deterministic by design; the LLM can only
-reword**. The briefing and its disposition come from rules, and the optional LLM may rewrite the wording but cannot
-lower the disposition, so it cannot talk an alert down. Details in [`track1/README.md`](track1/README.md).
+Our Track 1 entry, **SOC Brief**, lives in its own repository:
+[MoAlborati/Tourniquet-SOC-Brief-Track1](https://github.com/MoAlborati/Tourniquet-SOC-Brief-Track1). It is
+**deterministic by design; the LLM can only reword** — rules decide every verdict and the optional LLM may rewrite
+the wording but can never lower a priority, so it cannot talk an alert down. This repo keeps the **Tourniquet → SOC
+Brief handoff** ([`scripts/soc-handoff.sh`](scripts/soc-handoff.sh)), which briefs Tourniquet's real T4 alerts
+offline using a vendored copy of the SOC Brief core ([`scripts/lib/vendor/soc-brief/`](scripts/lib/vendor/soc-brief/)).
 
 ## Repo map
 

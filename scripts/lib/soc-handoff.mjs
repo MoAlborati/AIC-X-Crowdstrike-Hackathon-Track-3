@@ -8,8 +8,9 @@
 //   * proxy-blocked T3 alerts   -> request-side alerts with PatternDispositionFlags.Blocked (from --block)
 //   * egress-deny alerts        -> every "[egress" alert with Blocked (from --egress)
 //   * one post-execution alert  -> the highest-severity "[response-side" ReportOnly alert (from --observe)
-// It runs SOC Brief's own deterministic path (track1/src normalize + runChain with no model), so no
-// API key or network is used. Nothing in track1/ or sentinel/ is modified.
+// It runs SOC Brief's own deterministic path (vendored normalize + runChain with no model), so no
+// API key or network is used. The SOC Brief core is vendored at scripts/lib/vendor/soc-brief/
+// (copied from the Track 1 repo; see its PROVENANCE.md). Nothing in sentinel/ is modified.
 //
 // Fail-loud: a placeholder sidecar, a non-sentinel.alert record, an empty category, more than
 // MAX_ALERTS alerts in the brief, or a known honeytoken value in the rendered brief exits non-zero.
@@ -22,9 +23,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const imp = (rel) => import(pathToFileURL(path.join(REPO, rel)).href);
 
-const { normalize } = await imp('track1/src/normalize.js');
-const { runChain } = await imp('track1/src/chain.js');
-const { dispositionRank } = await imp('track1/src/signals.js');
+const { normalize } = await imp('scripts/lib/vendor/soc-brief/normalize.js');
+const { runChain } = await imp('scripts/lib/vendor/soc-brief/chain.js');
+const { dispositionRank } = await imp('scripts/lib/vendor/soc-brief/signals.js');
 
 // Hard cap on briefs in one handoff. The demo selection is 6; a capture with more is a different
 // input than this script was built for, so it stops instead of silently truncating.
@@ -127,7 +128,7 @@ export async function buildBrief(inputs) {
     '',
     `**Overall verdict: ${top.briefing.disposition.toUpperCase()} · ${top.briefing.priority}** (${rows.length} alerts: ${counts.t3} proxy-blocked T3, ${counts.egress} egress-deny, ${counts.post} post-execution)`,
     '',
-    'Generated offline by SOC Brief (track1) from real Tourniquet T4 alerts. No LLM key, no network. Honeytoken values are never printed; alerts name canaries by id only.',
+    'Generated offline by SOC Brief from real Tourniquet T4 alerts. No LLM key, no network. Honeytoken values are never printed; alerts name canaries by id only.',
     '',
   ].join('\n');
   return { markdown: `${head}\n${rows.map((r, i) => section(i + 1, r.item, r.briefing)).join('\n')}`, rows, top };

@@ -1,4 +1,4 @@
-# Demo videos — Tourniquet (CrowdStrike x SCU, Track 3 + Track 1)
+# Demo videos — Tourniquet (CrowdStrike x SCU, Track 3)
 
 Offline screen recordings of the demos, one subfolder per track/item. Everything runs on
 `127.0.0.1`; every secret shown is a **FAKE DVAA honeytoken** (e.g. `DVAA-AWS-KEY-ID`,
@@ -20,8 +20,6 @@ well under GitHub's 100 MB/file limit (no Git LFS needed).
 | **Track 3 — Tourniquet (3B)** | [`track3-tourniquet/full-demo.mp4`](track3-tourniquet/full-demo.mp4) | `1146e14` ** | 0:51 | Combined terminal + dashboard walkthrough (1080p). Includes the **live** Beat 4b egress run. Backup / fallback reel. |
 | **Track 3 — Tourniquet (presenter reel)** | [`track3-tourniquet/presenter-demo.mp4`](track3-tourniquet/presenter-demo.mp4) | `bc5d9e3` + #194 | 4:12 | Full talk order from Catherine's Mac (1080p): live deck slides, `run-demo.sh` with **live Beat 4 (200 → 403)** and **live Beat 4b egress block (canary hits 0)**, stage dashboard tabs, the **numbers-first dashboard** (KPI strip + 6 tabs: scored corpus, held-out hf/ipi/hackmyagent, egress, outcomes, OpsBot, alert), OpsBot, and the Ciocca slides. Still frames per beat; replayed beats labelled RECORDED. |
 | **Track 3 — Path A (OpsBot)** | [`track3a-opsbot/track3a-opsbot.mp4`](track3a-opsbot/track3a-opsbot.mp4) | `cb2b7f5` | 0:12 | `node track3a/run-demo.mjs`: our own agent attacked (indirect + direct injection) and defended in layers — undefended → chat proxy → + egress guard → hardened → full. Attacks stopped, 0 benign FPs, per-layer latency. |
-| **Track 1 — SOC Brief** | [`track1-socbrief/track1-queue.mp4`](track1-socbrief/track1-queue.mp4) | `cb2b7f5` | 0:17 | Playwright walk (1440x900) of the SOC Brief queue UI: 22-alert queue, severity grouping, Escalate / Needs-a-human dispositions, 100% needs-human recall. Offline, deterministic. |
-| **Track 1 — SOC Brief** | [`track1-socbrief/track1-soc-handoff.mp4`](track1-socbrief/track1-soc-handoff.mp4) | `cb2b7f5` | 0:24 | `scripts/soc-handoff.sh`: hands Tourniquet's real T4 alerts to SOC Brief, which produces the plain-English **P1 brief** fully offline (model: none). |
 | **Encore — "the 403 that lied"** | [`encore/encore-two-layer.mp4`](encore/encore-two-layer.mp4) | `cb2b7f5` | 0:15 | `scripts/encore-two-layer.sh` observe vs block, live in an isolated docker sandbox: observe → 403 returned but key still exfiltrated (2 canary hits, the 403 *lied*); block → egress inspector denies 3x, attacker gets 0 hits. |
 
 \* **`track3-terminal.mp4`** was captured on `e97e2f0`, the direct parent of tag `v1.0-submission`

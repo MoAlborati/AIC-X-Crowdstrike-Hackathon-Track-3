@@ -5,7 +5,7 @@
 #   doctor          check Node >=22 (prefers nvm's >=24), Docker, the pinned DVAA checkout; print fixes
 #   up              start the DVAA fleet (docker project dvaa-t1, every port published on 127.0.0.1 only)
 #   down            stop the DVAA fleet
-#   test            run every *.test.js/*.test.mjs suite under sentinel/, captures/, track3a/, track1/ and scripts/;
+#   test            run every *.test.js/*.test.mjs suite under sentinel/, captures/, track3a/ and scripts/;
 #                   a test file anywhere else in the repo is an UNGATED FAIL row (never skipped silently)
 #                   (found by glob; a missing track dir is reported as NOT YET MERGED "not present"),
 #                   print a pass/fail table; exit 1 on any failing suite
@@ -360,7 +360,7 @@ cmd_down() {
 # Test suites. Discovery is by glob: every directory under SUITE_ROOTS that holds a
 # *.test.js or *.test.mjs file is a suite, so a new suite is picked up without editing this script.
 # The ticket list below only labels suites and turns a component that is absent into NOT YET MERGED.
-SUITE_ROOTS=(sentinel captures track3a track1 scripts demo)
+SUITE_ROOTS=(sentinel captures track3a scripts demo)
 KNOWN_SUITES=(
   "T2|sentinel/proxy"
   "T3|sentinel/detectors"
@@ -370,7 +370,6 @@ KNOWN_SUITES=(
   "T6|captures/variants"
   "T8|captures/contrast"
   "3A|track3a"
-  "track1|track1"
   "handoff|scripts"
 )
 # Prints "component_dir|test_dir" per suite. The component dir (the cwd the tests expect) is the parent

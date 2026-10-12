@@ -7,7 +7,7 @@
 #   proxy-blocked T3   captures/contrast/runs/proxy-block.t4-alerts.json   (committed T4 sidecar)
 #   post-execution     captures/contrast/runs/proxy-observe.proxy.jsonl    (converted here)
 #   egress-deny        sentinel/egress/evidence-block.jsonl                (converted here)
-# SOC Brief (track1/) briefs them with its deterministic path. No LLM key, no network.
+# SOC Brief (vendored core, scripts/lib/vendor/soc-brief/) briefs them with its deterministic path. No LLM key, no network.
 # Output: the brief on stdout and in OUT_DIR/brief.md. Exit non-zero on any failure (fail-loud).
 #
 # Bash 3.2 safe (macOS default): no associative arrays, no mapfile, no ${var,,}.
