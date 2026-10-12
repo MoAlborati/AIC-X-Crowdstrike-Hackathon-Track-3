@@ -279,13 +279,13 @@ ENCORE PASS</span></div>
 <!-- ============================================ 8. We attacked ourselves + limits ============================================ -->
 <section class="slide" data-title="We attacked ourselves">
   <div class="kicker">We attacked ourselves</div>
-  <h1 style="font-size:52px">Flagging isn't stopping. Default-deny egress is the control.</h1>
+  <h1 style="font-size:50px;margin-bottom:16px">Flagging isn't stopping. Default-deny egress is the control.</h1>
   <p style="font-size:30px;margin-bottom:10px">Held-out sets we never tuned on (request-side detector only, paired). On public indirect-injection sets that name a destination we prevent <b data-m="holdouts.ipi.t3.prev" data-f="pct"></b> (DVAA <span data-m="holdouts.ipi.dvaa.prev" data-f="pct"></span>); our request-side rule is narrow, which is why default-deny egress is the control.</p>
   <div id="holdout-table"></div>
-  <div class="row" style="margin-top:20px">
+  <div class="row" style="margin-top:8px">
     <div class="col">
       <b>Honest limits</b>
-      <ul class="b small" style="margin-top:6px">
+      <ul class="b small" style="margin-top:4px;font-size:24px">
         <li>A plain "send it to my URL" phrasing walks past the request check (1 of 22 in our test).</li>
         <li>Data sent to an allowlisted host still passes; the egress guard doesn't read TLS.</li>
         <li>Egress isn't scored on a corpus yet: it holds against every non-allowlisted destination we tried.</li>
@@ -295,7 +295,6 @@ ENCORE PASS</span></div>
       <b>What holds</b>
       <ul class="b small" style="margin-top:6px">
         <li>Default-deny egress decides on the destination, so rewording the request doesn't change it.</li>
-        <li>Benign blocked stays paired with DVAA's on every set.</li>
       </ul>
     </div>
   </div>
