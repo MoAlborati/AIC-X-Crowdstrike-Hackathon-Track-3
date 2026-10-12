@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
+  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -260,6 +260,25 @@ export function createDetector(opts = {}) {
         ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email, index: x.index })),
         ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban, index: x.index })),
       ];
+      // Issue #112: identifiers spaced out with whitespace / '.' / '-' / zero-width chars ("U S 1 3 ...")
+      // are re-joined and scanned for destinations and honeytokens too. Indices map back to u.text.
+      for (const run of findSpacedRuns(u.text)) {
+        const seenDest = new Set(named.map((d) => `${d.type}\u0000${d.destination}`));
+        for (const [t, pos] of run.keep === run.compact ? [[run.keep, run.posKeep]] : [[run.keep, run.posKeep], [run.compact, run.posCompact]]) {
+          for (const h of registry.scan(t)) if (!seenTok.has(h.entry.id)) (seenTok.add(h.entry.id), tokensHit.push(h));
+          const found = [
+            ...extractUrls(t).map((x) => ({ type: 'http', destination: x.host, index: pos[x.index] })),
+            ...extractEmails(t).map((x) => ({ type: 'email', destination: x.email, index: pos[x.index] })),
+            ...findIbans(t).map((x) => ({ type: 'account', destination: x.iban, index: pos[x.index] })),
+          ];
+          for (const d of found) {
+            const key = `${d.type}\u0000${d.destination}`;
+            if (seenDest.has(key)) continue;
+            seenDest.add(key);
+            named.push({ ...d, index: Number.isInteger(d.index) ? d.index : run.index });
+          }
+        }
+      }
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
       if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) {
@@ -349,7 +368,9 @@ export function createDetector(opts = {}) {
       // 1. honeytoken -------------------------------------------------------------------------
       ts = performance.now();
       const seenTokens = new Set();
-      for (const v of variants) {
+      // Issue #112: a honeytoken spaced out in the arguments ("s k - d v a a ...") is re-joined first.
+      const spacedArgs = findSpacedRuns(rawArgs).flatMap((r) => (r.keep === r.compact ? [r.keep] : [r.keep, r.compact]).map((text) => ({ text, encoding: 'spaced' })));
+      for (const v of [...variants, ...spacedArgs]) {
         for (const { entry } of registry.scan(v.text)) {
           if (seenTokens.has(entry.value)) continue;
           seenTokens.add(entry.value);

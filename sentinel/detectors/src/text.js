@@ -168,6 +168,84 @@ export function findIbans(text) {
   return out;
 }
 
+/**
+ * Spaced-out identifiers (issue #112): "U S 1 3 3 0 0 ...", "U.S.1.3...", "s k - d v a a", or single
+ * characters split by zero-width characters. Each run of >= MIN_SPACED_RUN single-character elements
+ * (one ASCII alnum, or one of @ : /, with no alnum neighbour), separated by up to MAX_SPACED_SEP chars
+ * of whitespace / zero-width / '.' / '-', is re-joined into two candidate tokens:
+ *   compact: every separator dropped              ("U.S.1.3" -> "US13", for IBANs / account numbers)
+ *   keep:    whitespace + zero-width dropped, '.' and '-' kept ("e v i l . c o m" -> "evil.com",
+ *            "s k - d v a a" -> "sk-dvaa", for hosts, emails and honeytokens)
+ * posCompact / posKeep map every output char back to its index in `text`, so callers can keep using the
+ * original offsets (e.g. the 120-char verb window before a destination).
+ * Linear: one forward pass, each char visited a bounded number of times; output is <= |text| chars per
+ * variant. No regex. Runs are never truncated (a run is as long as the input allows).
+ */
+export const MIN_SPACED_RUN = 6;
+const MAX_SPACED_SEP = 3;
+const isZeroWidth = (c) => c === 0x200b || c === 0x200c || c === 0x200d || c === 0x2060 || c === 0xfeff || c === 0x00ad;
+const isSpaceSep = (c) => c === 32 || c === 9 || c === 0xa0 || isZeroWidth(c);
+const isPunctSep = (c) => c === 46 || c === 45; // . -
+const isSpacedElem = (c) => isAlnum(c) || c === 64 || c === 58 || c === 47; // @ : /
+function isSingleAt(text, i) {
+  const n = text.length;
+  if (i >= n || !isSpacedElem(text.charCodeAt(i))) return false;
+  if (i > 0 && isAlnum(text.charCodeAt(i - 1))) return false;
+  return !(i + 1 < n && isAlnum(text.charCodeAt(i + 1)));
+}
+export function findSpacedRuns(text) {
+  const out = [];
+  if (typeof text !== 'string') return out;
+  const n = text.length;
+  let cbuf = null; // element offsets of the current run (compact variant)
+  let kbuf = null; // element + kept '.'/'-' offsets (keep variant)
+  let i = 0;
+  while (i < n) {
+    if (!isSingleAt(text, i)) {
+      i++;
+      continue;
+    }
+    if (cbuf === null) (cbuf = new Int32Array(n)), (kbuf = new Int32Array(n));
+    let nc = 0;
+    let nk = 0;
+    cbuf[nc++] = i;
+    kbuf[nk++] = i;
+    let last = i;
+    for (;;) {
+      let k = last + 1;
+      const mark = nk;
+      while (k < n && k - last - 1 < MAX_SPACED_SEP) {
+        const c = text.charCodeAt(k);
+        if (isPunctSep(c)) kbuf[nk++] = k;
+        else if (!isSpaceSep(c)) break;
+        k++;
+      }
+      if (!isSingleAt(text, k)) {
+        nk = mark;
+        break;
+      }
+      cbuf[nc++] = k;
+      kbuf[nk++] = k;
+      last = k;
+    }
+    if (nc >= MIN_SPACED_RUN) {
+      const posCompact = cbuf.slice(0, nc);
+      const compact = gather(text, posCompact);
+      // keep === compact (same string) when the run had no '.'/'-': callers scan it once.
+      const posKeep = nk === nc ? posCompact : kbuf.slice(0, nk);
+      out.push({ index: i, compact, keep: nk === nc ? compact : gather(text, posKeep), posCompact, posKeep });
+    }
+    i = last + 1;
+  }
+  return out;
+}
+/** The ASCII chars of `text` at `pos`, as one string (latin1 is exact for ASCII). */
+function gather(text, pos) {
+  const b = Buffer.allocUnsafe(pos.length);
+  for (let j = 0; j < pos.length; j++) b[j] = text.charCodeAt(pos[j]);
+  return b.toString('latin1');
+}
+
 /** Shannon entropy in bits/char. Linear in token length. */
 export function entropy(s) {
   if (!s) return 0;

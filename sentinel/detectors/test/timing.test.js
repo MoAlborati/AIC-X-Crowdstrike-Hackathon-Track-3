@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { createDetector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../index.js';
-import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
+import { findIbans, findSpacedRuns, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
@@ -61,6 +61,11 @@ const ADVERSARIAL = {
   begin_lines: '----- BEGIN DOC -----\n',
   info_tags: '<INFORMATION>\n',
   phrases: 'ignore previous ',
+  // #112: one 170K-element spaced run, re-joined into two variants and re-scanned by every extractor
+  spaced_singles: 'a ',
+  spaced_iban: 'U S 1 3 0 0 ',
+  spaced_email: 'a @ b . c . ',
+  spaced_zw: 'k\u200b-\u200b',
 };
 const fill = (u) => u.repeat(Math.ceil((MAX * 0.45) / u.length)).slice(0, Math.floor(MAX * 0.45));
 
@@ -117,6 +122,7 @@ test('every text scanner alone is linear: < 50 ms at the payload cap on its own 
     splitUntrustedSegments: [splitUntrustedSegments, ['----- BEGIN A -----\n', '[BEGIN A]\n', '<INFORMATION>\n', `${'-'.repeat(199)}\n`]],
     findInjectionPhrases: [findInjectionPhrases, ['ignore previous ', 'aaaa']],
     findIbans: [findIbans, ['US13300000012121 ', 'US133000000121212121212121212121212']],
+    findSpacedRuns: [findSpacedRuns, ['a ', 'a . ', 'a - b ', 'a   b    ', 'ab a ']],
   };
   for (const [name, [fn, units]] of Object.entries(scanners)) {
     for (const u of units) {
