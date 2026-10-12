@@ -5,13 +5,15 @@
 #   doctor          check Node >=22 (prefers nvm's >=24), Docker, the pinned DVAA checkout; print fixes
 #   up              start the DVAA fleet (docker project dvaa-t1, every port published on 127.0.0.1 only)
 #   down            stop the DVAA fleet
-#   test            run every *.test.js/*.test.mjs suite under sentinel/ and captures/ (found by glob),
+#   test            run every *.test.js/*.test.mjs suite under sentinel/, captures/, track3a/ and track1/
+#                   (found by glob; a missing track dir is reported as NOT YET MERGED "not present"),
 #                   print a pass/fail table; exit 1 on any failing suite
 #   score           run the T7 scoring harness, print its results table
 #   contrast        verify T8's recorded secure-by-design contrast (EVAL_LIVE=1 also re-captures it)
 #   dashboard       start the T5 dashboard on loopback in the background, print its URL
 #   dashboard-stop  stop the dashboard started by `dashboard`
 #   all             doctor, up, test, score, contrast, dashboard; then a summary table
+#   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs); NOT YET MERGED if absent
 #   gate <PR#>      MERGE GATE: merge the PR into origin/main in a temp worktree and run `test` there;
 #                   exit 1 on a conflict or any failing suite. Required before merging any PR.
 #
@@ -25,7 +27,10 @@
 #   EVAL_SUITE_TIMEOUT=600    per-suite wall clock cap in seconds; a suite that hits it is a FAIL
 #   EVAL_SCORE_ITERATIONS=5   latency iterations per case for `score`
 #   EVAL_DASHBOARD_PORT=9100  dashboard port (loopback only)
-#   DVAA_DIR, DVAA_PROJECT, DVAA_PIN   forwarded to scripts/setup-dvaa.sh
+#   DVAA_DIR, DVAA_PROJECT, DVAA_PIN, DVAA_PLATFORM   forwarded to scripts/setup-dvaa.sh
+#   PORTABLE_TIMEOUT_IMPL=perl|bash  force a timeout fallback (testing; default uses timeout/gtimeout)
+#
+# Runs on Linux/WSL and on macOS stock bash 3.2 + BSD userland (see scripts/lib/portable.sh).
 set -uo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -34,6 +39,9 @@ SELF_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="${EVAL_REPO:-$SELF_REPO}"
 OUT="${EVAL_OUT:-$REPO/.eval}"
 SETUP_DVAA="$SELF_REPO/scripts/setup-dvaa.sh"
+# shellcheck source=lib/portable.sh
+. "$SELF_REPO/scripts/lib/portable.sh"   # run_with_timeout, host_os (Linux + macOS bash 3.2 / BSD userland)
+HOST_OS="$(host_os)"
 export DVAA_DIR="${DVAA_DIR:-$SELF_REPO/.dvaa/dvaa-target}"
 PROJECT="${DVAA_PROJECT:-dvaa-t1}"
 DVAA_PIN_DEFAULT="$(sed -n 's/^DVAA_PIN="\${DVAA_PIN:-\([0-9a-f]*\)}"$/\1/p' "$SETUP_DVAA")"
@@ -63,35 +71,56 @@ RC_NYM=3
 nym_rc() { if [ "$STRICT" = 1 ]; then echo 1; else echo "$RC_NYM"; fi; }
 
 # ---------------------------------------------------------------------------------------------------
-# Node selection: use `node` on PATH if it is >= 24; otherwise the newest nvm install >= 24; otherwise
-# whatever is on PATH if it is >= 22 (sentinel/alerts declares engines >=24, so that is a WARN).
+# Node selection (.nvmrc pins 24): the sentinel/detectors timing budget is calibrated on Node 24, and Node 26
+# misses it (#61). Order: `node` on PATH if it is major 24; else the newest major-24 install from nvm or a
+# keg-only Homebrew node@24 (/opt/homebrew, /usr/local); else `node` on PATH if >= 22 (WARN in doctor when
+# it is not 24); else the newest nvm/Homebrew node >= 22.
 node_major() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null; }
 NODE_NOTE=""
+node_candidates() {
+  local nvm_dir="${NVM_DIR:-$HOME/.nvm}" v
+  for v in "$nvm_dir"/versions/node/v*/bin/node /opt/homebrew/opt/node@*/bin/node /usr/local/opt/node@*/bin/node \
+           /opt/homebrew/bin/node /usr/local/bin/node; do
+    [ -x "$v" ] && echo "$v"
+  done
+}
 select_node() {
-  local cur="" cur_major=0 nvm_dir="${NVM_DIR:-$HOME/.nvm}" best="" best_major=0 v m
+  local cur="" cur_major=0 best="" best_major=0 v m
   cur="$(command -v node 2>/dev/null || true)"
   [ -n "$cur" ] && cur_major="$(node_major "$cur")"
   cur_major="${cur_major:-0}"
-  if [ "$cur_major" -ge "$NODE_PREFERRED" ]; then NODE_NOTE="node on PATH"; return 0; fi
-  if [ -d "$nvm_dir/versions/node" ]; then
-    for v in "$nvm_dir"/versions/node/v*/bin/node; do
-      [ -x "$v" ] || continue
+  if [ "$cur_major" = "$NODE_PREFERRED" ]; then NODE_NOTE="node on PATH"; return 0; fi
+  while IFS= read -r v; do
+    m="$(node_major "$v")"; m="${m:-0}"
+    if [ "$m" = "$NODE_PREFERRED" ]; then best="$v"; best_major="$m"; fi   # last = newest v24 (glob order)
+  done < <(node_candidates)
+  if [ -z "$best" ] && [ "$cur_major" -lt "$NODE_MIN" ]; then
+    while IFS= read -r v; do
       m="$(node_major "$v")"; m="${m:-0}"
-      if [ "$m" -gt "$best_major" ]; then best="$v"; best_major="$m"; fi
-    done
+      if [ "$m" -ge "$NODE_MIN" ] && [ "$m" -gt "$best_major" ]; then best="$v"; best_major="$m"; fi
+    done < <(node_candidates)
   fi
-  if [ "$best_major" -ge "$NODE_PREFERRED" ]; then
+  if [ -n "$best" ]; then
     PATH="$(dirname "$best"):$PATH"; export PATH
-    NODE_NOTE="nvm install $(dirname "$(dirname "$best")" | xargs basename) (PATH node was v${cur_major:-none})"
+    NODE_NOTE="$(dirname "$(dirname "$best")") (PATH node was v${cur_major})"
     return 0
   fi
-  if [ "$cur_major" -ge "$NODE_MIN" ]; then NODE_NOTE="node on PATH, below preferred $NODE_PREFERRED"; return 0; fi
+  if [ "$cur_major" -ge "$NODE_MIN" ]; then NODE_NOTE="node on PATH; no Node $NODE_PREFERRED install found"; return 0; fi
   NODE_NOTE="no node >= $NODE_MIN found"; return 1
+}
+node_fix() { # exact commands to get Node 24 first on PATH
+  if [ "$HOST_OS" = macos ]; then
+    local kegs="/opt/homebrew/opt"; [ -d /opt/homebrew ] || { [ -d /usr/local/Homebrew ] && kegs="/usr/local/opt"; }
+    fix "brew install node@$NODE_PREFERRED && export PATH=$kegs/node@$NODE_PREFERRED/bin:\$PATH   (eval.sh also finds the keg by itself)"
+    fix "or with nvm: nvm install $NODE_PREFERRED && nvm use   (reads .nvmrc)"
+  else
+    fix "nvm install $NODE_PREFERRED && nvm use   (reads .nvmrc)"
+  fi
 }
 require_node() {
   if ! select_node; then
     bad "Node >= $NODE_MIN is required ($NODE_NOTE)"
-    fix "nvm install $NODE_PREFERRED   (or install Node $NODE_PREFERRED from nodejs.org), then re-run"
+    node_fix
     return 1
   fi
 }
@@ -130,39 +159,147 @@ fleet_exposed() {
 }
 
 # ---------------------------------------------------------------------------------------------------
+# Install hint for a missing CLI tool, per OS.
+pkg_fix() { # tool [brew-name] [apt-name]
+  if [ "$HOST_OS" = macos ]; then fix "brew install ${2:-$1}"; else fix "sudo apt-get install -y ${3:-$1}"; fi
+}
+# Something accepts TCP connections on 127.0.0.1:<port>? (bash /dev/tcp works in macOS bash 3.2 too)
+port_listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") >/dev/null 2>&1; }
+port_owner() { # best effort: "cmd(pid)" of the listener, via lsof (macOS always; Linux if installed)
+  command -v lsof >/dev/null 2>&1 || return 0
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $1"("$2")"}' | sort -u | tr '\n' ' '
+}
+docker_engine() { # docker-desktop | colima | orbstack | other:<name>
+  local ctx os
+  ctx="$(docker context show 2>/dev/null)"; os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null)"
+  case "$ctx|$os" in
+    *colima*) echo colima ;;
+    *"Docker Desktop"*|desktop-linux*) echo docker-desktop ;;
+    *orbstack*|*OrbStack*) echo orbstack ;;
+    *) echo "other:${ctx:-?}/${os:-?}" ;;
+  esac
+}
+# Host ports the demo needs besides DVAA's: proxy listeners in sentinel/config/{sentinel.config,proxy}.json
+# and the T5 dashboard.
+PROXY_PORTS=(8080 8005)
+
 cmd_doctor() {
   hdr "doctor"
   local rc=0 t m v
-  for t in git curl python3 timeout; do
-    if command -v "$t" >/dev/null 2>&1; then ok "$t found"; else bad "$t not found"; fix "sudo apt-get install -y $t"; rc=1; fi
+  echo "  host: $HOST_OS $(uname -m 2>/dev/null) · bash $BASH_VERSION"
+
+  # bash: every script here is written for bash >= 3.2 (macOS /bin/bash), no bash 4 features needed.
+  if [ "${BASH_VERSINFO[0]}" -gt 3 ] || { [ "${BASH_VERSINFO[0]}" = 3 ] && [ "${BASH_VERSINFO[1]}" -ge 2 ]; }; then
+    ok "bash $BASH_VERSION (>= 3.2 is enough; macOS stock /bin/bash works)"
+  else bad "bash $BASH_VERSION is older than 3.2"; pkg_fix bash; rc=1; fi
+
+  # Run each tool, not just `command -v`: on a fresh Mac, /usr/bin/git and /usr/bin/python3 are stubs that
+  # only prompt to install the Xcode Command Line Tools.
+  for t in git curl python3; do
+    if command -v "$t" >/dev/null 2>&1 && "$t" --version >/dev/null 2>&1; then ok "$t found"
+    else bad "$t not found or not runnable"
+         if [ "$HOST_OS" = macos ] && [ "$t" != curl ]; then fix "xcode-select --install   (Command Line Tools provide $t)"; else pkg_fix "$t"; fi
+         rc=1; fi
   done
+  if command -v jq >/dev/null 2>&1; then ok "jq found (demo/run-demo.sh beats)"
+  else bad "jq not found (demo/run-demo.sh needs it for every replay beat)"; pkg_fix jq; rc=1; fi
+  # Per-suite wall-clock cap: GNU timeout, Homebrew gtimeout, or the perl fallback in scripts/lib/portable.sh.
+  if command -v timeout >/dev/null 2>&1; then ok "timeout found (per-suite cap)"
+  elif command -v gtimeout >/dev/null 2>&1; then ok "gtimeout found (per-suite cap)"
+  elif command -v perl >/dev/null 2>&1; then ok "no GNU timeout; per-suite cap uses the perl fallback (scripts/lib/portable.sh)"
+  else bad "no timeout, gtimeout or perl: the per-suite cap cannot be enforced"; pkg_fix timeout coreutils coreutils; rc=1; fi
 
   if require_node; then
     v="$(node --version)"; m="$(node_major "$(command -v node)")"
-    if [ "$m" -ge "$NODE_PREFERRED" ]; then ok "node $v ($NODE_NOTE)"
-    else warn "node $v ($NODE_NOTE). sentinel/alerts declares engines >=24; its tests pass on 22 today"
-         fix "nvm install $NODE_PREFERRED"; fi
+    if [ "$m" = "$NODE_PREFERRED" ]; then ok "node $v ($NODE_NOTE; .nvmrc pins $NODE_PREFERRED)"
+    elif [ "$m" -gt "$NODE_PREFERRED" ]; then
+      warn "node $v ($NODE_NOTE) is newer than the pinned $NODE_PREFERRED: sentinel/detectors timing test fails on Node 26 (#61)"
+      node_fix
+    else warn "node $v ($NODE_NOTE) is older than the pinned $NODE_PREFERRED: sentinel/alerts declares engines >=24"
+         node_fix; fi
     if command -v npm >/dev/null 2>&1; then ok "npm $(npm --version 2>/dev/null)"; else bad "npm not found next to node"; fix "reinstall Node (npm ships with it)"; rc=1; fi
   else rc=1; fi
 
+  local docker_ok=0 sarch harch iarch
   if ! command -v docker >/dev/null 2>&1; then
-    bad "docker CLI not found"; fix "install Docker Desktop with WSL integration, or docker-ce inside WSL"; rc=1
+    bad "docker CLI not found"
+    if [ "$HOST_OS" = macos ]; then fix "brew install --cask docker   (Docker Desktop), then: open -a Docker"
+    else fix "install Docker Desktop with WSL integration, or docker-ce inside WSL"; fi; rc=1
   elif ! docker info >/dev/null 2>&1; then
     bad "docker daemon not reachable (docker info failed)"
-    fix "start Docker Desktop (Settings > Resources > WSL integration on), or: sudo service docker start"; rc=1
+    if [ "$HOST_OS" = macos ]; then fix "open -a Docker   (wait for the whale icon to stop animating), then re-run"
+    else fix "start Docker Desktop (Settings > Resources > WSL integration on), or: sudo service docker start"; fi; rc=1
   else
-    ok "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null) (daemon reachable)"
+    docker_ok=1
+    ok "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null) (daemon reachable; $(docker info --format '{{.OperatingSystem}}' 2>/dev/null))"
     if docker compose version >/dev/null 2>&1; then ok "$(docker compose version | head -n1)"
-    else bad "docker compose v2 plugin missing"; fix "sudo apt-get install -y docker-compose-plugin"; rc=1; fi
+    else bad "docker compose v2 plugin missing"
+         if [ "$HOST_OS" = macos ]; then fix "update Docker Desktop (compose v2 ships with it)"; else fix "sudo apt-get install -y docker-compose-plugin"; fi; rc=1; fi
+    # Architecture: DVAA's pinned base image (node:24-alpine by digest) and opena2a/dvaa:0.9.2 are both
+    # multi-arch (amd64 + arm64), so on Apple Silicon `up` builds a native arm64 image. An image of the
+    # other arch (e.g. built with DVAA_PLATFORM=linux/amd64) runs under emulation: works, but slower.
+    harch="$(uname -m)"; sarch="$(docker version --format '{{.Server.Arch}}' 2>/dev/null)"
+    iarch="$(docker image inspect "$PROJECT-dvaa" --format '{{.Architecture}}' 2>/dev/null || true)"
+    if [ -n "$iarch" ] && [ "$iarch" != "$sarch" ]; then
+      warn "host $harch, docker engine $sarch, but image $PROJECT-dvaa is $iarch (emulated; slower)"
+      fix "scripts/eval.sh down && docker image rm $PROJECT-dvaa && scripts/eval.sh up   (rebuilds natively)"
+    elif [ -n "$iarch" ]; then ok "architecture: host $harch, docker engine $sarch, image $PROJECT-dvaa $iarch (native)"
+    else ok "architecture: host $harch, docker engine $sarch (image $PROJECT-dvaa not built yet; up builds it natively)"; fi
+    # On macOS Docker runs in a VM and bind mounts only work for paths shared into it; the T12 egress
+    # overlay bind-mounts this repo and its log dir. Docker Desktop shares /Users, /Volumes, /private,
+    # /tmp, /var/folders by default; Colima shares only $HOME (so not /tmp or $TMPDIR, see #60).
+    if [ "$HOST_OS" = macos ]; then
+      local engine; engine="$(docker_engine)"
+      case "$engine" in
+        colima)
+          ok "docker engine: Colima (context $(docker context show 2>/dev/null))"
+          case "$REPO/" in
+            "$HOME"/*) ok "repo is under \$HOME, which Colima shares into its VM" ;;
+            *) bad "repo $REPO is outside \$HOME; Colima only shares \$HOME, so bind mounts will be empty"
+               fix "clone the repo under ~/ (or start colima with --mount $(dirname "$REPO"):w)"; rc=1 ;;
+          esac
+          warn "Colima shares only \$HOME: anything bind-mounted from /tmp or \$TMPDIR (/var/folders/...) is empty in containers (#60)"
+          fix "TMPDIR=\$HOME/.cache/tmp-docker (mkdir -p it first) for the egress live tests, or use Docker Desktop" ;;
+        docker-desktop)
+          ok "docker engine: Docker Desktop"
+          case "$REPO" in
+            /Users/*|/Volumes/*|/private/*|/tmp/*|/var/folders/*) ok "repo is under a Docker Desktop shared path" ;;
+            *) warn "repo $REPO is outside Docker Desktop's default shared paths (bind mounts may fail)"
+               fix "Docker Desktop > Settings > Resources > File sharing: add $(dirname "$REPO"), or clone under ~/" ;;
+          esac ;;
+        *) warn "docker engine: $engine (not Docker Desktop or Colima; untested). Bind mounts need the repo shared into its VM" ;;
+      esac
+    fi
   fi
 
   if ensure_dvaa_checkout; then ok "DVAA checkout at pinned ${DVAA_PIN:0:12} (clean) in ${DVAA_DIR#$REPO/}"
   else bad "DVAA pinned checkout not available"; rc=1; fi
 
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    if [ -n "$(fleet_containers)" ] && fleet_healthy; then ok "DVAA fleet '$PROJECT' running, all ${#DVAA_PORTS[@]} ports healthy"
+  local fleet_up=0 p busy="" owner
+  if [ "$docker_ok" = 1 ]; then
+    if [ -n "$(fleet_containers)" ] && fleet_healthy; then fleet_up=1; ok "DVAA fleet '$PROJECT' running, all ${#DVAA_PORTS[@]} ports healthy"
     else warn "DVAA fleet '$PROJECT' not running/healthy (needed by: up, live seams, contrast EVAL_LIVE=1)"; fix "scripts/eval.sh up"; fi
   fi
+  # Ports: DVAA 7001-7023 + 9000 must be free unless our fleet holds them; proxy + dashboard ports likewise.
+  if [ "$fleet_up" = 0 ]; then
+    for p in "${DVAA_PORTS[@]}"; do port_listening "$p" && busy="$busy $p"; done
+    if [ -n "$busy" ]; then
+      bad "DVAA ports already in use by something else:$busy"
+      for p in $busy; do owner="$(port_owner "$p")"; [ -n "$owner" ] && fix "port $p held by $owner"; done
+      fix "lsof -nP -iTCP:<port> -sTCP:LISTEN   then stop that process (or a stale fleet: docker ps | grep -E '700|9000')"; rc=1
+    else ok "DVAA ports 7001-7023 + 9000 are free"; fi
+  fi
+  busy=""
+  for p in "${PROXY_PORTS[@]}"; do port_listening "$p" && busy="$busy $p"; done
+  if [ -n "$busy" ]; then
+    warn "proxy port(s) in use:$busy (sentinel/config listen ports; only needed for a live proxy run)"
+    for p in $busy; do owner="$(port_owner "$p")"; [ -n "$owner" ] && fix "port $p held by $owner"; done
+    fix "SENTINEL_LISTEN_PORT=<free port> node sentinel/proxy/cli.mjs --config ...   or stop the listener"
+  else ok "proxy ports ${PROXY_PORTS[*]} are free"; fi
+  if port_listening "$DASH_PORT"; then
+    if [ -f "$OUT/dashboard.pid" ] && kill -0 "$(cat "$OUT/dashboard.pid")" 2>/dev/null; then ok "dashboard port $DASH_PORT held by our dashboard (pid $(cat "$OUT/dashboard.pid"))"
+    else warn "dashboard port $DASH_PORT is in use by another process $(port_owner "$DASH_PORT")"; fix "EVAL_DASHBOARD_PORT=9101 scripts/eval.sh dashboard"; fi
+  else ok "dashboard port $DASH_PORT is free"; fi
   return $rc
 }
 
@@ -211,9 +348,10 @@ cmd_down() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# Test suites. Discovery is by glob: every directory under sentinel/ and captures/ that holds a
+# Test suites. Discovery is by glob: every directory under SUITE_ROOTS that holds a
 # *.test.js or *.test.mjs file is a suite, so a new suite is picked up without editing this script.
 # The ticket list below only labels suites and turns a component that is absent into NOT YET MERGED.
+SUITE_ROOTS=(sentinel captures track3a track1)
 KNOWN_SUITES=(
   "T2|sentinel/proxy"
   "T3|sentinel/detectors"
@@ -222,14 +360,19 @@ KNOWN_SUITES=(
   "T7|sentinel/scoring"
   "T6|captures/variants"
   "T8|captures/contrast"
+  "3A|track3a"
+  "track1|track1"
 )
 # Prints "component_dir|test_dir" per suite. The component dir (the cwd the tests expect) is the parent
 # of a test/ or tests/ dir, otherwise the dir itself.
 discover_suites() {
   local t comp
-  ( cd "$REPO" && find sentinel captures \( -name node_modules -o -name .eval -o -name .dvaa \) -prune -o \
+  local roots=() r
+  for r in "${SUITE_ROOTS[@]}"; do [ -d "$REPO/$r" ] && roots+=("$r"); done
+  [ ${#roots[@]} -eq 0 ] && return 0
+  ( cd "$REPO" && find "${roots[@]}" \( -name node_modules -o -name .eval -o -name .dvaa \) -prune -o \
       -type f \( -name '*.test.js' -o -name '*.test.mjs' \) -print 2>/dev/null ) \
-    | xargs -r -n1 dirname | sort -u | while IFS= read -r t; do
+    | while IFS= read -r t; do dirname "$t"; done | sort -u | while IFS= read -r t; do
       case "$(basename "$t")" in test|tests) comp="$(dirname "$t")" ;; *) comp="$t" ;; esac
       echo "$comp|$t"
     done
@@ -251,7 +394,7 @@ run_suite() { # ticket dir testdir
   name="${dir//\//_}"; log="$OUT/test/$name.log"
   cmd="$(suite_cmd "$dir" "$tdir")"
   start=$(date +%s)
-  ( cd "$REPO/$dir" && shopt -s nullglob && eval "timeout --kill-after=10 $SUITE_TIMEOUT $cmd" ) > "$log" 2>&1
+  ( cd "$REPO/$dir" && run_with_timeout "$SUITE_TIMEOUT" bash -c "shopt -s nullglob; $cmd" ) > "$log" 2>&1
   rc=$?; secs=$(( $(date +%s) - start ))
   pass="$(grep -Eo '^(# |ℹ )pass [0-9]+' "$log" | tail -n1 | grep -Eo '[0-9]+$')"
   fail="$(grep -Eo '^(# |ℹ )fail [0-9]+' "$log" | tail -n1 | grep -Eo '[0-9]+$')"
@@ -287,7 +430,11 @@ for k,r in enumerate(rows):
 '
 }
 cmd_test() {
-  hdr "test (every *.test.js/*.test.mjs suite under sentinel/ and captures/, found by glob)"
+  hdr "test (every *.test.js/*.test.mjs suite under ${SUITE_ROOTS[*]}, found by glob)"
+  local root
+  for root in "${SUITE_ROOTS[@]}"; do
+    [ -d "$REPO/$root" ] || warn "$root/ not present on this branch: none of its suites can run (see NOT YET MERGED below)"
+  done
   require_node || return 1
   mkdir -p "$OUT/test"
   # Real seams: the pinned DVAA checkout (T6 evasion proof, T7 baseline) and, when the fleet is up,
@@ -300,10 +447,10 @@ cmd_test() {
   else warn "DVAA fleet not up: live-DVAA seams will be skipped (run scripts/eval.sh up first)"; fi
 
   SUITE_ROWS=(); SUITE_FAILS=(); SUITE_MISSING=(); SUITE_SKIPS=()
-  local entry ticket dir tdir rc=0 r nym=0
+  local entry ticket dir tdir rc=0 r nym=0 note
   local suites=() found=" " t2
-  mapfile -t suites < <(discover_suites)
-  for entry in "${suites[@]}"; do
+  while IFS= read -r entry; do suites+=("$entry"); done < <(discover_suites)   # (no mapfile: bash 3.2)
+  for entry in ${suites[@]+"${suites[@]}"}; do
     IFS='|' read -r dir tdir <<< "$entry"; found+="$dir "
     ticket="(new)"
     for t2 in "${KNOWN_SUITES[@]}"; do [ "${t2#*|}" = "$dir" ] && ticket="${t2%%|*}"; done
@@ -313,7 +460,8 @@ cmd_test() {
   for entry in "${KNOWN_SUITES[@]}"; do
     IFS='|' read -r ticket dir <<< "$entry"
     case "$found" in *" $dir "*) continue ;; esac
-    SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|no *.test.js/*.test.mjs under $dir on this branch")
+    if [ -d "$REPO/$dir" ]; then note="no *.test.js/*.test.mjs under $dir on this branch"; else note="$dir/ not present on this branch"; fi
+    SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|$note")
     SUITE_MISSING+=("$ticket $dir"); nym=1
   done
   if [ ${#suites[@]} -eq 0 ]; then bad "no test files found under sentinel/ or captures/"; return 1; fi
@@ -402,10 +550,9 @@ cmd_dashboard() {
   # Show the freshly scored results when `score` ran, else the committed sentinel/scoring/results.json.
   local scoring_env=()
   [ -f "$OUT/score/results.json" ] && scoring_env=(SENTINEL_SCORING_FILE="$OUT/score/results.json")
-  env "${scoring_env[@]}" nohup node "$srv" --port "$DASH_PORT" --host 127.0.0.1 > "$OUT/dashboard.log" 2>&1 &
+  env ${scoring_env[@]+"${scoring_env[@]}"} nohup node "$srv" --port "$DASH_PORT" --host 127.0.0.1 > "$OUT/dashboard.log" 2>&1 &
   echo $! > "$pidf"
-  local i
-  for i in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     [ "$(port_code "$DASH_PORT")" = 200 ] && break
     kill -0 "$(cat "$pidf")" 2>/dev/null || break
     sleep 0.5
@@ -424,6 +571,22 @@ cmd_dashboard() {
   echo "  log: .eval/dashboard.log   stop: scripts/eval.sh dashboard-stop"
   return 0
 }
+# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Note: run-demo.mjs
+# rewrites track3a/runs/results.json + RESULTS.md (its own recorded outputs), so this is not part of `all`.
+cmd_track3a() {
+  hdr "track3a (Track 3 Path A: node track3a/run-demo.mjs)"
+  require_node || return 1
+  if [ ! -f "$REPO/track3a/run-demo.mjs" ]; then
+    nym "track3a/ not present on this branch (track3a/run-demo.mjs, PR #62)"; return "$(nym_rc)"
+  fi
+  mkdir -p "$OUT"
+  ( cd "$REPO" && node track3a/run-demo.mjs ) 2>&1 | tee "$OUT/track3a.log" | sed 's/^/  /'
+  local rc=${PIPESTATUS[0]}
+  if [ "$rc" = 0 ]; then ok "track3a demo exit 0 (log .eval/track3a.log)"
+  else bad "track3a demo exit $rc (log .eval/track3a.log)"; return 1; fi
+  return 0
+}
+
 cmd_dashboard_stop() {
   hdr "dashboard-stop"
   local pidf="$OUT/dashboard.pid"
@@ -506,7 +669,7 @@ cmd_all() {
     "cmd_$s"; r=$?
     case "$r" in
       0) label=PASS ;;
-      "$RC_NYM") label="NOT YET MERGED: $(IFS=';'; echo "${NYM_NOTES[*]}")" ;;
+      "$RC_NYM") label="NOT YET MERGED: $(IFS=';'; echo "${NYM_NOTES[*]-}")" ;;
       *) label=FAIL; rc=1 ;;
     esac
     rows+=("$s|$label")
@@ -529,6 +692,7 @@ case "${1:-help}" in
   dashboard) cmd_dashboard ;;
   dashboard-stop) cmd_dashboard_stop ;;
   all) cmd_all ;;
+  track3a) cmd_track3a ;;
   gate) cmd_gate "${2:-}" ;;
   help|-h|--help) usage ;;
   *) echo "unknown target '$1'" >&2; usage >&2; exit 2 ;;
