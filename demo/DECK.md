@@ -197,7 +197,9 @@ benchmark of a different system on a different corpus isn't like-for-like.
 **On slide**
 - Two bars: **jailbreak text, held out: 0% prevented (0/600)**, because none of it has anywhere to send data · **where
   data actually leaves: we prevent 57/71 with 0/164 legit requests blocked; DVAA prevents 64/71 but blocks 21/164**.
-- "Spacing out an account number slips past our blocking rule today." (Found by our own critic, issue #112; not yet fixed.)
+- "Spacing out an account number slips past our blocking rule today." The request-side rule is bypassable by spacing and
+  homoglyphs (issue #112; spacing fix in PR #122). Egress default-deny still blocks, because it decides on the host.
+- Residual risk: exfil to an operator-allowlisted host, including HTTPS CONNECT, where TLS is opaque.
 - "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data."
 - Small print: held-out set = 600 attack + 400 benign rows from 3 public Hugging Face sets, never tuned on: T3 detected
   28.5%, prevented 0%, 0/400 benign blocked; DVAA detected and prevented 60.7% at 22/400 benign

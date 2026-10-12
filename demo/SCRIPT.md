@@ -11,7 +11,8 @@
 > **Pitch frame (critic #112, creative #105).** We are an exfil-focused guardrail, not a jailbreak classifier and not
 > "a slice of Falcon AIDR". Prevention on the blended corpus loses to DVAA's scanner (42% vs 63%), so we own that, then
 > show where data actually leaves (we prevent 57/71 with 0/164 legit requests blocked; DVAA prevents 64/71 but blocks 21/164: never quote ours without theirs) and the control that actually blocks: **default-deny egress
-> at the tool boundary**. Say "deterministic sandbox, no LLM" in the first 20 seconds, say "recorded" on every replay
+> at the tool boundary**, which decides on the destination host, not content, so it holds when the request-side regex
+> is bypassed (spacing, homoglyphs; confirmed live by critic B, #112). Never claim request-side robustness. Say "deterministic sandbox, no LLM" in the first 20 seconds, say "recorded" on every replay
 > beat, and never headline "100% precision" or "0% FP".
 >
 > Companion deck: `demo/DECK.md`. Rehearsal + fallback-video checklist + replay log: `demo/REHEARSAL.md`.

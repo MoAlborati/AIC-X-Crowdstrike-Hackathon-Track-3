@@ -38,9 +38,11 @@ are tripwires and alerts, not the engine."
 
 **C5. "This is a regex plus a host allowlist. Calling it a slice of Falcon AIDR is overreach, and spacing out an IBAN bypasses it."**
 "Agreed on the name: we dropped it. It's an exfil-focused guardrail for tool-using agents that complements AIDR at the
-tool boundary; we haven't integrated with Falcon. The spaced-IBAN bypass is real, our own critic found it, and
-destination canonicalization would close it, but it isn't merged. The blocking verbs are also English only."
-**Proof:** issue #112, section 4 (mutation table).
+tool boundary; we haven't integrated with Falcon. And yes, the request-side rule is bypassable: spacing and homoglyphs
+get past it, the spacing fix is in PR #122, and the verbs are English only. We don't claim request-side robustness.
+What holds is default-deny egress: it decides on the destination host, not content, so it still blocks when the regex
+is bypassed. The residual risk is exfil to an operator-allowlisted host, including HTTPS CONNECT to one, where TLS is opaque."
+**Proof:** issue #112 (section 4 mutation table; critic B's live egress check); PR #122; `sentinel/egress/inspector.mjs` (host-only CONNECT).
 
 ---
 
@@ -96,8 +98,9 @@ provenance and egress controls. We don't replace it, and we haven't integrated w
 CITATIONS.md rows for AIDR and AgentWorks. Use "announced" for AgentWorks.
 
 **6. "What about HTTPS egress?"**
-"That's a known limitation. We don't intercept TLS. A CONNECT tunnel is decided on host alone, against an exact-host
-allowlist, so an unknown host is still denied but we can't read its payload. DVAA's exfiltration sinks use plain HTTP,
+"That's a known limitation, and it is our main residual risk. We don't intercept TLS. A CONNECT tunnel is decided on
+host alone, against an exact-host allowlist, so an unknown host is still denied, but exfil through a host the operator
+allowlisted, over HTTPS, passes because the payload is opaque. DVAA's exfiltration sinks use plain HTTP,
 so we see their full contents. In production you'd add TLS inspection at the egress proxy or rely on the
 allowlist."
 **Proof:** `sentinel/egress/inspector.mjs` header comment ("CONNECT … allow/deny by host allowlist only"). The first

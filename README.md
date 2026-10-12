@@ -39,15 +39,19 @@ Our honest headline, from [`sentinel/scoring/RESULTS.md`](sentinel/scoring/RESUL
 - **One pre-forward rule does all of our scored prevention.** All 79 prevented positives fire
   `inbound.exfil_instruction`. Honeytokens, provenance and taint are tripwires and alerts. The honeytokens are DVAA's
   own known secrets, so read them as a known-secret tripwire, not planted canaries.
-- **The control that actually blocks is default-deny egress at the tool boundary.** It stops the RepoBot exfil that
-  happens inside the agent, where no request-side check can reach (recorded run in `demo/captures/egress-demo-block.txt`).
+- **The control that actually blocks is default-deny egress at the tool boundary.** It decides on the destination
+  host, not on content, so it still holds when the request-side rule is bypassed (spacing, homoglyphs); a second critic
+  confirmed this live (issue #112). It also stops the RepoBot exfil that happens inside the agent, where no
+  request-side check can reach (recorded run in `demo/captures/egress-demo-block.txt`).
 - **Benign:** 0 of 164 benign cases blocked, on a benign set the rules were also tuned on. That is a small sample,
   not a zero-FP guarantee, and we don't headline it.
 
 **We attacked ourselves.** On 600 held-out public jailbreak and injection rows we never tuned on, T3 detected 28.5%
 and prevented **0%**, because none of them carries a destination to steal to ([`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md)).
-Our own critic (issue #112) also found that spacing out an account number (`U S 1 3 3 0 ...`) slips past the blocking
-rule. Destination canonicalization would close it; it is not merged yet. The blocking verbs are English only.
+Our own critics (issue #112) also found that the **request-side rule is bypassable**: spacing out an account number
+(`U S 1 3 3 0 ...`) or using homoglyphs slips past it. The spacing fix is in PR #122, not merged yet; the blocking verbs
+are English only. We make no request-side robustness claim. **Residual risk at egress:** exfil to a host the operator
+has allowlisted, including an HTTPS CONNECT to an allowlisted host, where TLS is opaque and only the host is checked.
 
 ## The enforcement points
 
