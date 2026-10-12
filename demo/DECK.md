@@ -160,13 +160,16 @@ As of `sentinel/scoring/results.json` on origin/main `6c4fdc7`: detection 63.0% 
 prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.40 ms (origin/main 4817aca). Copy the slide's
 numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
 
-- Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment."
+- Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment. Benign FP is measured on the
+  164-case benign corpus."
 
 **Speaker notes**
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
-latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **If T7 hasn't merged, this slide says "pending" and the script drops
-the numbers sentence. Never put a guessed number on it.** Don't put AIDR's figure on this slide as a comparison. A
+latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **Never put a guessed number on it.**
+Say it plainly: DVAA's baseline has the higher recall, on both detection and prevention, at a 12.8% benign FP rate.
+Our 0% benign FP is on the 164-case benign corpus. On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.
+The only unqualified win is the 2/2 cases that evade the baseline's 8KB window. Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
@@ -190,8 +193,8 @@ efficacy at sub-30ms latency (CrowdStrike, internal benchmark)". Keep "up to" an
 ## Slide 10 — Close
 
 **On slide**
-- **SentinelProxy:** stops the confused deputy at the tool boundary.
-- Exploit → detect → alert → block, deterministic, scored against ground truth.
+- **SentinelProxy:** guards against the confused deputy at the tool boundary.
+- Exploit → detect → alert → block, deterministic, scored against ground truth, misses published.
 - Repo link · team names · "Thank you."
 
 **Speaker notes**

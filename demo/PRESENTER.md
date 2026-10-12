@@ -37,8 +37,8 @@ All commands run from the repo root, which must be under `~` because Colima only
 | 1:40 | **4b** Egress | "RepoBot reads its payload in-process, so the egress guard stops the exfil at the tool boundary." | **Enter** | `deny` rows, `RESULT block: PREVENTED`, `(no canary hits)` | read `PREVENTED`, move on |
 | 1:50 | **5a** AIM twin | "Its twin, RAGBot-AIM 7014, is denied. We protect the agents you can't rebuild." | **Enter** · tab `aim-twin`, then slide 6 | `false` + denial reason; red / green / green columns | slide 6 only |
 | 2:05 | 6 How | "Confirmation of Payee, limited power of attorney, dead-man switch: fail closed, never truncate." | slide 7 | field → mechanism → rule | trim to two mechanisms |
-| 2:30 | **7** Close | Read the numbers the terminal prints, verbatim. Then: "A working slice of Falcon AIDR at the tool boundary. Thank you." | **Enter** · slides 8 → 10 | T3 vs DVAA table: recall, FP, `8KB evasion 2/2`, p95 < 0.5 ms | read the numbers off the slide |
-| 3:00+ | **3A OpsBot** (Path A, encore or Q&A) | "We also built our own agent: no single layer stops both attacks, all three together do, with 0 benign FPs." | `node track3a/run-demo.mjs` (~2 s) | the layering table: Undefended LEAKED ×2 … Hardened + proxy + egress all blocked, benign OK | `open track3a/RESULTS.md` (committed table) |
+| 2:30 | **7** Close | Read the numbers the terminal prints, verbatim. Then: "A working slice of Falcon AIDR at the tool boundary. Thank you." | **Enter** · slides 8 → 10 | T3 vs DVAA table: recall, FP, `8KB evasion 2/2`, p95 < 0.5 ms (DVAA has the higher recall; our 0 FP is on the 164-case benign corpus) | read the numbers off the slide |
+| 3:00+ | **3A OpsBot** (Path A, encore or Q&A) | "We also built our own agent: no single layer stops both attacks, all three together do, and both benign tasks still pass." | `node track3a/run-demo.mjs` (~2 s) | the layering table: Undefended LEAKED ×2 … Hardened + proxy + egress all blocked, benign OK | `open track3a/RESULTS.md` (committed table) |
 
 Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut 3b.**
 

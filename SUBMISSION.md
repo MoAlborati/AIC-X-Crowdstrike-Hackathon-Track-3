@@ -1,6 +1,6 @@
 # SentinelProxy: an inline detection-and-response guardrail for AI agents
 
-**Pitch:** SentinelProxy catches an indirect prompt injection and blocks the data theft before it happens. It sits in front of a vulnerable agent and at its tool boundary, and it turns each attempt into a Falcon AIDR-shaped alert mapped to MITRE ATLAS and OWASP.
+**Pitch:** SentinelProxy catches indirect prompt injections and blocks the attacks it catches before forwarding or at egress. It sits in front of a vulnerable agent and at its tool boundary, and it turns each attempt into a Falcon AIDR-shaped alert mapped to MITRE ATLAS and OWASP.
 
 > Channel-agnostic write-up. Each `##` section stands alone, so you can paste it into any form field. The numbers in **Results** come from `sentinel/scoring/results.json` via `node scripts/fill-submission-metrics.mjs`. Nothing in that section is typed by hand.
 
@@ -55,7 +55,7 @@ DVAA ships its own detector, `detectAttacks()`, but it scans only the first and 
 | Hardened OpsBot only | blocked (mandate) | leaked | OK |
 | Hardened + proxy + egress | blocked | blocked | OK |
 
-No single layer stops both attacks. The chat proxy cannot see an injection that arrives in a tool result, and the mandate trusts its principal. Together the layers stop both attacks with zero benign false positives.
+No single layer stops both attacks. The chat proxy cannot see an injection that arrives in a tool result, and the mandate trusts its principal. Together the layers stop both attacks, with 0/2 benign false positives.
 <!-- PATH-A:END -->
 
 ## How to run
@@ -102,12 +102,12 @@ Source: `sentinel/scoring/results.json`. The file was generated <<METRIC:meta.ge
 
 **Live egress check (T12, `scripts/egress-demo.sh both`).** In observe mode, the RAGBot and RepoBot secrets reach the local attacker canary and are alerted. In block mode the canary receives no hits, and each attempt produces a `deny` / `honeytoken_match` alert. A direct-dial bypass from inside the sandbox also fails. The attacker's canary receipt is the ground truth, not DVAA's self-report.
 
-**Honest framing.** We optimized for **zero false alarms and fail-closed prevention**, not for raw recall. SentinelProxy's detection recall is <<METRIC:cmp.detection>> the baseline's and its prevention recall is <<METRIC:cmp.prevention>> the baseline's. The baseline gets its recall with <<METRIC:baseline.fp>> benign false positives, while SentinelProxy has <<METRIC:t3.fp>>. In a SOC, a guardrail that blocks legitimate work gets switched off. Detection and prevention are reported separately on purpose. DVAA runs its tools in-process, so a finding on the response side fires only after the tool has run. Those findings count as detections (alert and evidence), but never as preventions. Our "prevention" number counts only what is stopped before forwarding or at egress. The positives include injection-only cases that never attempt exfiltration, and our deterministic rules often flag those without blocking them. The baseline misses the 8KB evasion cases by construction. They are a small set, and we present them as a demonstrated structural gap, not as a headline percentage. The latency figure is detector time per case in-process, not end-to-end proxy latency.
+**Honest framing.** We optimized for **no false alarms on the benign corpus and fail-closed prevention**, not for raw recall. DVAA's baseline has higher recall than SentinelProxy on both detection and prevention, at a <<METRIC:baseline.benignFpRate>> benign FP rate; the only outright win we claim is catching <<METRIC:evasion.t3Caught>> of <<METRIC:evasion.eligible>> cases that evade the baseline's 8KB window. SentinelProxy's detection recall is <<METRIC:cmp.detection>> the baseline's and its prevention recall is <<METRIC:cmp.prevention>> the baseline's. The baseline gets its recall with <<METRIC:baseline.fp>> benign false positives, while SentinelProxy has <<METRIC:t3.fp>>, both on the <<METRIC:corpus.benign>>-case benign corpus. On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46. In a SOC, a guardrail that blocks legitimate work gets switched off. Detection and prevention are reported separately on purpose. DVAA runs its tools in-process, so a finding on the response side fires only after the tool has run. Those findings count as detections (alert and evidence), but never as preventions. Our "prevention" number counts only what is stopped before forwarding or at egress. The positives include injection-only cases that never attempt exfiltration, and our deterministic rules often flag those without blocking them. The baseline misses the 8KB evasion cases by construction. They are a small set, and we present them as a demonstrated structural gap, not as a headline percentage. The latency figure is detector time per case in-process, not end-to-end proxy latency.
 
 ## Limitations
 
-- **Response-side checks are alert-only on DVAA.** Its agents run tools in-process, so prevention happens at only two points: before the request is forwarded, and at the egress guard.
-- **The egress guard does not intercept HTTPS.** It decides CONNECT by host only. It does not link egress events to chat turns, and loopback SSRF inside the container never reaches it.
+- **Response-side checks are alert-only for prevention on DVAA.** Its agents run tools in-process, so a response-side finding fires after the tool ran; in block mode it withholds the reply. Prevention happens at only two points: before the request is forwarded, and at the egress guard.
+- **The egress guard does not intercept HTTPS.** It decides CONNECT by host only. It links egress events to chat turns by best-effort time-window attribution only, reporting them standalone when the match is ambiguous, and loopback SSRF inside the container never reaches it.
 - **There are known redaction gaps in T4 alert text.** These include a card number that follows a short digit group, and double %-encoded or `\u`-escaped canaries. The egress guard decodes these forms for its *blocking* decision, but alert redaction does not.
 - **Detection is deterministic,** built from honeytokens, taint, provenance and pattern rules, with no ML classifier. Injections that never try to exfiltrate are often detected without being blocked.
 - **Corpus scope:** a single pinned DVAA version, published benchmark strings and our own benign set. The evasion set is small.

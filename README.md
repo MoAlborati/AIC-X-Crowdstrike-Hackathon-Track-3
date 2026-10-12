@@ -4,7 +4,7 @@
 
 CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
 model and tools. It turns an indirect prompt injection into a Falcon/AIDR-shaped alert, mapped to MITRE
-ATLAS and OWASP, and it blocks data exfiltration before the agent acts. Our target is **DVAA** (Damn
+ATLAS and OWASP, and it blocks the attacks it catches before forwarding or at egress. Our target is **DVAA** (Damn
 Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox, run offline on
 `127.0.0.1`. This is an authorized hackathon project, and all of the work is defensive.
 
@@ -78,22 +78,26 @@ so it can't go stale. How to read them:
 - **Two lenses.** *Detection* asks whether we raised the right alert. *Prevention* asks whether the
   exfiltration was actually stopped. We report both separately, because an alert-only check detects but
   does not prevent.
-- **Benign false positives.** The 0% benign FP rate is measured against the same benign corpus that the
-  DVAA baseline detector is scored on, so the comparison is like for like.
-- **Beyond the baseline.** DVAA's own scanner looks only at the head and tail 8KB of a payload. Injections
-  placed in the middle of a long benign document evade it. SentinelProxy scans the full payload, and the
-  `evadesBaseline` cases in the corpus measure that difference.
+- **Benign false positives.** The 0% benign FP rate is on the 164-case benign corpus, the same corpus the
+  DVAA baseline detector is scored on, so the comparison is like for like. On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.
+- **Recall.** DVAA's baseline has higher recall than SentinelProxy, on both detection and prevention, at a
+  12.8% benign FP rate. We do not claim to beat it on recall.
+- **The 8KB window.** DVAA's own scanner looks only at the head and tail 8KB of a payload. Injections
+  placed in the middle of a long benign document evade it. SentinelProxy scans the full payload and catches
+  2/2 of the `evadesBaseline` cases in the corpus. That small set is the only place we claim an outright win.
 
 ## Honest limitations
 
 - **DVAA runs its tools in-process.** The request-side proxy therefore cannot stop an action decided inside
-  the agent, so response-side checks are **alert-only**. Prevention happens at two points: before the
-  request is forwarded, and at the egress guard.
+  the agent, so response-side checks are **alert-only** for prevention (in block mode they withhold the reply,
+  but the tool has already run). Prevention happens at two points: before the request is forwarded, and at the
+  egress guard.
 - **Known redaction gaps in T4 alert redaction** (listed in PR #12). A card number that follows another
   short digit group can pass unredacted. Double %-encoded and `\u`-escaped canaries can leak into alert
   text. The egress guard decodes these forms for its *blocking* decision, but alert redaction does not.
-- **Egress guard scope** (T12). It does not intercept HTTPS: CONNECT is decided by host only. It does not
-  correlate egress events to chat turns. In-container loopback SSRF never reaches it.
+- **Egress guard scope** (T12). It does not intercept HTTPS: CONNECT is decided by host only. Egress events
+  are linked to chat turns by best-effort time-window attribution only, and are reported standalone when the
+  match is ambiguous. In-container loopback SSRF never reaches it.
 - Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
   An injection that never attempts exfiltration may be flagged without being blocked.
 
@@ -111,7 +115,7 @@ so it can't go stale. How to read them:
 | `captures/` | T1 exploit transcripts, T6 attack and benign corpus, T8 secure-by-design contrast |
 | `demo/` | T9 demo runner, script, deck, rehearsal log |
 | `scripts/` | `eval.sh` (one-command evaluation and merge gate), DVAA setup, capture |
-| `planning/` | Strategy, research, verified citations, T3 spec, egress spike |
+| `planning/` | Strategy, research, verified citations, T3 spec, egress design notes |
 | `GOAL.md`, `BACKLOG.md`, `STATE.md` | Definition of Done, tickets T1–T12, live loop state |
 | `LOOP.md`, `AGENTS.md`, `gates/`, `prompts/` | How the agent team builds this: PR-gated loop, roles, quality gates |
 
@@ -134,7 +138,7 @@ Each PR passed SE, tester, reviewer and delivery gates (`gates/`) and the merge 
 
 ## Credits
 
-- **Team:** Shruti Doshi and Mo Alborati, with an Opus 5.5 agent team (orchestrator plus implementer,
+- **Team:** Shruti Doshi, Mo Alborati and Catherine ([@c-awad](https://github.com/c-awad), presenter), with an Opus 5.5 agent team (orchestrator plus implementer,
   tester and reviewer agents).
 - **Target:** DVAA (Damn Vulnerable AI Agent) by OpenA2A, provided by the organizers.
 - **Benchmarks:** AgentDojo (Debenedetti et al., NeurIPS 2024), InjecAgent (Zhan et al., ACL Findings

@@ -20,7 +20,14 @@ export function renderMarkdown(r) {
       '*Prevention* = a finding with `prevents:true`: it acts before the agent runs (pre-forward) or withholds the reply. ' +
       'Response-side tool-call findings on an in-process agent (DVAA) fire after the tool already ran: alert + evidence only, ' +
       'counted in detection, NOT in prevention. *Rule-intent block* = the original `recall` field (any would-block rule fired); it overstates prevention.', '');
-    L.push('| detector | lens | recall | precision | benign FP rate | TP | FP | TN | FN | beats baseline (evadesBaseline) |', '|---|---|---|---|---|---|---|---|---|---|');
+    {
+      const bD = base?.modes?.enforce?.anyFinding, bP = base?.modes?.enforce?.prevention;
+      const higher = bD && bP && bD.recall > H.detection.recall && bP.recall > H.prevention.recall;
+      L.push(`**Scope.** Benign FP rates are on the ${r.corpus.negatives}-case benign corpus. ` +
+        (higher ? `The DVAA baseline has higher recall than ${r.headline.detector} on both detection and prevention, at a ${pct(bD.falsePositiveRate)} benign FP rate; the only outright win claimed is the evadesBaseline set below. ` : '') +
+        'On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.', '');
+    }
+    L.push('| detector | lens | recall | precision | benign FP rate | TP | FP | TN | FN | evades DVAA 8KB window (evadesBaseline) |', '|---|---|---|---|---|---|---|---|---|---|');
     const row = (name, lens, m, beat) => L.push(`| ${name} | ${lens} | ${pct(m.recall)} | ${pct(m.precision)} | ${pct(m.falsePositiveRate)} | ${m.tp} | ${m.fp} | ${m.tn} | ${m.fn} | ${beat} |`);
     row(r.headline.detector, '**detection (any finding)**', H.detection, bb0 ? `${bb0.beaten}/${bb0.eligible}` : 'n/a');
     row(r.headline.detector, '**prevention (prevents:true)**', H.prevention, bb0 ? `${bb0.beatenPrevention}/${bb0.eligible}` : 'n/a');
@@ -47,7 +54,7 @@ export function renderMarkdown(r) {
   }
   L.push('');
   const bb = r.beatsBaseline;
-  L.push(`**Beats DVAA baseline** (cases T6 marks evadesBaseline=true: ${bb.eligible.join(', ') || 'none'}):`);
+  L.push(`**Evades the DVAA 8KB window** (cases T6 marks evadesBaseline=true: ${bb.eligible.join(', ') || 'none'}):`);
   for (const [name, b] of Object.entries(bb.byDetector)) L.push(`- ${name}: ${b.beaten}/${b.eligible}${b.cases.length ? ` (${b.cases.join(', ')})` : ''} · prevented ${b.beatenPrevention ?? 'n/a'}/${b.eligible}`);
   if (bb.baselineMismatch.length) L.push(`- WARNING: dvaa-baseline flagged ${bb.baselineMismatch.join(', ')} although T6 says it evades`);
   L.push('');
@@ -75,7 +82,7 @@ export function renderMarkdown(r) {
     if (d.errors.length) L.push(`ERRORS (${d.errors.length}, each scored as a failure above): ${d.errors.map((e) => `${e.id}: ${e.error}`).join('; ')}`);
     const rules = d.overrides.standIn;
     if (rules.length) {
-      L.push('', 'Override tracking (stand-in: benign corpus = simulated human approvals, until S5):', '');
+      L.push('', 'Override tracking (simulated until a real decision log is wired: benign holds = approvals, attack holds = denials):', '');
       L.push('| rule | fires | holds | approvals | denials | override rate | flag |', '|---|---|---|---|---|---|---|');
       for (const s of rules) L.push(`| ${s.ruleId} | ${s.fires} | ${s.holds} | ${s.approvals} | ${s.denials} | ${pct(s.overrideRate)} | ${s.flag ?? ''} |`);
     }
