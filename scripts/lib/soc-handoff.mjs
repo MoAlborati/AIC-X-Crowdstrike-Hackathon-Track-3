@@ -97,11 +97,6 @@ function section(i, { kind, alert, from }, briefing) {
     `- **Why:** ${briefing.why.join(' ')}`,
     `- **Recommended action:** ${briefing.whatToDo}`,
   ];
-  if (kind === 'post') {
-    // SOC Brief has one wording for every SentinelProxy alert ("the proxy stopped the send", "leave
-    // the block in place"). For a ReportOnly alert that is not true, so the handoff says so plainly.
-    lines.push('- **Handoff note:** this alert is report-only. SOC Brief\'s generic wording above says the proxy stopped the send; here it did not. Treat the data as already sent: rotate the named canaries/secrets and check the sink.');
-  }
   lines.push(
     `- **MITRE ATLAS:** ${tags(alert.MitreAtlas, (t) => `${t.TechniqueId} ${t.Technique}`)}`,
     `- **MITRE ATT&CK:** ${tags(alert.MitreAttack, (t) => `${t.TechniqueId} ${t.Technique}`)}`,

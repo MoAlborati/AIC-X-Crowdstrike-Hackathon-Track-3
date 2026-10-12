@@ -350,6 +350,7 @@ test('T6 corpus is indexed through its manifest: every listed case replays, labe
     assert.equal(r.body.capture.expectedLabel, entry.expected);
   }
   assert.ok(![...index.keys()].some(k => /^variants\/(corpus|tools|tests)\/|manifest/.test(k)), 'generator inputs are not listed as captures');
+  assert.ok(![...index.keys()].some(k => k.startsWith('holdout-hf/')), 'T6c held-out set (separateSet) is not indexed as captures');
   const { loadScoring } = await import('../lib/scoring.mjs');
   const s = await loadScoring(index, { SENTINEL_SCORING_FILE: path.join(os.tmpdir(), 'no-such-results.json') });
   assert.equal(s.corpus.benign, 6 + manifest.cases.filter(c => c.groundTruth === 'negative').length);
