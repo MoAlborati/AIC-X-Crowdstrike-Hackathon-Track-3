@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails,
+  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
@@ -221,11 +221,18 @@ export function createDetector(opts = {}) {
     for (const u of inboundTexts) {
       if (u.principal && !u.ref.suspect) continue; // a clean principal turn is the mandate, not a threat
       const phrases = u.phrases;
-      const tokensHit = registry.scan(u.text);
+      // Honeytokens in raw AND decoded forms (%-decoded up to maxDecodeDepth, \u/\x, base64, hex): the
+      // tripwire decodes on its own and never relies on downstream alert redaction.
+      const tokensHit = [];
+      const seenTok = new Set();
+      for (const v of decodedVariants(u.text, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars })) {
+        for (const h of registry.scan(v.text)) if (!seenTok.has(h.entry.id)) (seenTok.add(h.entry.id), tokensHit.push(h));
+      }
       const secrets = findSecretShapes(u.text, { maxTokenChars: bounds.maxTokenChars }).filter((x) => STRONG_SECRET_KINDS.has(x.kind));
       const named = [
         ...extractUrls(u.text).map((x) => ({ type: 'http', destination: x.host })),
         ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email })),
+        ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban })),
       ];
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
@@ -730,6 +737,7 @@ function hasExfilVerb(text) {
 function destOk(d, grant, policy, toolName) {
   const hosts = [...policy.allowlist.hosts, ...(policy.tools[toolName]?.allowlist ?? [])];
   if (d.type === 'email') return policy.allowlist.emails.includes(d.destination) || grant.destinations.includes(d.destination);
+  if (d.type === 'account') return grant.destinations.includes(d.destination);
   return hostAllowed(d.destination, hosts) || grant.destinations.includes(d.destination);
 }
 

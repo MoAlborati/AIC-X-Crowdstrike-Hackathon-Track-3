@@ -16,7 +16,7 @@
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { MandateOverflowError, LedgerFullError } from './bounds.js';
-import { extractUrls, extractEmails, findAmounts, hostAllowed } from './text.js';
+import { extractUrls, extractEmails, findAmounts, hostAllowed, findIbans } from './text.js';
 import { pathArgs, amountArgs, SINK_KINDS } from './policy.js';
 
 export const DIMENSIONS = Object.freeze(['tool', 'destination', 'amount', 'expiry', 'static_limit']);
@@ -78,6 +78,7 @@ export function deriveGrant({ principalText, policy, session, maxGrantEntries, n
   const destinations = new Set();
   for (const u of extractUrls(text)) destinations.add(u.host);
   for (const e of extractEmails(text)) destinations.add(e.email);
+  for (const a of findIbans(text)) destinations.add(a.iban);
 
   const lower = text.toLowerCase();
   const template = policy.mandate.templates.find((t) => lower.includes(t.match)) ?? null;

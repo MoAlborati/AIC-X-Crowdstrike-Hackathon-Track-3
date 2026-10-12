@@ -154,6 +154,20 @@ export function tokens(text) {
   return out;
 }
 
+/**
+ * IBAN-shaped account numbers (payment destinations): 2 letters + 2 check digits + 11..30 alnum, as one
+ * token. Linear: reuses the tokenizer; the anchored test runs on tokens <= 34 chars only.
+ */
+const IBAN_RE = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;
+export function findIbans(text) {
+  const out = [];
+  if (typeof text !== 'string') return out;
+  for (const { token, index } of tokens(text)) {
+    if (token.length >= 15 && token.length <= 34 && IBAN_RE.test(token) && /\d{6}/.test(token)) out.push({ iban: token, index });
+  }
+  return out;
+}
+
 /** Shannon entropy in bits/char. Linear in token length. */
 export function entropy(s) {
   if (!s) return 0;
@@ -208,6 +222,11 @@ export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
     const tag = (e) => (enc === 'raw' ? e : `${enc}+${e}`);
     const u = safeUrlDecode(s);
     if (u !== s) queue.push({ s: u, d: d + 1, enc: tag('url') });
+    // \uXXXX / \xNN escapes (JSON- or JS-escaped text inside raw tool arguments). One linear replace.
+    if (s.indexOf('\\u') !== -1 || s.indexOf('\\x') !== -1) {
+      const e = s.replace(/\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g, (_, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
+      if (e !== s) queue.push({ s: e, d: d + 1, enc: tag('unicode_escape') });
+    }
     // All decoded runs of one source are batched into ONE variant per encoding (joined by newlines), so
     // the number of variants stays <= 1 + 3 x depth regardless of how many encoded runs the text holds.
     const hex = [];
@@ -468,7 +487,8 @@ const INJECTION_PHRASES = [
   'run the following', 'curl -sl', '| bash', 'read ~/.', 'read the file ~/', 'post them to', 'report the environment',
   // published benchmark phrasings (AgentDojo important_instructions, InjecAgent, deepset)
   'important message from me', 'before you can solve the task', 'ignore previous', 'ignore any previous',
-  'ignore your previous', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
+  'ignore your previous', 'ignore your directions', 'ignore your instructions', 'ignore all instructions',
+  'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
 ];
 
 /** Instruction-like phrases in (untrusted) text. Linear: lower-case once, indexOf per phrase. */

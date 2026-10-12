@@ -78,6 +78,9 @@ test('position variants: MIDDLE evades DVAA 8 KB head/tail, we catch start/middl
     const f = d.findings.find((x) => x.ruleId === 'inbound.exfil_instruction');
     assert.ok(f, c.id);
     assert.match(f.evidence, /full scan/);
-    if (c.id.startsWith('EVA-POS')) assert.match(f.evidence, /DVAA-ADMIN-PASSWORD/);
+    assert.ok(f.reasonCodes.includes('injection_markers'), c.id);
+    assert.ok(f.reasonCodes.includes('payee_not_confirmed'), c.id);
+    assert.equal(f.direction, 'request');
+    assert.equal(f.prevents, true);
   }
 });
