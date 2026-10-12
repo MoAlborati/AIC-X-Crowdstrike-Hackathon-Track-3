@@ -192,6 +192,45 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **Gate notes:** delivery-gate (hackathon-scaled convergence) — **≥5 consecutive clean demo replays**
   before we call it demo-ready (see `gates/delivery-gate.md`).
 
+## T10 — Alert pipeline wiring (proxy verdict → T4 alert → dashboard sink)
+- **DoD:** 3, 4 (gives the T5 dashboard real proxy alerts instead of placeholders)
+- **Deps:** T4 (merged). Built against T2 (PR #14, `t2-proxy-skeleton`) and T5 (PR #11, `t5-dashboard`).
+  It uses clearly labeled **stand-in** verdicts until `origin/t3-detector-core` exists.
+- **Scope:** `sentinel/pipeline/`, `BACKLOG.md` (this entry only)
+- **Why:** the integration checks on PR #11, #13 and #14 found a gap. The proxy writes its own JSONL, and
+  its `alert` records are not T4 alerts. The dashboard reads per-capture T4 sidecars
+  (`<capture-id>.alerts.json`) that nothing writes. So no live proxy session can reach the dashboard.
+- **What:** `sentinel/pipeline/` turns each proxy `exchange` record (request + response + verdicts) into:
+  - a dashboard-loadable capture (`openai` shape with `exchanges[]`), and
+  - a T4 sidecar `{captureId, runs: {run: [<T4 alert>…]}}`, with every alert built by T4 `buildAlert`.
+  Both are written to an output dir that the dashboard reads through `SENTINEL_CAPTURES_DIR` and
+  `SENTINEL_ALERTS_DIR`. There are three modes:
+  - `convert`: batch over a proxy JSONL.
+  - `tail`: follows a growing JSONL, for the live demo next to the stock proxy CLI.
+  - `live`: starts the T2 proxy in-process. The stand-in inspectors run through the proxy's `inspectors`
+    hook, and a pipeline sink runs through its `sink` hook.
+- **Direction labels:** every alert carries `PipelineContext.Direction` and `PipelineContext.Enforcement`.
+  - **Request-side = blocking.** The check runs before the agent sees the request. `Blocked` only when the
+    proxy actually refused it; otherwise `ReportOnly` with `would_block_observe_only`.
+  - **Response-side = alert-only**, always `ReportOnly`. DVAA agents execute tools in-process before they
+    respond, so the side effect has already happened when the proxy sees the response.
+- **Acceptance:**
+  - A real T2 proxy exchange (live DVAA :7005, plus a deterministic real-HTTP upstream) produces T4 alerts
+    that pass `validateAlert`. The real T5 loader/adapter/replay and `/api/replay` show them with no
+    `invalid` flag.
+  - Request-side and response-side alerts carry the direction labels above. A response-side alert is never `Blocked`.
+  - Stand-in verdicts are labeled `StandIn: true`, and their sidecar is `placeholder: true` with a note,
+    so the UI shows the PLACEHOLDER banner. T3-shaped verdicts (`category` + `ruleId`) pass through unlabeled.
+  - Tail mode picks up records appended after start-up. Output is deterministic: the same JSONL gives
+    byte-identical files.
+  - Data-rich inputs: a request >8KB with its signal past the first 8KB, a response with 300 tool calls
+    whose exfil is call #250, and a 250-exchange session (rotated into parts, nothing dropped).
+  - Every cap is fail-loud: capture count, exchanges/alerts/bytes per capture, JSONL line size, verdicts per
+    exchange, pending-alert map. Overflow raises/ALERTs with `{size, cap, action}` and is never silently truncated.
+- **Gate notes:** tester-gate — real T2 proxy + real T5 loader/server as seams, live DVAA when up;
+  se-gate — bounds table in the PR. Decisions stay in the proxy/detector over full bodies. Pipeline caps
+  are display/storage caps only.
+
 ---
 
 ## Stretch (only after all 7 DoD items merge — do not start early)
