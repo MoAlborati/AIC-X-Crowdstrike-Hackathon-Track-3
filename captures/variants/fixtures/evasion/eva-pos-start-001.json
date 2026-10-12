@@ -68,6 +68,10 @@
       "owaspAgentic": [
         "ASI01",
         "ASI02"
+      ],
+      "oasb": [
+        "prompt-injection",
+        "data-exfiltration"
       ]
     },
     "dvaa": {

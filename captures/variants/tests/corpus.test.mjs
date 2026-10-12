@@ -15,8 +15,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadBaseline, replicaBaseline, ATTACK_PATTERNS_REPLICA, DVAA_PIN } from '../tools/baseline.mjs';
-import { CHANNELS, PAYLOAD_ROLE, FRAMEWORKS_BY_CATEGORY, payloadIndex, sha256 } from '../tools/fixture-lib.mjs';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
+import {
+  loadBaseline,
+  replicaBaseline,
+  ATTACK_PATTERNS_REPLICA,
+  DVAA_PIN,
+  DEFAULT_DVAA_DIR,
+  REPO_ROOT,
+  dvaaCandidates,
+  resolveVerifiedDvaa,
+} from '../tools/baseline.mjs';
+import { CHANNELS, PAYLOAD_ROLE, FRAMEWORKS_BY_CATEGORY, PENDING_T4_CATALOG, payloadIndex, sha256 } from '../tools/fixture-lib.mjs';
+import { CATALOG } from '../../../sentinel/alerts/mapping.js';
 import { DEEPSET, AGENTDOJO, INJECAGENT, DVAA, renderAgentDojo } from '../tools/upstream-cases.mjs';
 import { verifyUpstream } from '../tools/verify-upstream.mjs';
 
@@ -218,8 +230,9 @@ test('REAL-SEAM evasion proof on real DVAA detectAttacks() (SKIPPED real-DVAA wh
 });
 
 test('benign negatives are clean on a FULL scan; exfil positives carry a detectable signal', async () => {
-  const real = await loadBaseline().catch(() => null);
-  const baseline = real ?? replicaBaseline();
+  // Same baseline as the REAL-SEAM test; a load error (bad DVAA_SRC, unverified checkout,
+  // DVAA_REQUIRE_REAL=1 without a checkout) fails this test too instead of silently using the replica.
+  const baseline = await loadBaseline();
   console.log(`[full-scan] patterns from ${baseline.source}`);
   let beyondBaseline = 0;
   for (const { file, doc } of fixtures) {
@@ -253,5 +266,156 @@ test('manifest.json indexes every fixture with matching labels, channel, license
     assert.equal(r.license, doc.source.license ?? null, `${rel}: license`);
     assert.equal(r.fidelity, doc.source.fidelity, `${rel}: fidelity`);
     assert.deepEqual(r.frameworks, doc.label.frameworks, `${rel}: frameworks`);
+  }
+});
+
+// ---- Framework vocabulary = sentinel/alerts/mapping.js CATALOG (review L3) ---------------------
+const CATALOG_KEY = { atlas: 'atlasTechniques', owaspLlm: 'owaspLlm', owaspAgentic: 'owaspAgentic', oasb: 'oasb' };
+
+test('L3 framework tags use mapping.js CATALOG IDs (only declared PENDING_T4_CATALOG exceptions)', () => {
+  const used = new Set();
+  for (const [category, f] of Object.entries(FRAMEWORKS_BY_CATEGORY)) {
+    assert.deepEqual(Object.keys(f).sort(), Object.keys(CATALOG_KEY).sort(), `${category}: framework keys`);
+    if (category !== 'benign') assert.ok(f.oasb.length >= 1, `${category}: needs an OASB-1 tag`);
+    for (const [fw, ids] of Object.entries(f)) {
+      for (const id of ids) {
+        used.add(id);
+        if (Object.hasOwn(PENDING_T4_CATALOG, id)) {
+          assert.equal(PENDING_T4_CATALOG[id].kind, CATALOG_KEY[fw], `${id}: pending entry kind`);
+          continue;
+        }
+        assert.ok(Object.hasOwn(CATALOG[CATALOG_KEY[fw]], id), `${category}: ${fw} ${id} is not in mapping.js CATALOG.${CATALOG_KEY[fw]}`);
+      }
+    }
+  }
+  for (const [id, p] of Object.entries(PENDING_T4_CATALOG)) {
+    assert.ok(used.has(id), `${id}: pending entry is unused; remove it`);
+    // Once T4 adds the ID, this fails so the exception gets removed (no stale allowlist).
+    assert.ok(!Object.hasOwn(CATALOG[p.kind], id), `${id} is now in mapping.js CATALOG; remove it from PENDING_T4_CATALOG`);
+    assert.ok(CATALOG.atlasTactics[p.tactic], `${id}: tactic ${p.tactic} must exist in CATALOG`);
+  }
+  console.log(`[frameworks] pending T4 CATALOG additions: ${Object.keys(PENDING_T4_CATALOG).join(', ') || 'none'}`);
+});
+
+// ---- DVAA trust gate: verify pin + clean tree BEFORE importing (review L1) ----------------------
+const gitIn = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const GIT_ID = ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false'];
+
+/** A git checkout whose DVAA files record an import side effect (a marker file) if ever imported. */
+function plantedCheckout(dir, marker) {
+  for (const rel of ['src/core/vulnerabilities.js', DVAA.file]) {
+    fs.mkdirSync(path.join(dir, path.dirname(rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), `import fs from 'node:fs';\nfs.writeFileSync(${JSON.stringify(marker)}, 'imported');\nexport const DETECTION_EDGE = 1;\nexport function ${DVAA.fn}() { return ''; }\n`);
+  }
+  gitIn(dir, 'init', '-q');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, ...GIT_ID, 'commit', '-q', '-m', 'planted');
+}
+
+test('L1 default DVAA dir is repo-local (not /tmp) and is listed once', () => {
+  assert.equal(DEFAULT_DVAA_DIR, path.join(REPO_ROOT, '.dvaa', 'dvaa-target'));
+  const env = { PATH: process.env.PATH };
+  const c = dvaaCandidates(env);
+  assert.deepEqual(c.map((x) => x.root), [DEFAULT_DVAA_DIR]);
+  assert.ok(!c.some((x) => x.root.startsWith('/tmp/')), 'no world-writable /tmp default');
+  assert.equal(dvaaCandidates({ DVAA_DIR: DEFAULT_DVAA_DIR }).length, 1, 'no duplicate candidate');
+  assert.match(fs.readFileSync(path.join(REPO_ROOT, '.gitignore'), 'utf8'), /^\.dvaa\/$/m, '.dvaa/ is gitignored');
+});
+
+test('L1 a wrong-commit DVAA checkout is rejected BEFORE its code is imported (baseline + verifier)', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 't6-planted-'));
+  try {
+    const marker = path.join(tmp, 'IMPORTED');
+    const repo = path.join(tmp, 'dvaa');
+    fs.mkdirSync(repo);
+    plantedCheckout(repo, marker);
+    for (const env of [{ DVAA_SRC: repo }, { DVAA_DIR: repo }, { DVAA_DIR: repo, DVAA_REQUIRE_REAL: '1' }]) {
+      await assert.rejects(loadBaseline(env), /refusing to import DVAA code .*expected pinned/, JSON.stringify(Object.keys(env)));
+    }
+    const dv = (await verifyUpstream({ DVAA_DIR: repo })).find((r) => r.source === 'DVAA');
+    assert.equal(dv.status, 'mismatch', `verifier: ${dv.detail}`);
+    assert.match(dv.detail, /expected pinned/);
+    assert.equal(fs.existsSync(marker), false, 'planted code must never be imported');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('L1 a pinned but DIRTY DVAA checkout is rejected before import (SKIPPED without a real checkout)', async (t) => {
+  let real;
+  try {
+    real = resolveVerifiedDvaa('src/core/vulnerabilities.js');
+  } catch (e) {
+    real = { root: null, reason: e.message };
+  }
+  if (!real.root) {
+    const msg = `SKIPPED real-DVAA dirty-tree check: ${real.reason}`;
+    console.log(`[baseline] ${msg}`);
+    t.skip(msg);
+    return;
+  }
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 't6-dirty-'));
+  try {
+    const repo = path.join(tmp, 'dvaa');
+    execFileSync('git', ['clone', '-q', '--no-checkout', '--shared', real.root, repo]);
+    gitIn(repo, 'checkout', '-q', DVAA_PIN);
+    const marker = path.join(tmp, 'IMPORTED');
+    // (a) modified tracked file
+    const vuln = path.join(repo, 'src/core/vulnerabilities.js');
+    fs.appendFileSync(vuln, `\nimport fs_ from 'node:fs'; fs_.writeFileSync(${JSON.stringify(marker)}, 'x');\n`);
+    await assert.rejects(loadBaseline({ DVAA_SRC: repo }), /refusing to import DVAA code .*tree not clean/);
+    assert.equal((await verifyUpstream({ DVAA_SRC: repo })).find((r) => r.source === 'DVAA').status, 'mismatch');
+    gitIn(repo, 'checkout', '-q', '--', '.');
+    // (b) untracked file only
+    fs.writeFileSync(path.join(repo, 'src/core/extra.js'), 'export {};\n');
+    await assert.rejects(loadBaseline({ DVAA_SRC: repo }), /tree not clean/);
+    fs.rmSync(path.join(repo, 'src/core/extra.js'));
+    // (c) clean again -> accepted
+    const ok = await loadBaseline({ DVAA_SRC: repo });
+    assert.equal(ok.source, 'dvaa-real');
+    assert.equal(ok.commit, DVAA_PIN);
+    assert.equal(fs.existsSync(marker), false, 'modified code must never be imported');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ---- Verifier checks the pinned commits (review L2) ---------------------------------------------
+test('L2 verify-upstream rejects AgentDojo / InjecAgent clones not at the pinned commit', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 't6-pin-'));
+  try {
+    const marker = path.join(tmp, 'IMPORTED');
+    const repo = path.join(tmp, 'clone');
+    fs.mkdirSync(repo);
+    plantedCheckout(repo, marker);
+    const res = await verifyUpstream({ DVAA_SRC: 'replica', AGENTDOJO_SRC: repo, INJECAGENT_SRC: repo });
+    for (const name of ['AgentDojo', 'InjecAgent']) {
+      const r = res.find((x) => x.source === name);
+      assert.equal(r.status, 'mismatch', `${name}: ${r.detail}`);
+      assert.match(r.detail, /expected pinned/);
+    }
+    const ne = await verifyUpstream({ DVAA_SRC: 'replica', AGENTDOJO_SRC: path.join(tmp, 'nope') });
+    assert.equal(ne.find((x) => x.source === 'AgentDojo').status, 'mismatch', 'non-git path is a mismatch');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('L2 deepset: rows file is checked against the pinned parquet sha256 when DEEPSET_PARQUET is set', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 't6-deepset-'));
+  try {
+    const rows = path.join(tmp, 'rows.jsonl');
+    fs.writeFileSync(rows, Object.entries(DEEPSET.rows).map(([idx, r]) => JSON.stringify({ idx: Number(idx), ...r })).join('\n') + '\n');
+    const pq = path.join(tmp, 'test.parquet');
+    fs.writeFileSync(pq, 'not the pinned parquet');
+    const deep = async (env) => (await verifyUpstream({ DVAA_SRC: 'replica', ...env })).find((r) => r.source === 'deepset/prompt-injections');
+    assert.equal((await deep({ DEEPSET_ROWS: rows })).status, 'ok');
+    const bad = await deep({ DEEPSET_ROWS: rows, DEEPSET_PARQUET: pq });
+    assert.equal(bad.status, 'mismatch');
+    assert.match(bad.detail, /parquet sha256/);
+    assert.match(DEEPSET.parquetSha256, /^[0-9a-f]{64}$/);
+    assert.match(DEEPSET.parquetFile, /^data\/test-.*\.parquet$/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

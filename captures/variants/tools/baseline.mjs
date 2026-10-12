@@ -27,8 +27,14 @@
  * from a DVAA checkout. Resolution order (first hit wins):
  *   1. $DVAA_SRC                       explicit path to a DVAA repo root
  *   2. $DVAA_DIR                       the dir scripts/setup-dvaa.sh clones into
- *   3. ${TMPDIR:-/tmp}/dvaa-target     setup-dvaa.sh's default clone dir
+ *   3. <repo>/.dvaa/dvaa-target        setup-dvaa.sh's default clone dir (repo-local,
+ *                                      gitignored; NOT world-writable /tmp — review L1)
  * Get a checkout with:  scripts/setup-dvaa.sh clone
+ *
+ * Trust gate (review L1): a checkout is verified BEFORE any of its code is imported —
+ * `git rev-parse HEAD` must equal DVAA_PIN and `git status --porcelain` must be empty
+ * (no modified, staged or untracked files). A checkout that is found but fails the gate is
+ * an ERROR (thrown, never imported, never a quiet fallback to the replica).
  *
  * Fallback (no checkout): an attributed replica subset (above). It is never
  * used silently: `source` is "replica-subset", tests print an explicit
@@ -37,10 +43,9 @@
  * DVAA_SRC=replica forces the fallback (parity checks).
  */
 
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 export const DVAA_PIN = '57918267d8d529ceec6d40fc9836ab09d128eee4';
@@ -104,35 +109,79 @@ const detectAttacksReplica = makeDetect(ATTACK_PATTERNS_REPLICA, detectionTextRe
 const asText = (input) => (typeof input === 'string' ? input : String(input ?? ''));
 
 // --- Loader -------------------------------------------------------------------
+/** Repo root (this file is <repo>/captures/variants/tools/baseline.mjs). */
+export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+/** setup-dvaa.sh's default clone dir: repo-local and gitignored (.dvaa/), not world-writable /tmp. */
+export const DEFAULT_DVAA_DIR = path.join(REPO_ROOT, '.dvaa', 'dvaa-target');
+
 /** Candidate DVAA roots in resolution order (no hardcoded machine paths). */
 export function dvaaCandidates(env = process.env) {
   // An explicit $DVAA_SRC is the ONLY candidate: a bad path must fail, not fall through to a default.
   if (env.DVAA_SRC && env.DVAA_SRC !== 'replica') return [{ from: '$DVAA_SRC', root: env.DVAA_SRC }];
   const out = [];
   if (env.DVAA_DIR) out.push({ from: '$DVAA_DIR', root: env.DVAA_DIR });
-  out.push({ from: 'setup-dvaa.sh default', root: path.join(env.TMPDIR || os.tmpdir() || '/tmp', 'dvaa-target') });
-  if (!env.TMPDIR) out.push({ from: 'setup-dvaa.sh default', root: '/tmp/dvaa-target' });
+  if (!out.some((c) => path.resolve(c.root) === DEFAULT_DVAA_DIR)) {
+    out.push({ from: 'setup-dvaa.sh default', root: DEFAULT_DVAA_DIR });
+  }
   return out;
 }
 
-function gitHead(root) {
-  try {
-    return execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch {
-    return null;
-  }
+// Hardened git invocation for a directory we do not yet trust: no fsmonitor/hooks-style command
+// execution from the checkout's own config, no pager, no optional locks.
+function git(root, args) {
+  return execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '--no-optional-locks', '-C', root, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, GIT_PAGER: 'cat', GIT_TERMINAL_PROMPT: '0' },
+  });
 }
 
-function resolveRoot(env) {
+/**
+ * Verify a git checkout is at `pin` with a clean tree (no modified/staged/untracked files).
+ * Runs ONLY git (never the checkout's code). Returns { ok, commit, dirty, problem }.
+ */
+export function verifyCheckout(root, pin) {
+  let commit = null;
+  try {
+    commit = git(root, ['rev-parse', 'HEAD']).trim();
+  } catch (e) {
+    return { ok: false, commit: null, dirty: null, problem: `not a readable git checkout (${String(e.stderr || e.message).trim().split('\n')[0]})` };
+  }
+  if (commit !== pin) return { ok: false, commit, dirty: null, problem: `at ${commit}, expected pinned ${pin}` };
+  let status;
+  try {
+    status = git(root, ['status', '--porcelain', '--untracked-files=all']);
+  } catch (e) {
+    return { ok: false, commit, dirty: null, problem: `git status failed (${String(e.stderr || e.message).trim().split('\n')[0]})` };
+  }
+  const dirty = status.split('\n').filter(Boolean);
+  if (dirty.length) {
+    return { ok: false, commit, dirty, problem: `tree not clean (${dirty.length} change(s), e.g. ${dirty.slice(0, 3).join('; ')})` };
+  }
+  return { ok: true, commit, dirty: [], problem: null };
+}
+
+/**
+ * Find the DVAA checkout that contains `rel` and verify it (pin + clean tree) BEFORE anything is
+ * imported from it. Returns { root, from, commit } for a verified checkout, { root: null, reason }
+ * when none exists, and THROWS when one exists but fails verification or an explicit $DVAA_SRC
+ * does not resolve.
+ */
+export function resolveVerifiedDvaa(rel, env = process.env) {
   if (env.DVAA_SRC === 'replica') return { root: null, reason: 'DVAA_SRC=replica forces the replica' };
   const tried = [];
   for (const c of dvaaCandidates(env)) {
-    if (fs.existsSync(path.join(c.root, VULN_REL))) return { root: c.root, from: c.from };
-    tried.push(`${c.from}=${c.root}`);
+    if (!fs.existsSync(path.join(c.root, rel))) {
+      tried.push(`${c.from}=${c.root}`);
+      continue;
+    }
+    const v = verifyCheckout(c.root, DVAA_PIN);
+    if (!v.ok) throw new Error(`refusing to import DVAA code from ${c.from}=${c.root}: ${v.problem}`);
+    return { root: c.root, from: c.from, commit: v.commit };
   }
   if (env.DVAA_SRC) {
     // An explicit path that does not resolve is an error, never a quiet fallback.
-    throw new Error(`DVAA_SRC=${env.DVAA_SRC} has no ${VULN_REL}`);
+    throw new Error(`DVAA_SRC=${env.DVAA_SRC} has no ${rel}`);
   }
   return { root: null, reason: `no DVAA checkout found (tried ${tried.join(', ')}); run scripts/setup-dvaa.sh clone or set DVAA_SRC` };
 }
@@ -142,18 +191,15 @@ function resolveRoot(env) {
  *           source, root, commit, pinMatch, reason }.
  * `source` is "dvaa-real" (real seam) or "replica-subset" (fallback).
  * `scanFull(text)` applies the same patterns to the WHOLE text (no head/tail cut).
- * Throws when DVAA_REQUIRE_REAL=1 and no real checkout at the pinned commit is found.
+ * Throws when a checkout is found but is not at DVAA_PIN with a clean tree (checked before import),
+ * when $DVAA_SRC does not resolve, and when DVAA_REQUIRE_REAL=1 and no checkout is found.
  */
 export async function loadBaseline(env = process.env) {
   const requireReal = env.DVAA_REQUIRE_REAL === '1';
-  const { root, from, reason } = resolveRoot(env);
+  // Pin + clean-tree check happens inside resolveVerifiedDvaa, BEFORE the import below.
+  const { root, from, commit, reason } = resolveVerifiedDvaa(VULN_REL, env);
   if (root) {
     const mod = await import(pathToFileURL(path.join(root, VULN_REL)).href);
-    const commit = gitHead(root);
-    const pinMatch = commit === DVAA_PIN;
-    if (requireReal && !pinMatch) {
-      throw new Error(`DVAA_REQUIRE_REAL=1 but ${root} is at ${commit ?? 'unknown commit'}, expected ${DVAA_PIN}`);
-    }
     return {
       detectAttacks: mod.detectAttacks,
       detectionText: mod.detectionText,
@@ -164,7 +210,7 @@ export async function loadBaseline(env = process.env) {
       root,
       from,
       commit,
-      pinMatch,
+      pinMatch: true,
       reason: null,
     };
   }

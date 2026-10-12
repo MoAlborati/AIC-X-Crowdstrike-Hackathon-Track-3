@@ -62,15 +62,19 @@ export function payloadIndex(fixture) {
   return idx;
 }
 
-// ---- Framework tags (review F8) ----------------------------------------------------------------
+// ---- Framework tags (review F8, L3) ------------------------------------------------------------
 // IDs/names verified against MITRE ATLAS data (ATLAS.yaml; AML.T0051.000/.001, AML.T0057, AML.T0086),
-// OWASP Top 10 for LLM Applications 2025, and OWASP Top 10 for Agentic Applications (Dec 2025).
-// Same vocabulary as sentinel/alerts/mapping.js (T4). Unknown category -> throw (no default).
+// OWASP Top 10 for LLM Applications 2025, OWASP Top 10 for Agentic Applications (Dec 2025), and the
+// OASB-1 category slugs. Every ID must exist in sentinel/alerts/mapping.js CATALOG (T4) so a T7 join
+// on the CATALOG never hits an unknown ID — enforced in tests/corpus.test.mjs — with ONE declared
+// exception, PENDING_T4_CATALOG below. Unknown category -> throw (no default).
 export const FRAMEWORKS_BY_CATEGORY = Object.freeze({
   prompt_injection: {
+    // Direct PI (the payload IS the user turn). Not yet in mapping.js CATALOG: see PENDING_T4_CATALOG.
     atlas: ['AML.T0051.000'], // LLM Prompt Injection: Direct
     owaspLlm: ['LLM01'], // Prompt Injection
     owaspAgentic: ['ASI01'], // Agent Goal Hijack
+    oasb: ['prompt-injection'],
   },
   'indirect_prompt_injection+data_exfiltration': {
     // Indirect PI; Exfiltration via AI Agent Tool Invocation; LLM Data Leakage
@@ -79,14 +83,25 @@ export const FRAMEWORKS_BY_CATEGORY = Object.freeze({
     owaspLlm: ['LLM01', 'LLM02', 'LLM06'],
     // Agent Goal Hijack; Tool Misuse and Exploitation
     owaspAgentic: ['ASI01', 'ASI02'],
+    // same slugs as mapping.js indirect_prompt_injection / taint_flow_exfil
+    oasb: ['prompt-injection', 'data-exfiltration'],
   },
-  benign: { atlas: [], owaspLlm: [], owaspAgentic: [] },
+  benign: { atlas: [], owaspLlm: [], owaspAgentic: [], oasb: [] },
+});
+
+/**
+ * Framework IDs used above that are valid upstream but NOT yet in mapping.js CATALOG. Each entry is a
+ * request to T4 (add it to CATALOG.atlasTechniques). The corpus test fails if an entry here appears
+ * in CATALOG (remove it from this list then) or if any other ID is missing from CATALOG.
+ */
+export const PENDING_T4_CATALOG = Object.freeze({
+  'AML.T0051.000': { kind: 'atlasTechniques', name: 'LLM Prompt Injection: Direct', tactic: 'AML.TA0005' },
 });
 
 export function frameworksFor(category) {
   const f = FRAMEWORKS_BY_CATEGORY[category];
   if (!f) throw new Error(`no framework mapping for category "${category}"`);
-  return { atlas: [...f.atlas], owaspLlm: [...f.owaspLlm], owaspAgentic: [...f.owaspAgentic] };
+  return { atlas: [...f.atlas], owaspLlm: [...f.owaspLlm], owaspAgentic: [...f.owaspAgentic], oasb: [...f.oasb] };
 }
 
 export function label({ groundTruth, verdict, category, exfilTargetUrl = null }) {

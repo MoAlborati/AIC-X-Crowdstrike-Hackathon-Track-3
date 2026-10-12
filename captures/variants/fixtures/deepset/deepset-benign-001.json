@@ -34,7 +34,8 @@
     "frameworks": {
       "atlas": [],
       "owaspLlm": [],
-      "owaspAgentic": []
+      "owaspAgentic": [],
+      "oasb": []
     },
     "dvaa": {
       "exfilAttempted": false,

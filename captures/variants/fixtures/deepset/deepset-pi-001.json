@@ -40,6 +40,9 @@
       ],
       "owaspAgentic": [
         "ASI01"
+      ],
+      "oasb": [
+        "prompt-injection"
       ]
     },
     "dvaa": {

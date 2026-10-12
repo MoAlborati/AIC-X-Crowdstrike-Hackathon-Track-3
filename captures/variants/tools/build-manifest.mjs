@@ -57,6 +57,8 @@ const manifest = {
     atlas: 'MITRE ATLAS technique IDs',
     owaspLlm: 'OWASP Top 10 for LLM Applications 2025',
     owaspAgentic: 'OWASP Top 10 for Agentic Applications (ASI, Dec 2025)',
+    oasb: 'OASB-1 category slugs (same slugs as sentinel/alerts/mapping.js CATALOG.oasb)',
+    vocabulary: 'sentinel/alerts/mapping.js CATALOG; pending T4 additions: tools/fixture-lib.mjs PENDING_T4_CATALOG',
   },
   cases: rows,
 };
