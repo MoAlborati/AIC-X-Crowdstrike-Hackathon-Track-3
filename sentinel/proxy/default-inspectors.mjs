@@ -29,7 +29,7 @@
 // The same honeytoken list is returned as `canaries`. createProxy uses it for log redaction.
 
 import { sentinelInspector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../detectors/index.js';
-import { substringInspector, nonChatCanaryInspector, flagSubstringId } from './inspectors.mjs';
+import { substringInspector, nonChatCanaryInspector, chatCanaryFormsInspector, flagSubstringId } from './inspectors.mjs';
 
 /** The routes T3's sentinelInspector parses (sentinel/detectors/src/inspector.js CHAT_PATHS). */
 export const T3_CHAT_PATHS = Object.freeze(['/v1/chat/completions', '/chat/completions']);
@@ -84,6 +84,7 @@ export function buildDefaultInspectors(config, opts = {}) {
   const inspectors = [
     substringInspector(canaries),
     nonChatCanaryInspector(canaries, { skipPaths: T3_CHAT_PATHS }),
+    chatCanaryFormsInspector(canaries, T3_CHAT_PATHS), // #164: base64/hex/% canary forms on chat paths, both phases
     t3,
   ];
   return { inspectors, canaries, t3 };
