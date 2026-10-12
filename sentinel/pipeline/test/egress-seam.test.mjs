@@ -104,6 +104,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
   process.env.SENTINEL_CAPTURES_DIR = path.join(outDir, 'captures');
   process.env.SENTINEL_ALERTS_DIR = path.join(outDir, 'alerts');
   process.env.SENTINEL_HIDE_PLACEHOLDERS = '1';
+  process.env.SENTINEL_HIDE_STAGE = '1'; // count only this pipeline output, not the dashboard's stage recordings
   const server = dash.server.createServer();
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {

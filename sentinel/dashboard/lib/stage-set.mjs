@@ -1,4 +1,4 @@
-// Stage mode (`?stage=1`): the capture dropdown lists only the three runs the on-stage demo walks
+// Stage mode (`?stage=1`): the capture dropdown lists only the stage runs the on-stage demo walks
 // through, in order, instead of every indexed capture (357+). Each entry names a capture id + run key.
 // An entry may list fallbacks; the first one present in the index wins (targeted Map lookups on the
 // full index, never a scan of a capped list). An entry with no present candidate is returned with an
@@ -23,6 +23,12 @@ export const STAGE_ENTRIES = Object.freeze([
       // T8 contrast recording (stand-in inspector); used only if the T3 stage recording is absent.
       { id: 'contrast/runs/proxy-block.demo', run: 'runB' },
     ],
+  },
+  {
+    // T12 egress guard, block mode: real scripts/egress-demo.sh run (scripts/stage-egress-capture.sh).
+    key: 'egress-blocked',
+    label: '4 · Tool boundary: egress guard denied the exfil (attacker received nothing)',
+    candidates: [{ id: 'stage/egress-blocked-t12', run: 'run' }],
   },
 ]);
 
