@@ -91,6 +91,8 @@ export function manifestFor(fixtures) {
   return {
     ticket: 'T6c',
     set: 'holdout-hf',
+    // Tells the T5 dashboard capture indexer this is a separately scored set, not captures to list.
+    separateSet: true,
     description: 'Held-out evaluation set: public Hugging Face prompt-injection / jailbreak rows NOT used to build T3. Scored separately (sentinel/scoring --set holdout-hf); never merged into the headline.',
     schema: 'captures/variants/README.md#fixture-schema',
     counts: {

@@ -1,6 +1,7 @@
 {
  "ticket": "T6c",
  "set": "holdout-hf",
+ "separateSet": true,
  "description": "Held-out evaluation set: public Hugging Face prompt-injection / jailbreak rows NOT used to build T3. Scored separately (sentinel/scoring --set holdout-hf); never merged into the headline.",
  "schema": "captures/variants/README.md#fixture-schema",
  "counts": {
