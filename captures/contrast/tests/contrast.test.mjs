@@ -12,11 +12,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   buildContrast, findExchangesForCanary, readJsonlBounded, loadJsonBounded,
-  ContrastInputError, MAX_INPUT_BYTES,
+  ContrastInputError, MAX_INPUT_BYTES, inspectorFromLogs, toMarkdown,
 } from '../build-contrast.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -54,14 +54,99 @@ test('captured run: all three columns hold their ground truth', () => {
   for (const ctl of Object.values(c.controls)) assert.equal(ctl.exfilExecuted, true, 'every file has a run-A positive control');
 });
 
-test('captured run: column 3 is labelled as the stand-in until T3 exists', () => {
+test('captured run: inspector label is derived from the detector the proxy logged', () => {
   const c = buildContrast(RUNS);
-  if (/t3/.test(c.meta.sentinel_ref)) {
-    assert.equal(c.meta.inspector, 't3-detector');
-  } else {
-    assert.equal(c.meta.inspector, 'standin-substring');
-    assert.equal(c.columns.proxy.block.inspector, 'standin-substring');
+  const logged = inspectorFromLogs(readLines(RUNS, 'proxy-block.proxy.jsonl'), readLines(RUNS, 'proxy-observe.proxy.jsonl'));
+  assert.equal(c.meta.inspector, logged.label, 'run-meta label must equal the logged detector, not the ref name');
+  assert.equal(c.columns.proxy.block.inspector, logged.label);
+  assert.equal(c.columns.proxy.observe.inspector, logged.label, 'observe column records its inspector too');
+  if (logged.standIn) {
+    assert.equal(logged.label, 'standin-substring');
+    assert.equal(c.meta.inspector_config_is_standin, true);
+    assert.match(toMarkdown(c), /\| 3\. Vulnerable \+ SentinelProxy \(block, \*\*stand-in inspector\*\*\) \|/);
   }
+});
+
+// Review finding 1 (delete-the-fix target): a T3-sounding label on a run whose proxy logged the stand-in.
+test('provenance: run-meta claiming t3-detector while the proxy logged "substring" fails loudly', () => {
+  const dir = copyRun();
+  const meta = readJson(dir, 'run-meta.json');
+  writeJson(dir, 'run-meta.json', { ...meta, inspector: 't3-detector' });
+  const c = buildContrast(dir);
+  assert.equal(c.ok, false);
+  assert.ok(c.failures.some((f) => /run-meta\.json says "t3-detector" but the proxy logged detector\(s\) \[substring\]/.test(f)), c.failures.join('\n'));
+  assert.equal(c.columns.proxy.block.inspector, 'standin-substring', 'column label comes from the log, not run-meta');
+});
+
+test('provenance: a T3 ref paired with the stand-in inspector fails even when the label is honest', () => {
+  const dir = copyRun();
+  const meta = readJson(dir, 'run-meta.json');
+  writeJson(dir, 'run-meta.json', { ...meta, sentinel_ref: 'origin/t3-detector-core' });
+  const c = buildContrast(dir);
+  assert.equal(c.ok, false);
+  assert.ok(c.failures.some((f) => /t3-detector-core ran with the stand-in/.test(f)), c.failures.join('\n'));
+});
+
+test('provenance: the label follows the logged detector (non-stand-in detector -> no stand-in header)', () => {
+  const dir = copyRun();
+  for (const f of ['proxy-block.proxy.jsonl', 'proxy-observe.proxy.jsonl']) {
+    writeLines(dir, f, readLines(dir, f).map((r) => (r.type === 'exchange'
+      ? { ...r, verdicts: (r.verdicts ?? []).map((v) => ({ ...v, detector: 'prompt-injection' })) } : r)));
+  }
+  // An unchanged run-meta (still "standin-substring") must now be caught as a mismatch...
+  assert.ok(buildContrast(dir).failures.some((f) => /run-meta\.json says "standin-substring"/.test(f)));
+  // ...and once run-meta matches the log, the header drops the stand-in caveat.
+  writeJson(dir, 'run-meta.json', { ...readJson(dir, 'run-meta.json'), inspector: 'detector:prompt-injection' });
+  const c = buildContrast(dir);
+  assert.deepEqual(c.failures, []);
+  assert.equal(c.columns.proxy.block.inspectorStandIn, false);
+  assert.doesNotMatch(toMarkdown(c), /stand-in inspector/);
+});
+
+test('provenance: mixed stand-in + other detectors, or no verdicts at all, fail loudly', () => {
+  const mixed = copyRun();
+  writeLines(mixed, 'proxy-observe.proxy.jsonl', readLines(mixed, 'proxy-observe.proxy.jsonl').map((r) => (r.type === 'exchange'
+    ? { ...r, verdicts: (r.verdicts ?? []).map((v) => (v.phase === 'response' ? { ...v, detector: 'other' } : v)) } : r)));
+  const cm = buildContrast(mixed);
+  assert.ok(cm.failures.some((f) => /mix the stand-in/.test(f)), cm.failures.join('\n'));
+  assert.ok(cm.failures.some((f) => /not the same inspector/.test(f)));
+
+  const none = copyRun();
+  for (const f of ['proxy-block.proxy.jsonl', 'proxy-observe.proxy.jsonl']) {
+    writeLines(none, f, readLines(none, f).map((r) => ({ ...r, verdicts: [] })));
+  }
+  assert.ok(buildContrast(none).failures.some((f) => /cannot establish which inspector ran/.test(f)));
+});
+
+test('run-contrast.sh refuses a T3 ref with the stand-in config (before touching DVAA)', () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 't8-refuse-'));
+  const r = spawnSync(path.join(ROOT, 'run-contrast.sh'), [out], {
+    env: { ...process.env, SENTINEL_REF: 'origin/t3-detector-core', SENTINEL_ALLOW_STANDIN: '1', DVAA_CONTAINER: 'no-such-container' },
+    encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /T3 ref but SENTINEL_CONFIG=.*stand-in config/);
+  assert.equal(fs.existsSync(path.join(out, 'run-meta.json')), false, 'nothing captured');
+});
+
+test('vulnerable canary count is computed from the capture and cross-checked', () => {
+  const c = buildContrast(RUNS);
+  const base = readJson(RUNS, 'baseline-aim.demo.json');
+  assert.equal(c.columns.vulnerable.canaryHits, base.canary.hits.length - c.columns.defended.aim.canaryHits);
+
+  const dir = copyRun();
+  const d = readJson(dir, 'baseline-aim.demo.json');
+  d.canary.hits = [];
+  writeJson(dir, 'baseline-aim.demo.json', d);
+  const c0 = buildContrast(dir);
+  assert.equal(c0.columns.vulnerable.canaryHits, 0, 'no hardcoded 1');
+  assert.ok(c0.failures.some((f) => /vulnerable: expected run A to hit the canary once, saw 0/.test(f)));
+
+  const wrong = copyRun();
+  const w = readJson(wrong, 'baseline-aim.demo.json');
+  w.canary.hits[0].query.data = 'something else';
+  writeJson(wrong, 'baseline-aim.demo.json', w);
+  assert.ok(buildContrast(wrong).failures.some((f) => /does not carry the data run A/.test(f)));
 });
 
 test('data-rich: run B record is found by full scan among 600 large exchanges (>8KB bodies)', () => {

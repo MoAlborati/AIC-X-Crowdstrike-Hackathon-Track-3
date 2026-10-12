@@ -17,11 +17,14 @@
 # Detector: until `origin/t3-detector-core` exists, the proxy uses T2's substring inspector with
 # the STAND-IN needle list in standin-inspector.config.json. That proves the proxy's block path,
 # not detection quality. If the T3 branch exists, this script refuses to run on the stand-in
-# (fail loud) unless SENTINEL_ALLOW_STANDIN=1.
+# (fail loud) unless SENTINEL_ALLOW_STANDIN=1. A T3 ref paired with the stand-in config is always
+# refused. run-meta.json's "inspector" is derived from the detector field the proxy actually
+# logged, never from the ref name, and build-contrast.mjs fails if the two disagree.
 #
 # Usage: captures/contrast/run-contrast.sh [OUT_DIR]   (default: captures/contrast/runs)
 # Env:   DVAA_CONTAINER (dvaa-t1-dvaa-1)  DVAA_IMAGE (dvaa-t1-dvaa)
 #        SENTINEL_REF   (origin/t2-proxy-skeleton)  PROXY_PORT (7099, inside the DVAA netns)
+#        SENTINEL_CONFIG (captures/contrast/standin-inspector.config.json)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,16 +33,29 @@ CONTAINER="${DVAA_CONTAINER:-dvaa-t1-dvaa-1}"
 IMAGE="${DVAA_IMAGE:-dvaa-t1-dvaa}"
 SENTINEL_REF="${SENTINEL_REF:-origin/t2-proxy-skeleton}"
 PROXY_PORT="${PROXY_PORT:-7099}"
+SENTINEL_CONFIG="${SENTINEL_CONFIG:-$HERE/standin-inspector.config.json}"
 OUT="$(mkdir -p "${1:-$HERE/runs}" && cd "${1:-$HERE/runs}" && pwd)"
 PROXY_NAME="t8-sentinel-proxy-$$"
 
 die() { echo "run-contrast: ERROR: $*" >&2; exit 1; }
 
 # --- detector selection (fail loud, never silently stay on the stand-in) -------------------------
-if git -C "$REPO" rev-parse --verify --quiet origin/t3-detector-core >/dev/null \
-   && [[ "$SENTINEL_REF" != *t3* ]] && [[ "${SENTINEL_ALLOW_STANDIN:-0}" != 1 ]]; then
-  die "origin/t3-detector-core exists but SENTINEL_REF=$SENTINEL_REF (stand-in inspector).
-  Switch column 3 to the T3 detector (set SENTINEL_REF and wire its inspector), or set
+# The stand-in is any config that wires T2's substring inspector (inspect.flagSubstrings).
+is_standin_config() {
+  python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); sys.exit(0 if (c.get("inspect") or {}).get("flagSubstrings") else 1)' "$1"
+}
+[[ -f "$SENTINEL_CONFIG" ]] || die "SENTINEL_CONFIG $SENTINEL_CONFIG not found"
+STANDIN_CFG=0; is_standin_config "$SENTINEL_CONFIG" && STANDIN_CFG=1
+# A T3 ref must never run on the stand-in needles: the table would credit T3 with substring matches.
+# No override; SENTINEL_ALLOW_STANDIN does not apply here.
+if [[ "$SENTINEL_REF" == *t3* && "$STANDIN_CFG" == 1 ]]; then
+  die "SENTINEL_REF=$SENTINEL_REF is a T3 ref but SENTINEL_CONFIG=$SENTINEL_CONFIG is the stand-in config
+  (inspect.flagSubstrings). Refusing to pair them. Point SENTINEL_CONFIG at a config that wires T3's inspector."
+fi
+if [[ "$STANDIN_CFG" == 1 ]] && [[ "${SENTINEL_ALLOW_STANDIN:-0}" != 1 ]] \
+   && git -C "$REPO" rev-parse --verify --quiet origin/t3-detector-core >/dev/null; then
+  die "origin/t3-detector-core exists but SENTINEL_CONFIG is the stand-in inspector.
+  Switch column 3 to the T3 detector (SENTINEL_REF + SENTINEL_CONFIG), or set
   SENTINEL_ALLOW_STANDIN=1 to knowingly re-run the stand-in."
 fi
 git -C "$REPO" rev-parse --verify --quiet "$SENTINEL_REF" >/dev/null || die "unknown SENTINEL_REF $SENTINEL_REF (git fetch origin?)"
@@ -55,7 +71,7 @@ WORK="$(mktemp -d)"
 cleanup() { docker rm -f "$PROXY_NAME" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 git -C "$REPO" archive "$SENTINEL_REF" sentinel/proxy sentinel/config | tar -x -C "$WORK"
-cp "$HERE/standin-inspector.config.json" "$WORK/contrast.config.json"
+cp "$SENTINEL_CONFIG" "$WORK/contrast.config.json"
 mkdir -p "$WORK/out" && chmod 777 "$WORK/out"
 
 demo() { # name [ENV=VAL ...] ; runs DVAA's own aim-ab runner, keeps its JSON even on exit 1
@@ -103,13 +119,29 @@ start_proxy observe
 demo proxy-observe DVAA_RAGBOT_AIM_PORT="$PROXY_PORT" # A: RAGBot 7005 B: SentinelProxy(observe) -> 7005
 stop_proxy proxy-observe
 
+# Inspector label = what the proxy logged (verdict.detector), via the same function build-contrast uses.
+INSPECTOR="$(node --input-type=module -e '
+  import { inspectorFromLogs, readJsonlBounded } from "'"$HERE"'/build-contrast.mjs";
+  const i = inspectorFromLogs(...process.argv.slice(1).map((f) => readJsonlBounded(f)));
+  if (!i.label || i.mixed) { console.error(`cannot label inspector: ${JSON.stringify(i)}`); process.exit(1); }
+  process.stdout.write(i.label);
+' "$OUT/proxy-block.proxy.jsonl" "$OUT/proxy-observe.proxy.jsonl")" || die "could not derive the inspector from the proxy logs"
+if [[ "$STANDIN_CFG" == 1 && "$INSPECTOR" != standin-substring ]] || [[ "$STANDIN_CFG" == 0 && "$INSPECTOR" == standin-substring ]]; then
+  die "config says stand-in=$STANDIN_CFG but the proxy logged inspector $INSPECTOR"
+fi
+CFG_SHA="$(sha256sum "$SENTINEL_CONFIG" | cut -c1-64)"
+
 cat > "$OUT/run-meta.json" <<EOF
 {
   "dvaa_container": "$CONTAINER",
   "dvaa_image": "$IMAGE",
   "sentinel_ref": "$SENTINEL_REF",
   "sentinel_sha": "$SENTINEL_SHA",
-  "inspector": "$( [[ "$SENTINEL_REF" == *t3* ]] && echo t3-detector || echo standin-substring )",
+  "inspector": "$INSPECTOR",
+  "inspector_source": "verdict.detector in proxy-block.proxy.jsonl + proxy-observe.proxy.jsonl",
+  "inspector_config": "$(basename "$SENTINEL_CONFIG")",
+  "inspector_config_sha256": "$CFG_SHA",
+  "inspector_config_is_standin": $( [[ "$STANDIN_CFG" == 1 ]] && echo true || echo false ),
   "proxy_port_in_dvaa_netns": $PROXY_PORT,
   "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
