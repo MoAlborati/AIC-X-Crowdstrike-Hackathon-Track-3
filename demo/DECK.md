@@ -70,7 +70,7 @@ SentinelProxy sits.
 Beat 3 (0:40–1:00) + Beat 3b (1:00–1:20). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
 LLM. Pause two seconds after the secret appears. The 8KB-evasion beat is DoD item 1 — **always run it**; the proof is
 the two mid-document fixtures plus "8KB evasion: 2/2 fixtures" from `sentinel/scoring/results.json`. Never say a blanket
-"beats the baseline": on the full corpus DVAA's baseline has the higher recall (slide 8). DVAA is the
+"beats the baseline": on the full corpus DVAA's baseline has the higher prevention recall (slide 8). DVAA is the
 organizer-provided sandbox; every secret is fake.
 
 ---
@@ -156,9 +156,8 @@ DVAA's 8KB head+tail baseline.
 | Corpus | `<<METRIC: N attack + M benign cases>>` | |
 | In-detector latency | under half a millisecond | |
 
-As of `sentinel/scoring/results.json` on origin/main `6c4fdc7`: detection 63.0% / FP 0.0% vs 65.6% / 12.8%;
-prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.40 ms (origin/main 4817aca). Copy the slide's
-numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
+Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `sentinel/scoring/RESULTS.md`) after the
+15:00 rescore. Beat 7 of `run-demo.sh` prints them.
 
 - Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment. Benign FP is measured on the
   164-case benign corpus."
@@ -167,8 +166,9 @@ numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
 latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **Never put a guessed number on it.**
-Say it plainly: DVAA's baseline has the higher recall, on both detection and prevention, at a 12.8% benign FP rate.
-Our 0% benign FP is on the 164-case benign corpus. On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.
+Say it plainly: our detection recall is now slightly above DVAA's baseline, but the baseline has the higher
+prevention recall, at a 12.8% benign FP rate.
+Our 0% benign FP is on the 164-case benign corpus. On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
 The only unqualified win is the 2/2 cases that evade the baseline's 8KB window. Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
 

@@ -6,15 +6,14 @@ headline line before 18:00 and say the figure that is there. Citation wording co
 
 ---
 
-**1. "DVAA's own scanner has higher recall. Why would anyone deploy yours?"**
-"It doesn't have to replace it. DVAA's scanner does have higher recall than ours, on both detection and prevention,
-but it gets there with a 12.8% benign false-positive rate: it flags 21 of the 164 benign cases in our corpus. On that
-164-case benign corpus we flag 0, at 100% precision. The one place we strictly win is the 2 of 2 cases where the
-injection hides between DVAA's head and tail 8KB windows, which their scanner can't see. Every miss is listed openly
-in RESULTS.md."
-*FP caveat, say it if asked:* "On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46."
-*If PR #46 has merged by then:* read the new detection figure from the RESULTS.md headline as-is. Don't claim a win
-on recall.
+**1. "DVAA's own scanner prevents more attacks than yours. Why would anyone deploy yours?"**
+"On prevention, yes: DVAA's scanner stops more, 63.0% against our 41.8%, but it does it with a 12.8% benign
+false-positive rate, flagging 21 of the 164 benign cases in our corpus. On detection we're now slightly ahead,
+67.7% against 65.6%, at 100% precision and 0 false positives on that 164-case benign corpus. We also catch both cases
+where the injection hides between DVAA's head and tail 8KB windows (2 of 2), which their scanner can't see. Every
+miss is listed openly in RESULTS.md."
+*FP caveat, say it if asked:* "On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46."
+*After the 15:00 rescore:* re-read the RESULTS.md headline and use the figures that are there.
 **Proof:** RESULTS.md headline table (t3 against dvaa-baseline, both lenses), the 8KB-evasion (`evadesBaseline`) block, and
 the "False negatives" list. PR #46 has the before/after rescore table.
 
@@ -42,7 +41,7 @@ In block mode, `proxyStatus: 403`, `agentInvoked: false` and `canaryHits: 0`. `s
 attacker server's receipt as ground truth, never DVAA's own flag.
 
 **4. "Why not an LLM classifier?"**
-"Three reasons: latency, determinism, and adaptive attackers. Our median detector time is 0.082 ms per case (RESULTS.md headline; re-read it after the 15:00 rescore) with no model call, so the same
+"Three reasons: latency, determinism, and adaptive attackers. Our median detector time is under a tenth of a millisecond per case (RESULTS.md headline) with no model call, so the same
 input always gets the same verdict, and a classifier can't be prompt-injected through the content it scores. Spam
 filters lost because the attacker wrote the content being scored. DKIM won because the mail server enforced it.
 We enforce at the boundary, and classifiers stay a secondary signal."
@@ -96,7 +95,7 @@ Finally, there's no live LLM in the demo, and no Falcon API integration."
 **Proof:** the "Honest limitations" section of the README (PR #47) and "Known limitations" in PR #45 (T12).
 
 **11. "Your prevention recall is 41.8% and DVAA's is 63.0%. Isn't theirs just better at stopping attacks?"**
-"On that number, yes, theirs is higher, and we say so. But the two figures count different things. DVAA's
+"On that number, yes, theirs is higher, and we say so. (On detection we're now slightly ahead.) But the two figures count different things. DVAA's
 'prevention' is a scanner hit on the request, and it comes with a 12.8% benign false-positive rate. Ours counts only
 what is actually stopped before the agent acts: a pre-forward block or an egress deny, plus a withheld reply in block
 mode. Alert-only findings count as detection, never as prevention. On the 164-case benign corpus that number carries
@@ -113,9 +112,10 @@ LLM in the loop, so a real model call dwarfs them."
 
 **13. "Isn't this overfit to your own corpus? What about held-out data?"**
 "Partly a fair worry, and we measured it. On 32 hand-written held-out benign docs, 1 was blocked: a security-awareness
-memo quoting an injection phrase, which is pre-existing lexicon behavior. On 16 paraphrased held-out attacks, the
-current main detects 2 and blocks 1. PR #46, still open, raises detection to 14 of 16 with alert-only structural
-signals, but it does not add blocks. A larger held-out set from public data is still pending, so we don't quote it."
+memo quoting an injection phrase, which is pre-existing lexicon behavior; PR #92 takes that to 0 once it lands.
+4 of the 32 raise an alert, not a block. On 16 paraphrased held-out attacks, the
+we detect 14 and block 1. PR #46 raised detection from 2 to 14 with alert-only structural signals; it
+did not add blocks. A larger held-out set from public data is still pending, so we don't quote it."
 **Proof:** PR #46, "Held-out (hand-written, not corpus)" table, with no post-hoc tuning.
 
 **14. "What about streaming responses and multi-turn conversations?"**
@@ -140,8 +140,8 @@ The headline numbers are read from the committed scoring output, which anyone ca
 
 ### If you blank
 1. **Provenance, not keywords:** content can ask for something. Only the user's own turn can authorize it.
-2. **0 benign false positives on the 164-case benign corpus**, against DVAA's 12.8%. DVAA has higher recall (detection
-   and prevention); our clear win is 2 of 2 attacks hidden past its 8KB window. Held-out caveat: On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.
+2. **0 benign false positives on the 164-case benign corpus**, against DVAA's 12.8%. We detect slightly more; DVAA
+   prevents more. Our clear win is 2 of 2 attacks hidden past its 8KB window. Held-out caveat: On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md.** We complement Falcon AIDR at the tool boundary.

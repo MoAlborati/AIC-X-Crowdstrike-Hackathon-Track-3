@@ -22,10 +22,12 @@ export function renderMarkdown(r) {
       'counted in detection, NOT in prevention. *Rule-intent block* = the original `recall` field (any would-block rule fired); it overstates prevention.', '');
     {
       const bD = base?.modes?.enforce?.anyFinding, bP = base?.modes?.enforce?.prevention;
-      const higher = bD && bP && bD.recall > H.detection.recall && bP.recall > H.prevention.recall;
-      L.push(`**Scope.** Benign FP rates are on the ${r.corpus.negatives}-case benign corpus. ` +
-        (higher ? `The DVAA baseline has higher recall than ${r.headline.detector} on both detection and prevention, at a ${pct(bD.falsePositiveRate)} benign FP rate; the only outright win claimed is the evadesBaseline set below. ` : '') +
-        'On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.', '');
+      const cmp = (b, t) => (b.recall > t.recall ? 'higher' : b.recall < t.recall ? 'lower' : 'equal');
+      const recallLine = bD && bP
+        ? `Against ${r.headline.detector}, the DVAA baseline's recall is ${cmp(bD, H.detection)} on detection and ${cmp(bP, H.prevention)} on prevention, at a ${pct(bD.falsePositiveRate)} benign FP rate; the only structural win claimed outright is the evadesBaseline set below. `
+        : '';
+      L.push(`**Scope.** Benign FP rates are on the ${r.corpus.negatives}-case benign corpus. ` + recallLine +
+        'On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.', '');
     }
     L.push('| detector | lens | recall | precision | benign FP rate | TP | FP | TN | FN | evades DVAA 8KB window (evadesBaseline) |', '|---|---|---|---|---|---|---|---|---|---|');
     const row = (name, lens, m, beat) => L.push(`| ${name} | ${lens} | ${pct(m.recall)} | ${pct(m.precision)} | ${pct(m.falsePositiveRate)} | ${m.tp} | ${m.fp} | ${m.tn} | ${m.fn} | ${beat} |`);

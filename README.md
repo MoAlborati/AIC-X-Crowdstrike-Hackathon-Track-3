@@ -79,9 +79,10 @@ so it can't go stale. How to read them:
   exfiltration was actually stopped. We report both separately, because an alert-only check detects but
   does not prevent.
 - **Benign false positives.** The 0% benign FP rate is on the 164-case benign corpus, the same corpus the
-  DVAA baseline detector is scored on, so the comparison is like for like. On 32 hand-written held-out benign docs, 1 was blocked (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior) — see PR #46.
-- **Recall.** DVAA's baseline has higher recall than SentinelProxy, on both detection and prevention, at a
-  12.8% benign FP rate. We do not claim to beat it on recall.
+  DVAA baseline detector is scored on, so the comparison is like for like. On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
+- **Recall.** SentinelProxy's detection recall is now slightly above DVAA's baseline, but the baseline has
+  the higher prevention recall, at a 12.8% benign FP rate (figures in RESULTS.md). We do not claim to beat it on
+  prevention.
 - **The 8KB window.** DVAA's own scanner looks only at the head and tail 8KB of a payload. Injections
   placed in the middle of a long benign document evade it. SentinelProxy scans the full payload and catches
   2/2 of the `evadesBaseline` cases in the corpus. That small set is the only place we claim an outright win.

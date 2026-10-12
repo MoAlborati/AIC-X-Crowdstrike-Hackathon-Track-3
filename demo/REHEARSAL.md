@@ -36,7 +36,7 @@ deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interac
 **Fallback video (record BEFORE the session; switch to it if any command fails — do not debug on stage)**
 - [ ] Recorded a clean `demo/run-demo.sh --auto` screen capture end-to-end (terminal + dashboard).
 - [ ] Audio narration present, or the deck narration is memorized over the silent capture.
-- [ ] Video is ≤ 3:00, named `demo/fallback-demo.mp4` (gitignored; stored on the demo laptop + a USB key).
+- [ ] Video is ≤ 3:00, saved as `~/Desktop/fallback-demo.mov` (outside the repo; copy it to a USB key). Recording steps: [`demo/slides/VIDEO-CHECKLIST.md`](slides/VIDEO-CHECKLIST.md).
 - [ ] Verified it plays offline on the demo laptop with the projector resolution.
 - [ ] One person owns "cut to video" and can trigger it within 3 seconds of a failure.
 
