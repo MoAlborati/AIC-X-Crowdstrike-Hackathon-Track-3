@@ -251,7 +251,8 @@ that platform or an acquisition target, not a rival to it."
 "Layer by layer: the proxy is keyword-gated, so a plain phrasing walks past it (1 of 22 blocked in our own test), and spacing or homoglyphs bypass it until #122 lands. Response-side
 findings arrive after the tool ran, so they alert but don't prevent. The egress guard doesn't read TLS, accepts any port on an
 allowlisted host, forwards the `Host` header unchanged and scans gzip bodies raw; it also can't tell arbitrary data sent
-to an allowlisted host from normal traffic, and it never sees DNS. MCP tool descriptions and A2A agent cards are out of scope.
+to an allowlisted host from normal traffic, and it never sees DNS. MCP tool descriptions and A2A agent cards are out of scope, and file-type or parser-differential attacks
+(content hidden in non-text files) are untested, because we inspect text fields, not file content.
 What holds is default-deny on the destination: every non-allowlisted host we tried was denied, whatever the wording.
 Egress isn't scored on an attack set, and email, DNS, multi-turn, encoded and non-English exfil are untested there."
 *If asked about held-out indirect injection:* "On the held-out LLMail-Inject + BIPIA set, we detect 8.1% and prevent 3.2%

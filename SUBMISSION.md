@@ -130,6 +130,7 @@ These are the known gaps, grouped by layer. Each line says what isn't covered an
 
 **Scope**
 - **MCP tool-description poisoning, memory poisoning and A2A agent-card spoofing are out of scope and unmeasured.** SentinelProxy intercepts only the model request and tool egress (#112).
+- **File-type and parser-differential attacks are untested** (#157). Examples are content hidden in non-text files, and a file whose type the proxy and the agent interpret differently. SentinelProxy inspects text fields in chat requests and tool egress, not binary or file content. *Next:* post-hackathon.
 - **Corpus scope:** a single pinned DVAA version, published benchmark strings and our own benign set. The evasion set is small.
 - **OpsBot (Path A)** uses a deterministic regex planner instead of a real LLM, which keeps replays exact. Its egress guard scans full bodies only for core `http.request`; `fetch()` traffic tunnels through CONNECT, so only the host is checked.
 
