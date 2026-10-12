@@ -3,6 +3,11 @@
 How we execute GOAL.md autonomously through agents, shipping PRs you review/respond to.
 Follows the team's convergence process (see `gates/` — encodes the team's data-scale reliability rules: bounded/fail-loud, data-rich testing, delete-the-fix proof).
 
+**Cold start or post-compaction:** read [`RESUME.md`](RESUME.md) first. Child-agent roles and their dispatch
+templates: [`prompts/archetypes/README.md`](prompts/archetypes/README.md). The orchestrator's time-triggered queue:
+[`planning/PROACTIVE.md`](planning/PROACTIVE.md). **Clock:** deadlines are PDT and the machine clock is CDT, so use
+`TZ=America/Los_Angeles date`.
+
 ## Roles
 - **Operator (you, humans):** review PRs, approve/merge, answer blockers in STATE.md. Final authority.
 - **Orchestrator (lead Claude session):** owns the loop. Picks tickets, dispatches agents, opens PRs,
@@ -51,7 +56,7 @@ loop, and the orchestrator **answers chat before other work**, with `chat-urgent
 §Endgame policies.
 
 ## Remote & branching
-- Remote: `origin` = https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon (we have WRITE).
+- Remote: `origin` = https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon-Track-3 (renamed; the old URL redirects; we have WRITE).
 - Base branch: `main`. One branch per ticket: `tN-short-slug` (e.g. `t3-detector-core`).
 - One PR per ticket. PR title: `[T3] Detector core: honeytoken + taint + egress`. Small, reviewable.
 
