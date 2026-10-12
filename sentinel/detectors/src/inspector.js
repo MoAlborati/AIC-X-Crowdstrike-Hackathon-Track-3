@@ -13,6 +13,10 @@
 // Parking is BOUNDED (entries + total bytes + TTL). If it is full, or a response arrives with no parked
 // request, the verdict is a fail-closed BLOCK (reason codes request_context_full / request_context_missing),
 // never an uninspected pass.
+// Only clean requests use that map; flagged ones go to a small FIFO map (S1), so blocked attack volume
+// can never lock out benign traffic. Sessions are keyed by x-sentinel-session or a stable conversation
+// hash, never the request id (B2). Time budget = 80% of the proxy's inspectorTimeoutMs, and the proxy's
+// abort `signal` is honoured (B3). URL path/query and headers are scanned for honeytokens (S5).
 //
 // Verdicts are SECRET-FREE (PR #14 review): `reasons` are static reason codes plus canary IDs
 // (`honeytoken_crossed_egress`, `canary:DVAA-ADMIN-PASSWORD`); findings carry canary {id, sha256} only and
@@ -24,16 +28,34 @@
 //
 // Direction (T8 finding, PR #16): DVAA executes tools IN-PROCESS, so by the time a response reaches the
 // proxy the data has already left. The PREVENTIVE path is the request phase (pre-forward). Response-phase
-// tool-call findings are returned with `flagged: false, alert: true, postExecution: true`: evidence, never
-// claimed prevention. Every verdict carries `direction` and `prevents`. (toolExecution: "client" restores
+// tool-call findings are `postExecution: true, prevents: false`: evidence, never claimed prevention.
+// Most are `flagged: false, alert: true`. EXCEPTION (review B1): a honeytoken or strong secret in the
+// tool-call args is `flagged: true` (disposition block, enforcement withhold_reply) so the proxy withholds
+// the reply that would carry the result back to the client — still prevents:false, postExecution:true. Every verdict carries `direction` and `prevents`. (toolExecution: "client" restores
 // response-side blocking for agents whose client executes tool_calls.)
 
+import { createHash } from 'node:crypto';
 import { createDetector } from './detector.js';
+
+// Fraction of the proxy's inspector deadline the detector may spend before failing closed itself (so the
+// verdict carries reason codes instead of a bare proxy 503). The rest is headroom for the proxy.
+const BUDGET_FRACTION = 0.8;
+// Flagged requests are parked separately (review S1): in block mode the proxy refuses them and no
+// response ever arrives, so they must never occupy the benign pending map. Oldest evicted first; a
+// response for an evicted flagged request gets request_context_missing (fail closed, already flagged).
+const MAX_FLAGGED_PENDING = 256;
 
 const CHAT_PATHS = new Set(['/v1/chat/completions', '/chat/completions']);
 
 export function sentinelInspector(opts = {}) {
-  const det = opts.detector ?? createDetector(opts);
+  // B3: the runtime time budget comes from the proxy's REAL inspector deadline (limits.inspectorTimeoutMs,
+  // 5000 ms in sentinel/config/sentinel.config.json), not an assumed ~50 ms. An explicit bounds.timeBudgetMs wins.
+  const proxyTimeoutMs = opts.inspectorTimeoutMs ?? opts.limits?.inspectorTimeoutMs;
+  let detOpts = opts;
+  if (Number.isFinite(proxyTimeoutMs) && proxyTimeoutMs > 0 && opts.bounds?.timeBudgetMs === undefined) {
+    detOpts = { ...opts, bounds: { ...(opts.bounds ?? {}), timeBudgetMs: Math.max(1, Math.floor(proxyTimeoutMs * BUDGET_FRACTION)) } };
+  }
+  const det = opts.detector ?? createDetector(detOpts);
   const sessionHeader = (opts.sessionHeader ?? 'x-sentinel-session').toLowerCase();
   const maxPending = opts.maxPendingRequests ?? 1024;
   const maxPendingBytes = opts.maxPendingBytes ?? 64 * 1024 * 1024;
@@ -41,6 +63,19 @@ export function sentinelInspector(opts = {}) {
   const now = opts.now ?? Date.now;
   const pending = new Map(); // requestId -> {text, bytes, at, sessionId}
   let pendingBytes = 0;
+  const flaggedPending = new Map(); // requestId -> {text, at, sessionId}  (S1: separate, FIFO-bounded)
+  const maxFlaggedPending = opts.maxFlaggedPending ?? MAX_FLAGGED_PENDING;
+  const maxFlaggedPendingBytes = Math.min(maxPendingBytes, 16 * 1024 * 1024);
+  let flaggedBytes = 0;
+  let flaggedEvicted = 0;
+  const dropFlagged = (id) => {
+    const p = flaggedPending.get(id);
+    if (p) {
+      flaggedBytes -= p.bytes;
+      flaggedPending.delete(id);
+    }
+    return p;
+  };
 
   const drop = (id) => {
     const p = pending.get(id);
@@ -55,11 +90,12 @@ export function sentinelInspector(opts = {}) {
     for (const [id, p] of pending) if (t - p.at > pendingTtlMs) drop(id);
   };
 
-  async function sentinel({ phase, path, headers = {}, body, requestId }) {
+  async function sentinel({ phase, path, headers = {}, body, requestId, signal }) {
     const p = String(path ?? '').split('?')[0];
     if (!CHAT_PATHS.has(p)) return null;
     const text = Buffer.isBuffer(body) ? body.toString('utf8') : String(body ?? '');
-    const sessionId = String(headers[sessionHeader] ?? requestId ?? 'unknown-session').slice(0, 128);
+    // S5: URL path/query (request phase) and headers (both phases) are scanned for honeytokens too.
+    const meta = { phase, path: phase === 'request' ? String(path ?? '') : '', headers: headers ?? {} };
 
     if (phase === 'request') {
       const bytes = Buffer.byteLength(text);
@@ -67,25 +103,41 @@ export function sentinelInspector(opts = {}) {
       if (pending.size >= maxPending || pendingBytes + bytes > maxPendingBytes) {
         return contextFailure('request_context_full', { payload_size: pendingBytes + bytes, cap: maxPendingBytes, entries: pending.size, max_entries: maxPending });
       }
-      const decision = det.inspect({ sessionId, request: text });
-      // Park even a flagged request: in observe mode the proxy forwards it and the response still needs
-      // its context. (A block-mode refusal never produces a response; the entry ages out via TTL.)
+      // B2: a STABLE session key — the x-sentinel-session header, else a hash of the conversation's
+      // opening turns (OpenAI clients resend the history, so it is the same on every turn). Never the
+      // per-request id: that allocated one session per request and locked the detector out after 10k.
+      const sessionId = String(headers[sessionHeader] ?? conversationKey(text)).slice(0, 128);
+      const decision = det.inspect({ sessionId, request: text, meta, signal });
+      const verdict = toInspectorVerdict(decision, 'request');
+      if (verdict?.flagged) {
+        // S1: a flagged request is NOT parked with benign ones. In observe mode the proxy forwards it and
+        // the response still needs context, so it goes to the small FIFO-bounded flagged map instead.
+        if (bytes <= maxFlaggedPendingBytes) {
+          while (flaggedPending.size >= maxFlaggedPending || flaggedBytes + bytes > maxFlaggedPendingBytes) {
+            dropFlagged(flaggedPending.keys().next().value);
+            flaggedEvicted++;
+          }
+          flaggedPending.set(requestId, { text, bytes, at: now(), sessionId });
+          flaggedBytes += bytes;
+        }
+        return verdict;
+      }
       pending.set(requestId, { text, bytes, at: now(), sessionId });
       pendingBytes += bytes;
-      return toInspectorVerdict(decision, 'request');
+      return verdict;
     }
 
     if (phase === 'response') {
-      const parked = drop(requestId);
+      const parked = drop(requestId) ?? dropFlagged(requestId);
       if (!parked) return contextFailure('request_context_missing', { requestId: String(requestId).slice(0, 64) });
-      const decision = det.inspect({ sessionId: parked.sessionId, request: parked.text, response: text });
+      const decision = det.inspect({ sessionId: parked.sessionId, request: parked.text, response: text, meta, signal });
       return toInspectorVerdict(decision, 'response');
     }
     return null;
   }
 
   sentinel.detector = det;
-  sentinel.pendingStats = () => ({ entries: pending.size, bytes: pendingBytes, maxPending, maxPendingBytes });
+  sentinel.pendingStats = () => ({ entries: pending.size, bytes: pendingBytes, maxPending, maxPendingBytes, flaggedEntries: flaggedPending.size, flaggedEvicted, maxFlaggedPending });
   return sentinel;
 }
 
@@ -124,6 +176,24 @@ export function toInspectorVerdict(decision, phase = null) {
     latencyMs: decision.stats.latencyMs,
     findings,
   };
+}
+
+/**
+ * Stable conversation key when no session header is sent: sha256 over the model plus the first system
+ * and first user turn. Constant across the turns of one conversation (history is resent), distinct across
+ * conversations. Unparseable bodies get a per-body key (the detector fails them closed anyway).
+ */
+export function conversationKey(text) {
+  const h = createHash('sha256');
+  try {
+    const req = JSON.parse(text);
+    const msgs = Array.isArray(req?.messages) ? req.messages : [];
+    const first = (role) => msgs.find((m) => m?.role === role)?.content ?? null;
+    h.update(JSON.stringify([req?.model ?? null, first('system'), first('user')]));
+  } catch {
+    h.update(text);
+  }
+  return `conv:${h.digest('hex').slice(0, 32)}`;
 }
 
 function contextFailure(code, detail) {

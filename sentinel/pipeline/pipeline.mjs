@@ -19,11 +19,12 @@
 import { BOUNDS, enforce, defaultLog, resolveCaps } from './bounds.mjs';
 import { alertsForExchange, alertsForProxyAlert, agentOf, parseJsonBody, sessionOf, inspectedBody } from './convert.mjs';
 import { OutputStore } from './store.mjs';
+import { isEgressRecord, alertForEgress, correlate, EGRESS_SESSION, EGRESS_AGENT } from './egress.mjs';
 
 // Proxy alert reasons whose verdicts are also on the request's exchange record (T2 #14, #41).
 const DUPLICATE_OF_EXCHANGE = new Set(['flagged', 'detector_alert']);
 
-export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, canaries = [], proxyCapturePath = null, onWarning, t3 = null } = {}) {
+export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, canaries = [], proxyCapturePath = null, egressCapturePath = null, onWarning, t3 = null, now = Date.now } = {}) {
   if (!outDir) throw new Error('createPipeline: outDir is required');
   const caps = capOverrides ? resolveCaps(capOverrides) : BOUNDS;
   const store = new OutputStore({ outDir, caps, log, proxyCapturePath });
@@ -33,6 +34,13 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
   let chain = Promise.resolve();
   let records = 0;
   let writeAhead = 0;
+  // Egress correlation state (T12 records). Attribution only: it never changes a verdict.
+  const pendingEgress = []; // [{record, line, receivedAt}] in arrival order
+  const windows = []; // chat-proxy exchange windows, oldest first
+  const sessionByPort = new Map(); // agent port -> most recent {session, agent} (targeted lookup)
+  const inflight = new Map(); // request_id -> start ms (write-ahead seen, exchange not yet)
+  let horizon = -Infinity; // egress older than this lost its correlation history (evicted, logged)
+  const egressCounts = { records: 0, allowed: 0, alerts: 0, correlated: 0, standalone: 0 };
 
   const ctxFor = (session, line, extra = {}) => ({
     session,
@@ -89,12 +97,18 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
       }
       pending.delete(record.request_id);
       store.addExchange({ session, agent, record, alerts, line });
+      noteWindow(record, session, agent);
       return;
     }
     if (record.type === 'request') {
       // T2 write-ahead record: the request is on disk before the agent runs. The matching exchange
       // record carries the same request plus the response, so there is nothing to convert yet.
       writeAhead += 1;
+      const start = Date.parse(record.ts);
+      if (record.request_id && Number.isFinite(start)) {
+        inflight.set(record.request_id, start);
+        enforce('MAX_INFLIGHT_REQUESTS', inflight.size, 'write-ahead requests waiting for their exchange record', caps, log);
+      }
       return;
     }
     if (record.type === 'alert') {
@@ -110,7 +124,64 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
       if (!DUPLICATE_OF_EXCHANGE.has(record.reason)) log(entry);
       return;
     }
+    if (isEgressRecord(record)) {
+      egressCounts.records += 1;
+      pendingEgress.push({ record, line, receivedAt: now() });
+      enforce('MAX_PENDING_EGRESS', pendingEgress.length, 'egress records waiting for agent correlation', caps, log);
+      return;
+    }
     throw new Error(`line ${line}: unknown record type ${JSON.stringify(record.type)}`);
+  }
+
+  function noteWindow(record, session, agent) {
+    inflight.delete(record.request_id);
+    const start = Date.parse(record.ts);
+    if (!Number.isFinite(start)) return;
+    const end = start + (Number.isFinite(record.latency_ms) ? record.latency_ms : 0);
+    windows.push({ start, end, session, agent, requestId: record.request_id ?? null });
+    if (agent?.port) sessionByPort.set(agent.port, { session, agent });
+    if (windows.length > caps.MAX_CORRELATION_WINDOWS) {
+      const evicted = windows.shift();
+      horizon = Math.max(horizon, evicted.end + 1);
+      log({ level: 'ALERT', reason: 'correlation_window_evicted', bound: 'MAX_CORRELATION_WINDOWS', size: windows.length + 1, cap: caps.MAX_CORRELATION_WINDOWS, horizon: new Date(horizon).toISOString(), action: 'older_egress_shown_as_standalone' });
+    }
+  }
+
+  /** Convert pending egress records. `all` (end of input) resolves everything; otherwise only ready ones. */
+  function resolveEgress(all) {
+    const t = now();
+    while (pendingEgress.length) {
+      const { record, line, receivedAt } = pendingEgress[0];
+      let extra = null;
+      if (!all) {
+        const held = t - receivedAt;
+        if (held < caps.EGRESS_MIN_HOLD_MS) break;
+        const at = Date.parse(record.at);
+        const earlierInFlight = [...inflight.values()].some((s) => !Number.isFinite(at) || s <= at);
+        if (earlierInFlight && held < caps.EGRESS_MAX_HOLD_MS) break;
+        if (earlierInFlight) extra = { reason: 'in_flight_turn_timeout (EGRESS_MAX_HOLD_MS)' };
+      }
+      pendingEgress.shift();
+      let correlation = correlate(record, { windows, horizon, sessionByPort });
+      if (extra && correlation.method === 'none') correlation = { ...correlation, ...extra };
+      const ctx = {
+        canaries,
+        correlation,
+        onWarning: warn,
+        captureRef: { path: egressCapturePath, line },
+      };
+      const alert = alertForEgress(record, ctx);
+      if (!alert) { egressCounts.allowed += 1; continue; }
+      egressCounts.alerts += 1;
+      if (correlation.method !== 'none') {
+        egressCounts.correlated += 1;
+        store.addEgressAlerts({ session: correlation.session, agent: correlation.agent, alerts: [alert], standalone: false });
+      } else {
+        egressCounts.standalone += 1;
+        log({ level: 'ALERT', source: 'egress', reason: 'egress_incident_standalone', request_id: record.request_id ?? null, action: record.action, why: correlation.reason });
+        store.addEgressAlerts({ session: EGRESS_SESSION, agent: EGRESS_AGENT, alerts: [alert], standalone: true });
+      }
+    }
   }
 
   return {
@@ -126,14 +197,16 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
     },
     async flush() {
       await chain;
+      resolveEgress(false);
       return store.flush();
     },
     /** End of input: anything still pending had no exchange, so convert it on its own. */
     async finish() {
       await chain;
       for (const id of [...pending.keys()]) orphan(id);
+      resolveEgress(true);
       return store.flush();
     },
-    stats: () => ({ records, writeAhead, pending: pending.size, ...store.stats() }),
+    stats: () => ({ records, writeAhead, pending: pending.size, pendingEgress: pendingEgress.length, egress: { ...egressCounts }, ...store.stats() }),
   };
 }
