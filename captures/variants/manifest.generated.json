@@ -1,7 +1,7 @@
 {
   "generatedBy": "captures/variants/tools/generate-corpus.mjs",
   "deterministic": true,
-  "baselineSource": "dvaa-real",
+  "baselineComputedWith": "dvaa-replica-subset@57918267",
   "DETECTION_EDGE": 8192,
   "cases": [
     "fixtures/benign/benign-long-doc.json",
