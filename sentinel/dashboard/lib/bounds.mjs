@@ -1,5 +1,5 @@
 // Every cap the dashboard introduces lives here, with why and what happens on overflow.
-// Firm rule: bounded + fail-loud. Nothing here truncates silently. Exceeding a cap throws
+// Team rule: bounded + fail-loud. Nothing here truncates silently. Exceeding a cap throws
 // BoundExceededError, which the server returns as a structured error ({bound, size, cap, action})
 // and the UI renders as a red banner.
 
