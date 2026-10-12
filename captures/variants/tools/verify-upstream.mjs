@@ -15,6 +15,11 @@
  *                               (row order in the parquet file = row_idx). Set DEEPSET_PARQUET=<file> as
  *                               well to have the verifier check the parquet's sha256 against the pin.
  *   AGENTDOJO_SRC=<repo root>   git clone of ethz-spylab/agentdojo  (must be at AGENTDOJO.commit, clean)
+ *   AGENTDOJO_PYTHON=<python>   (T6b) a python whose site-packages has AgentDojo's dependencies. With
+ *                               AGENTDOJO_SRC, the verifier re-runs tools/extract-agentdojo.py with
+ *                               PYTHONPATH=<clone>/src (the PINNED code, never an installed copy) and requires
+ *                               byte-identical output to tools/upstream-agentdojo.json (all v1 suites: attack
+ *                               strings + benign ground-truth tool outputs). Without it: SKIPPED.
  *   INJECAGENT_SRC=<repo root>  git clone of uiuc-kang-lab/InjecAgent (must be at INJECAGENT.commit, clean)
  *   DVAA: resolved and verified like tools/baseline.mjs ($DVAA_SRC, $DVAA_DIR, <repo>/.dvaa/dvaa-target);
  *         pin + clean tree are checked BEFORE its code is imported.
@@ -27,7 +32,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { DEEPSET, AGENTDOJO, INJECAGENT, DVAA, renderAgentDojo } from './upstream-cases.mjs';
+import { execFileSync } from 'node:child_process';
+import { DEEPSET, AGENTDOJO, INJECAGENT, INJECAGENT_ALL_CASES, DVAA, renderAgentDojo } from './upstream-cases.mjs';
+import { AGENTDOJO_PIN } from './upstream-pins.mjs';
 import { resolveVerifiedDvaa, verifyCheckout, DVAA_PIN } from './baseline.mjs';
 import { sha256 } from './fixture-lib.mjs';
 
@@ -120,20 +127,52 @@ function checkInjecAgent(env) {
   if (!root) return { status: 'skipped', detail: 'set INJECAGENT_SRC=<InjecAgent clone>' };
   const pin = pinProblem('InjecAgent', root, INJECAGENT.commit);
   if (pin) return pin;
-  const data = JSON.parse(read(path.join(root, INJECAGENT.file)));
+  const files = new Map();
+  const dataFor = (f) => {
+    if (!files.has(f)) files.set(f, JSON.parse(read(path.join(root, f))));
+    return files.get(f);
+  };
   const bad = [];
-  for (const c of INJECAGENT.cases) {
-    const u = data[c.caseIndex];
+  for (const c of INJECAGENT_ALL_CASES) {
+    const u = dataFor(c.file ?? INJECAGENT.file)[c.caseIndex];
     const ok =
       u &&
       u['Tool Response'] === c.toolResponse &&
       u['Attacker Instruction'] === c.attackerInstruction &&
       u['User Instruction'] === c.userInstruction &&
       u['User Tool'] === c.userTool &&
-      u['Tool Parameters'] === c.toolParameters;
-    if (!ok) bad.push(`case ${c.caseIndex}`);
+      u['Tool Parameters'] === c.toolParameters &&
+      (c.attackerTools === undefined || JSON.stringify(u['Attacker Tools']) === JSON.stringify(c.attackerTools)) &&
+      (c.attackType === undefined || u['Attack Type'] === c.attackType);
+    if (!ok) bad.push(`${c.file ?? INJECAGENT.file}[${c.caseIndex}]`);
   }
-  return bad.length ? { status: 'mismatch', detail: bad.join(', ') } : { status: 'ok', detail: `@${INJECAGENT.commit.slice(0, 8)} clean: ${INJECAGENT.cases.length} cases` };
+  return bad.length ? { status: 'mismatch', detail: bad.join(', ') } : { status: 'ok', detail: `@${INJECAGENT.commit.slice(0, 8)} clean: ${INJECAGENT_ALL_CASES.length} cases` };
+}
+
+/** T6b: re-run the AgentDojo extraction on the pinned clone and compare byte-for-byte. */
+function checkAgentDojoRun(env) {
+  const root = env.AGENTDOJO_SRC;
+  if (!root || !env.AGENTDOJO_PYTHON) return { status: 'skipped', detail: 'set AGENTDOJO_SRC=<agentdojo clone> and AGENTDOJO_PYTHON=<python with its deps>' };
+  if (AGENTDOJO_PIN.commit !== AGENTDOJO.commit) return { status: 'mismatch', detail: 'upstream-pins AGENTDOJO_PIN.commit != upstream-cases AGENTDOJO.commit' };
+  const pin = pinProblem('AgentDojo', root, AGENTDOJO_PIN.commit);
+  if (pin) return pin;
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  let out;
+  try {
+    out = execFileSync(env.AGENTDOJO_PYTHON, [path.join(here, 'extract-agentdojo.py'), root], {
+      env: { ...env, PYTHONPATH: path.join(root, 'src'), PYTHONDONTWRITEBYTECODE: '1' },
+      maxBuffer: 64 * 1024 * 1024, // the committed extract is ~0.4 MB; overflow throws (fail-loud)
+      encoding: 'utf8',
+    });
+  } catch (e) {
+    return { status: 'mismatch', detail: `extract-agentdojo.py failed: ${String(e.stderr || e.message).trim().split('\n').pop()}` };
+  }
+  const after = pinProblem('AgentDojo', root, AGENTDOJO_PIN.commit); // the run must not dirty the clone
+  if (after) return after;
+  const committed = read(path.join(here, 'upstream-agentdojo.json'));
+  if (out !== committed) return { status: 'mismatch', detail: 'extract-agentdojo.py output differs from upstream-agentdojo.json' };
+  const d = JSON.parse(out);
+  return { status: 'ok', detail: `@${AGENTDOJO_PIN.commit.slice(0, 8)} clean: re-ran v1 ${d.suites.join('/')}: ${d.attacks.length} attack strings + ${d.benign.length} benign transcripts byte-identical` };
 }
 
 async function checkDvaa(env) {
@@ -157,6 +196,7 @@ export async function verifyUpstream(env = process.env) {
   return [
     { source: 'deepset/prompt-injections', ...checkDeepset(env) },
     { source: 'AgentDojo', ...checkAgentDojo(env) },
+    { source: 'AgentDojo (v1 suites, extract re-run)', ...checkAgentDojoRun(env) },
     { source: 'InjecAgent', ...checkInjecAgent(env) },
     { source: 'DVAA', ...(await checkDvaa(env)) },
   ];
