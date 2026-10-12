@@ -5,13 +5,15 @@
 #   doctor          check Node >=22 (prefers nvm's >=24), Docker, the pinned DVAA checkout; print fixes
 #   up              start the DVAA fleet (docker project dvaa-t1, every port published on 127.0.0.1 only)
 #   down            stop the DVAA fleet
-#   test            run every *.test.js/*.test.mjs suite under sentinel/ and captures/ (found by glob),
+#   test            run every *.test.js/*.test.mjs suite under sentinel/, captures/, track3a/ and track1/
+#                   (found by glob; a missing track dir is reported as NOT YET MERGED "not present"),
 #                   print a pass/fail table; exit 1 on any failing suite
 #   score           run the T7 scoring harness, print its results table
 #   contrast        verify T8's recorded secure-by-design contrast (EVAL_LIVE=1 also re-captures it)
 #   dashboard       start the T5 dashboard on loopback in the background, print its URL
 #   dashboard-stop  stop the dashboard started by `dashboard`
 #   all             doctor, up, test, score, contrast, dashboard; then a summary table
+#   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs); NOT YET MERGED if absent
 #   gate <PR#>      MERGE GATE: merge the PR into origin/main in a temp worktree and run `test` there;
 #                   exit 1 on a conflict or any failing suite. Required before merging any PR.
 #
@@ -108,7 +110,8 @@ select_node() {
 }
 node_fix() { # exact commands to get Node 24 first on PATH
   if [ "$HOST_OS" = macos ]; then
-    fix "brew install node@$NODE_PREFERRED && export PATH=\"\$(brew --prefix node@$NODE_PREFERRED)/bin:\$PATH\"   (eval.sh also finds the keg by itself)"
+    local kegs="/opt/homebrew/opt"; [ -d /opt/homebrew ] || { [ -d /usr/local/Homebrew ] && kegs="/usr/local/opt"; }
+    fix "brew install node@$NODE_PREFERRED && export PATH=$kegs/node@$NODE_PREFERRED/bin:\$PATH   (eval.sh also finds the keg by itself)"
     fix "or with nvm: nvm install $NODE_PREFERRED && nvm use   (reads .nvmrc)"
   else
     fix "nvm install $NODE_PREFERRED && nvm use   (reads .nvmrc)"
@@ -345,9 +348,10 @@ cmd_down() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# Test suites. Discovery is by glob: every directory under sentinel/ and captures/ that holds a
+# Test suites. Discovery is by glob: every directory under SUITE_ROOTS that holds a
 # *.test.js or *.test.mjs file is a suite, so a new suite is picked up without editing this script.
 # The ticket list below only labels suites and turns a component that is absent into NOT YET MERGED.
+SUITE_ROOTS=(sentinel captures track3a track1)
 KNOWN_SUITES=(
   "T2|sentinel/proxy"
   "T3|sentinel/detectors"
@@ -356,12 +360,17 @@ KNOWN_SUITES=(
   "T7|sentinel/scoring"
   "T6|captures/variants"
   "T8|captures/contrast"
+  "3A|track3a"
+  "track1|track1"
 )
 # Prints "component_dir|test_dir" per suite. The component dir (the cwd the tests expect) is the parent
 # of a test/ or tests/ dir, otherwise the dir itself.
 discover_suites() {
   local t comp
-  ( cd "$REPO" && find sentinel captures \( -name node_modules -o -name .eval -o -name .dvaa \) -prune -o \
+  local roots=() r
+  for r in "${SUITE_ROOTS[@]}"; do [ -d "$REPO/$r" ] && roots+=("$r"); done
+  [ ${#roots[@]} -eq 0 ] && return 0
+  ( cd "$REPO" && find "${roots[@]}" \( -name node_modules -o -name .eval -o -name .dvaa \) -prune -o \
       -type f \( -name '*.test.js' -o -name '*.test.mjs' \) -print 2>/dev/null ) \
     | while IFS= read -r t; do dirname "$t"; done | sort -u | while IFS= read -r t; do
       case "$(basename "$t")" in test|tests) comp="$(dirname "$t")" ;; *) comp="$t" ;; esac
@@ -421,7 +430,11 @@ for k,r in enumerate(rows):
 '
 }
 cmd_test() {
-  hdr "test (every *.test.js/*.test.mjs suite under sentinel/ and captures/, found by glob)"
+  hdr "test (every *.test.js/*.test.mjs suite under ${SUITE_ROOTS[*]}, found by glob)"
+  local root
+  for root in "${SUITE_ROOTS[@]}"; do
+    [ -d "$REPO/$root" ] || warn "$root/ not present on this branch: none of its suites can run (see NOT YET MERGED below)"
+  done
   require_node || return 1
   mkdir -p "$OUT/test"
   # Real seams: the pinned DVAA checkout (T6 evasion proof, T7 baseline) and, when the fleet is up,
@@ -434,7 +447,7 @@ cmd_test() {
   else warn "DVAA fleet not up: live-DVAA seams will be skipped (run scripts/eval.sh up first)"; fi
 
   SUITE_ROWS=(); SUITE_FAILS=(); SUITE_MISSING=(); SUITE_SKIPS=()
-  local entry ticket dir tdir rc=0 r nym=0
+  local entry ticket dir tdir rc=0 r nym=0 note
   local suites=() found=" " t2
   while IFS= read -r entry; do suites+=("$entry"); done < <(discover_suites)   # (no mapfile: bash 3.2)
   for entry in ${suites[@]+"${suites[@]}"}; do
@@ -447,7 +460,8 @@ cmd_test() {
   for entry in "${KNOWN_SUITES[@]}"; do
     IFS='|' read -r ticket dir <<< "$entry"
     case "$found" in *" $dir "*) continue ;; esac
-    SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|no *.test.js/*.test.mjs under $dir on this branch")
+    if [ -d "$REPO/$dir" ]; then note="no *.test.js/*.test.mjs under $dir on this branch"; else note="$dir/ not present on this branch"; fi
+    SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|$note")
     SUITE_MISSING+=("$ticket $dir"); nym=1
   done
   if [ ${#suites[@]} -eq 0 ]; then bad "no test files found under sentinel/ or captures/"; return 1; fi
@@ -557,6 +571,22 @@ cmd_dashboard() {
   echo "  log: .eval/dashboard.log   stop: scripts/eval.sh dashboard-stop"
   return 0
 }
+# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Note: run-demo.mjs
+# rewrites track3a/runs/results.json + RESULTS.md (its own recorded outputs), so this is not part of `all`.
+cmd_track3a() {
+  hdr "track3a (Track 3 Path A: node track3a/run-demo.mjs)"
+  require_node || return 1
+  if [ ! -f "$REPO/track3a/run-demo.mjs" ]; then
+    nym "track3a/ not present on this branch (track3a/run-demo.mjs, PR #62)"; return "$(nym_rc)"
+  fi
+  mkdir -p "$OUT"
+  ( cd "$REPO" && node track3a/run-demo.mjs ) 2>&1 | tee "$OUT/track3a.log" | sed 's/^/  /'
+  local rc=${PIPESTATUS[0]}
+  if [ "$rc" = 0 ]; then ok "track3a demo exit 0 (log .eval/track3a.log)"
+  else bad "track3a demo exit $rc (log .eval/track3a.log)"; return 1; fi
+  return 0
+}
+
 cmd_dashboard_stop() {
   hdr "dashboard-stop"
   local pidf="$OUT/dashboard.pid"
@@ -662,6 +692,7 @@ case "${1:-help}" in
   dashboard) cmd_dashboard ;;
   dashboard-stop) cmd_dashboard_stop ;;
   all) cmd_all ;;
+  track3a) cmd_track3a ;;
   gate) cmd_gate "${2:-}" ;;
   help|-h|--help) usage ;;
   *) echo "unknown target '$1'" >&2; usage >&2; exit 2 ;;

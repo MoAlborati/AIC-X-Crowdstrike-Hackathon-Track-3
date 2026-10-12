@@ -74,6 +74,8 @@ which is the setting for judging the final build.
 | `EVAL_DASHBOARD_PORT` | `9100` | Dashboard port (always bound to 127.0.0.1) |
 | `DVAA_DIR`, `DVAA_PROJECT`, `DVAA_PIN` | `.dvaa/dvaa-target`, `dvaa-t1`, pinned | Passed through to `scripts/setup-dvaa.sh` |
 
+`scripts/eval.sh track3a` runs the Track 3 Path A demo (`node track3a/run-demo.mjs`, PR #62); it prints NOT YET MERGED while `track3a/` is not on the branch, and is not part of `all` because it rewrites `track3a/runs/`. `test` also discovers suites under `track3a/` and `track1/` and reports a missing dir as `not present`.
+
 `scripts/eval.sh down` stops the fleet. Don't run it on a shared machine while others are using `dvaa-t1`.
 
 ## Troubleshooting
@@ -107,7 +109,8 @@ brew install node@24 jq           # node@24 is keg-only; eval.sh finds it, or: e
 # 2. Clone under your home directory (Colima only shares $HOME into its VM)
 cd ~ && git clone https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon.git && cd AIC-X-Crowdstrike-Hackathon
 
-# 3. Check, start, evaluate, demo
+# 3. Check, start, evaluate, demo (on the demo Mac with Colima + Homebrew Node 26, the one install is:
+#    brew install node@24 && export PATH=/opt/homebrew/opt/node@24/bin:$PATH)
 scripts/eval.sh doctor            # every FAIL/WARN prints the exact macOS fix
 scripts/eval.sh up                # first build ~1 min; builds a native arm64 DVAA image
 scripts/eval.sh all
