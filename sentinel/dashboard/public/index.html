@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SentinelProxy Incident Replay</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">◆</span>
+      <div>
+        <h1>SentinelProxy · Incident replay</h1>
+        <p class="sub">Recorded DVAA captures, replayed deterministically. No live LLM calls.</p>
+      </div>
+    </div>
+    <div class="controls">
+      <label>Capture <select id="capture"></select></label>
+      <label>Run <select id="run"></select></label>
+      <div class="replay-ctl" role="group" aria-label="Replay controls">
+        <button id="first" title="First step (Home)">⏮</button>
+        <button id="prev" title="Previous step (←)">◀</button>
+        <button id="play" title="Play / pause (space)">▶ Play</button>
+        <button id="next" title="Next step (→)">▶</button>
+        <button id="last" title="Last step (End)">⏭</button>
+        <span id="stepinfo" class="stepinfo">–</span>
+      </div>
+      <button id="theme" title="Toggle light / dark">◐</button>
+    </div>
+  </header>
+
+  <div id="banners"></div>
+
+  <section class="headline" aria-label="Headline metrics">
+    <div class="tile pair">
+      <div>
+        <div class="tile-label">Detection rate</div>
+        <div class="tile-value" id="det-rate">—</div>
+      </div>
+      <div class="pair-sep" aria-hidden="true"></div>
+      <div>
+        <div class="tile-label">Benign false-positive rate</div>
+        <div class="tile-value" id="fp-rate">—</div>
+      </div>
+      <div class="tile-note" id="scoring-note"></div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Detection latency (this run)</div>
+      <div class="tile-value" id="latency">—</div>
+      <div class="tile-note" id="latency-note"></div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Dashboard replay build</div>
+      <div class="tile-value" id="buildms">—</div>
+      <div class="tile-note" id="graph-size"></div>
+    </div>
+    <div class="tile gauge-tile">
+      <div class="tile-label">Agent trust score</div>
+      <svg id="gauge" viewBox="0 0 120 70" role="img" aria-labelledby="gauge-text"></svg>
+      <div class="tile-note" id="gauge-text">—</div>
+    </div>
+  </section>
+
+  <main class="split">
+    <section class="pane attacker" aria-labelledby="att-h">
+      <h2 id="att-h"><span class="side-tag att">ATTACKER / AGENT</span> What happened</h2>
+      <div id="twin" class="twin"></div>
+      <ol id="timeline" class="timeline"></ol>
+    </section>
+    <section class="pane detector" aria-labelledby="det-h">
+      <h2 id="det-h"><span class="side-tag det">DETECTOR</span> SentinelProxy alert feed</h2>
+      <div id="alert-source" class="alert-source"></div>
+      <div id="feed" class="feed"></div>
+    </section>
+  </main>
+
+  <section class="graph-wrap" aria-labelledby="graph-h">
+    <div class="graph-head">
+      <h2 id="graph-h">Incident graph</h2>
+      <div class="legend" aria-label="Legend">
+        <span><i class="sw sw-taint"></i> taint path (detector)</span>
+        <span><i class="sw sw-gt"></i> DVAA ground truth</span>
+        <span><i class="sw sw-mal"></i> ⚠ malicious node</span>
+        <span><i class="sw sw-trunc"></i> ⋯ truncated / ? unresolved</span>
+      </div>
+    </div>
+    <div class="graph-scroll"><svg id="graph" class="graph" aria-label="Incident graph"></svg></div>
+    <div id="detail" class="detail" aria-live="polite"><p class="muted">Select a node to see its recorded content.</p></div>
+  </section>
+
+  <footer class="foot">
+    <span id="bounds"></span>
+  </footer>
+</body>
+</html>
