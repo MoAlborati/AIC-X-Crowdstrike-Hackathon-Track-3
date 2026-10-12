@@ -62,7 +62,7 @@ function aimAbSidecar(cap, warnings) {
       sink: { type: 'http', destination: dest },
     },
     taintPath: [
-      { kind: 'source', label: 'retrieved RAG document (untrusted; body not recorded in T1 capture)', trust: 'untrusted' },
+      { kind: 'source', label: 'poisoned RAG document APWN-DE-003 (untrusted; rebuilt from DVAA template)', trust: 'untrusted' },
       { kind: 'sink', label: `${tc.function.name} → ${hostOf(dest)}`, toolCallId: tc.id, trust: 'external' },
     ],
     evidence: 'outbound call to a non-allowlisted local listener after reading an untrusted document',

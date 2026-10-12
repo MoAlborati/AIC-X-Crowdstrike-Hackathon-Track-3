@@ -82,19 +82,22 @@ export function buildReplay(capture, alerts, extra = {}) {
     for (const m of ex.messages) {
       const id = `msg:${ex.index}:${m.index}`;
       if (m.role === 'tool') {
+        const rebuilt = m.recorded === 'reconstructed';
         const n = addNode({
           id, lane: 'untrusted', kind: 'tool_result',
-          label: m.recorded === false ? 'untrusted input (body not recorded)' : `tool result${m.name ? ` · ${m.name}` : ''}`,
+          label: m.recorded === false ? 'untrusted input (body not recorded)'
+            : rebuilt ? `poisoned document${m.payload ? ` · ${m.payload}` : ''}` : `tool result${m.name ? ` · ${m.name}` : ''}`,
           trust: 'untrusted', bytes: m.recorded === false ? null : byteLen(m.content), text: m.content,
-          toolCallId: m.toolCallId ?? null, recorded: m.recorded !== false,
-          flags: m.recorded === false ? ['not_recorded'] : [],
+          toolCallId: m.toolCallId ?? null, recorded: m.recorded === false ? false : rebuilt ? 'reconstructed' : true,
+          provenance: m.provenance ?? null,
+          flags: m.recorded === false ? ['not_recorded'] : rebuilt ? ['reconstructed'] : [],
         });
         prevInput = n.id;
         if (m.toolCallId) {
           toolResultNode.set(m.toolCallId, n.id);
           if (toolCallNode.has(m.toolCallId)) addEdge(toolCallNode.get(m.toolCallId), n.id);
         }
-        step('tool_result', n.label, [n.id]);
+        step('tool_result', rebuilt ? `${n.label} (${n.bytes.toLocaleString('en-US')} B, rebuilt from DVAA template)` : n.label, [n.id]);
       } else {
         const n = addNode({
           id, lane: 'input', kind: `${m.role}_message`, label: `${m.role} turn`, trust: m.role === 'system' ? 'system' : 'user',

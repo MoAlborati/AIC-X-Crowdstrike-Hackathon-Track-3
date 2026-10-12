@@ -19,7 +19,7 @@
     </div>
     <div class="controls">
       <label>Capture <select id="capture"></select></label>
-      <label>Run <select id="run"></select></label>
+      <label id="run-label">Run <select id="run"></select></label>
       <div class="replay-ctl" role="group" aria-label="Replay controls">
         <button id="first" title="First step (Home)">⏮</button>
         <button id="prev" title="Previous step (←)">◀</button>
@@ -81,32 +81,31 @@
     </div>
   </section>
 
-  <main class="split">
-    <section class="pane attacker" aria-labelledby="att-h">
-      <h2 id="att-h"><span class="side-tag att">ATTACKER / AGENT</span> What happened</h2>
-      <div id="twin" class="twin"></div>
-      <ol id="timeline" class="timeline"></ol>
+  <main class="stage-grid">
+    <section class="graph-wrap" aria-labelledby="graph-h">
+      <div class="graph-head">
+        <h2 id="graph-h">Incident graph</h2>
+        <div class="legend" aria-label="Legend">
+          <span><i class="sw sw-taint"></i> taint path (detector)</span>
+          <span><i class="sw sw-gt"></i> DVAA ground truth</span>
+          <span><i class="sw sw-mal"></i> ⚠ malicious node</span>
+          <span><i class="sw sw-trunc"></i> ⋯ truncated / ? unresolved</span>
+        </div>
+      </div>
+      <div class="graph-scroll" id="graph-scroll"><svg id="graph" class="graph" aria-label="Incident graph"></svg></div>
+      <div id="detail" class="detail" aria-live="polite"><p class="muted">Select a node to see its recorded content.</p></div>
     </section>
     <section class="pane detector" aria-labelledby="det-h">
       <h2 id="det-h"><span class="side-tag det">DETECTOR</span> SentinelProxy alert feed</h2>
       <div id="alert-source" class="alert-source"></div>
       <div id="feed" class="feed"></div>
     </section>
+    <section class="pane attacker" aria-labelledby="att-h">
+      <h2 id="att-h"><span class="side-tag att">ATTACKER / AGENT</span> What happened</h2>
+      <div id="twin" class="twin"></div>
+      <ol id="timeline" class="timeline"></ol>
+    </section>
   </main>
-
-  <section class="graph-wrap" aria-labelledby="graph-h">
-    <div class="graph-head">
-      <h2 id="graph-h">Incident graph</h2>
-      <div class="legend" aria-label="Legend">
-        <span><i class="sw sw-taint"></i> taint path (detector)</span>
-        <span><i class="sw sw-gt"></i> DVAA ground truth</span>
-        <span><i class="sw sw-mal"></i> ⚠ malicious node</span>
-        <span><i class="sw sw-trunc"></i> ⋯ truncated / ? unresolved</span>
-      </div>
-    </div>
-    <div class="graph-scroll"><svg id="graph" class="graph" aria-label="Incident graph"></svg></div>
-    <div id="detail" class="detail" aria-live="polite"><p class="muted">Select a node to see its recorded content.</p></div>
-  </section>
 
   <footer class="foot">
     <span id="bounds"></span>
