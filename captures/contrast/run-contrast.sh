@@ -23,7 +23,7 @@
 #
 # Usage: captures/contrast/run-contrast.sh [OUT_DIR]   (default: captures/contrast/runs)
 # Env:   DVAA_CONTAINER (dvaa-t1-dvaa-1)  DVAA_IMAGE (dvaa-t1-dvaa)
-#        SENTINEL_REF   (origin/t2-proxy-skeleton)  PROXY_PORT (7099, inside the DVAA netns)
+#        SENTINEL_REF   (origin/main)            PROXY_PORT (7099, inside the DVAA netns)
 #        SENTINEL_CONFIG (captures/contrast/standin-inspector.config.json)
 set -euo pipefail
 
@@ -31,7 +31,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 CONTAINER="${DVAA_CONTAINER:-dvaa-t1-dvaa-1}"
 IMAGE="${DVAA_IMAGE:-dvaa-t1-dvaa}"
-SENTINEL_REF="${SENTINEL_REF:-origin/t2-proxy-skeleton}"
+SENTINEL_REF="${SENTINEL_REF:-origin/main}"
 PROXY_PORT="${PROXY_PORT:-7099}"
 SENTINEL_CONFIG="${SENTINEL_CONFIG:-$HERE/standin-inspector.config.json}"
 OUT="$(mkdir -p "${1:-$HERE/runs}" && cd "${1:-$HERE/runs}" && pwd)"
@@ -70,7 +70,7 @@ done
 WORK="$(mktemp -d)"
 cleanup() { docker rm -f "$PROXY_NAME" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
-git -C "$REPO" archive "$SENTINEL_REF" sentinel/proxy sentinel/config | tar -x -C "$WORK"
+git -C "$REPO" archive "$SENTINEL_REF" sentinel/proxy sentinel/config sentinel/alerts | tar -x -C "$WORK"
 cp "$SENTINEL_CONFIG" "$WORK/contrast.config.json"
 mkdir -p "$WORK/out" && chmod 777 "$WORK/out"
 
