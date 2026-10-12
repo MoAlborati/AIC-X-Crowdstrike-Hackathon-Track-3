@@ -26,9 +26,13 @@ data, untrusted content, external communication.
 
 **Wedge:** an egress sidecar for agent tool calls. It is one container that becomes the agent's only route out. It needs no code changes and no model changes, and it runs in observe mode first.
 
+**On-box / data-residency wedge.** Because it is a self-hosted sidecar with deterministic rules and no outbound model call, the decision never leaves the box. That fits on-premises, air-gapped and data-residency-constrained deployments, and regulated industries (finance, healthcare, government) where sending agent traffic to a third-party classifier cloud is a non-starter. It is a wedge, not a measured claim.
+
 **How it stands apart: destination provenance vs prompt-content classifiers.** Classifiers ask "does this text look
 like an attack?", and an attacker can reword it. We ask "did the user authorize this destination, and is it on the
-allowlist?" Rewording doesn't change where the data goes. We are *not* a better classifier:
+allowlist?" Rewording doesn't change where the data goes. And unlike guardrails that are validated only on a
+self-built simulator, every number here is measured against the organizer's real DVAA target with a live
+default-deny egress boundary in the loop. We are *not* a better classifier:
 
 | | What it is | Where Tourniquet fits |
 |---|---|---|
@@ -36,13 +40,15 @@ allowlist?" Rewording doesn't change where the data goes. We are *not* a better 
 | NeMo Guardrails | NVIDIA's open-source toolkit of programmable rails inside the app | We need no app code changes: a sidecar in front of the chat endpoint plus an egress proxy |
 | Lakera Guard, Prompt Guard | Classifiers that score text for injection or jailbreak | We decide on **where data goes**, not on how the text reads. Pair us with one of them |
 
-Our edge, in four parts: **drop-in sidecar** · **default-deny egress at the tool boundary** · **deterministic rules**
-(same input, same verdict) · **low false-positive posture**.
+Our edge, in five parts: **drop-in sidecar** · **default-deny egress at the tool boundary** · **deterministic rules**
+(same input, same verdict) · **low false-positive posture** · **config, not runtime** — the proxy target, allowlist
+and rules are deployment configuration loaded at startup, not runtime-mutable from the data path, so an attacker
+reading and writing through the agent cannot change where traffic is allowed to go.
 
 **Path to launch** (each step has a concrete exit test):
 1. **Now, prototype:** the reverse proxy and egress guard run against DVAA and our own OpsBot, with a scored corpus and a working demo.
 2. **Next, open-source sidecar:** one compose file in front of any OpenAI-compatible agent. Design partners run it in observe mode to measure false positives on their real traffic. *Exit test:* a partner leaves it in block mode.
-3. **Then, paid managed policy and alert routing:** hosted allowlists and a honeytoken registry, with alerts routed to the tools a team already uses. This is the paid tier, and its price will come from design partners, not a guess.
+3. **Then, paid managed policy and alert routing:** hosted allowlists and a honeytoken registry, with alerts routed to the tools a team already uses. This is the paid tier. *Proposed pricing model (a mechanism, not a quote — no dollar figure yet):* per protected agent, or per million tool calls — a usage unit that scales with what the buyer is protecting. The actual price will come from design partners, not a guess.
 4. **Then, SOC integration:** alerts go into analyst triage. This already works offline as a prototype with our Track 1 SOC Brief (`scripts/soc-handoff.sh`).
 
 **Evidence (from `results.json`).** Where data actually leaves, we prevent **57 of 71** exfil attempts with **0 of 164**
@@ -69,7 +75,7 @@ leaves, we prevent 57 of 71 attempts with zero of 164 legitimate requests blocke
 Path: open-source sidecar with design partners, then paid managed policy, then SOC integration."
 
 ## Do not say
-- Any market size, price point, customer name, or "customers are asking". We have none of these.
+- Any market size, dollar price point, customer name, or "customers are asking". We have none of these. The pricing *mechanism* (per protected agent / per million tool calls) is fine to state as a proposed model, but never attach a number to it.
 - "Better than Lakera / Prompt Guard / AIDR at detection." We didn't benchmark them.
 - "57 of 71" on its own: always say the baseline's 64 of 71 at 21 of 164 blocked in the same breath.
 - "Integrated with Falcon." It's an AIDR-*shaped* schema only.
