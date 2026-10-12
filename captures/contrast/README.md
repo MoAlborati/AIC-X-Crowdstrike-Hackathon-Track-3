@@ -76,6 +76,14 @@ its reply reaches a reverse proxy in front of `/v1/chat/completions`, the data h
 SecureBot when `DVAA_RAGBOT_AIM_PORT=7001`. SecureBot has no `dvaa{}` block, so the "no exfil" evidence is
 zero canary hits from run B plus no tool calls.
 
+## Dashboard indexing (`manifest.json`)
+
+The dashboard loader indexes this directory only through `manifest.json`: the four DVAA
+`demo aim-ab --json` recordings in `runs/*.demo.json`. `runs/contrast.json`, `runs/run-meta.json`,
+`runs/*.proxy.jsonl` and `standin-inspector.config.json` are derived results, metadata and config, not
+captures, so the loader never parses them. If a re-capture adds a new `*.demo.json`, list it in the
+manifest. The dashboard test suite fails if a recording is missing from it.
+
 ## Reproduce
 
 ```bash

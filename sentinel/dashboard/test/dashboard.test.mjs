@@ -359,9 +359,39 @@ test('T6 data-rich benign case (400-row tool output, >32 KB) is kept whole in th
   const index = await indexCaptures();
   const raw = JSON.parse(await readFile(path.join(REPO_ROOT, 'captures/variants/fixtures/benign/benign-toolrows.json'), 'utf8'));
   const { body } = await replayPayload(index, 'variants/fixtures/benign/benign-toolrows', 'run');
-  const msg = body.graph.nodes.find(n => n.kind === 'user_message');
-  assert.equal(msg.text, raw.request.messages[0].content);
-  assert.ok(msg.bytes > 32 * 1024);
+  // Since PR #15 the 400 rows are the tool-role result of a lookup_per_diem call, not the user message.
+  const toolMsg = raw.request.messages.find(m => m.role === 'tool');
+  assert.ok(toolMsg, 'fixture carries a tool-role message');
+  assert.ok(toolMsg.content.length > 32 * 1024, 'fixture tool output is >32 KB');
+  assert.equal((toolMsg.content.match(/"id":\d+/g) ?? []).length, 400, 'fixture has 400 rows');
+  const node = body.graph.nodes.find(n => n.text === toolMsg.content);
+  assert.ok(node, `the whole 400-row tool output is one graph node (kinds: ${[...new Set(body.graph.nodes.map(n => n.kind))].join(', ')})`);
+  assert.equal(node.kind, 'tool_result');
+  assert.ok(node.bytes > 32 * 1024);
+  assert.ok(node.text.includes('"id":400'), 'row 400 present: nothing truncated');
+});
+
+test('T8 contrast dir is indexed through its manifest: every *.demo.json recording replays, its derived artifacts are never parsed as captures', async () => {
+  const dir = path.join(REPO_ROOT, 'captures', 'contrast');
+  const manifest = JSON.parse(await readFile(path.join(dir, 'manifest.json'), 'utf8'));
+  const listed = new Set(manifest.cases.map(c => c.path));
+  // Drift guard: a new recording that is not in the manifest would be silently skipped, so fail loud.
+  const { readdir } = await import('node:fs/promises');
+  const demos = (await readdir(path.join(dir, 'runs'))).filter(f => f.endsWith('.demo.json')).map(f => `runs/${f}`);
+  assert.ok(demos.length >= 4, `expected >= 4 contrast recordings, got ${demos.length}`);
+  for (const d of demos) assert.ok(listed.has(d), `captures/contrast/${d} is not listed in captures/contrast/manifest.json`);
+  assert.equal(listed.size, demos.length, 'manifest lists only real *.demo.json recordings');
+
+  const index = await indexCaptures();
+  const ids = [...index.keys()].filter(id => id.startsWith('contrast/'));
+  assert.deepEqual(ids.sort(), demos.map(d => `contrast/${d.replace(/\.json$/, '')}`).sort());
+  for (const nonCapture of ['contrast/runs/contrast', 'contrast/runs/run-meta', 'contrast/standin-inspector.config']) {
+    assert.ok(!index.has(nonCapture), `${nonCapture} must not be indexed as a capture`);
+  }
+  for (const id of ids) {
+    const c = await loadCapture(index.get(id));
+    for (const r of c.runs) assert.equal((await replayPayload(index, id, r.key)).status, 200, `${id}#${r.key}`);
+  }
 });
 
 test('a manifest case that is missing stays in the capture list with its error (never silently skipped)', async () => {
