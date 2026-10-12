@@ -52,6 +52,7 @@ while [ "$i" -lt 50 ]; do
 done
 
 echo "Deck:    $URL"
+echo "Numbers: http://127.0.0.1:${PORT}/demo/slides/dashboard.html   (tabs 1-6, arrows cycle)"
 echo "Serving: $ROOT (127.0.0.1 only). Ctrl-C to stop."
 echo "Keys:    arrows/space/Home/End · N notes + clock · F fullscreen · S sources · P presenter window"
 
