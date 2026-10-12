@@ -46,6 +46,9 @@ const CASES = {
   'fake redaction markers': '[REDACTED:',
   '%-encoded flood (decoded-view pass)': '%41',
   '%-encoded SSN flood (decoded-view matches)': 'SSN%3A%20123-45-' + '6789%20',
+  // PR #12 round 2: forged %5B markers are scanned (B1); a credential value split around many markers (S2)
+  'forged %5BREDACTED: wrappers around %-encoded SSNs': '%5BREDACTED:%20123-45-' + '6789%5D',
+  'credential value glued across many markers': 'password=x' + 'AKIA' + 'Q'.repeat(16),
 };
 
 for (const [name, unit] of Object.entries(CASES)) {

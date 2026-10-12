@@ -18,6 +18,8 @@
 //   - MAX_REDACT_TOTAL_CHARS per redactDeep call (one alert). Once spent, every further string is
 //     withheld whole. Fail-safe: withholding can lose context, never leak.
 //   - MAX_CANARIES / MAX_CANARY_VALUE_CHARS: the canary list is caller data, so it is capped (throws).
+//   - MIN_CANARY_VALUE_CHARS: a 1-2 char canary would match almost everywhere; every match becomes a
+//     ~40-300 char marker (amplification, AlertOverflowError, and >100K findings). Rejected (throws).
 
 import { createHash } from 'node:crypto';
 
@@ -25,6 +27,7 @@ export const MAX_REDACT_SCAN_CHARS = 256 * 1024; // per string field (alert disp
 export const MAX_REDACT_TOTAL_CHARS = 1024 * 1024; // per alert, across all string fields
 export const MAX_CANARIES = 64;
 export const MAX_CANARY_VALUE_CHARS = 1024;
+export const MIN_CANARY_VALUE_CHARS = 8; // shorter canary values are rejected (review S1 on PR #12)
 export const MIN_CANARY_VARIANT_CHARS = 8; // shorter encoded/normalized forms are too unspecific to match
 export const HASH_HEX_CHARS = 16;
 
@@ -207,6 +210,7 @@ export function prepareCanaries(canaries = []) {
   for (const c of canaries) {
     if (!c || typeof c.value !== 'string' || c.value.length === 0) throw new TypeError('canary must be {id, value} with a non-empty string value');
     if (c.value.length > MAX_CANARY_VALUE_CHARS) throw new RangeError(`canary value length ${c.value.length} > MAX_CANARY_VALUE_CHARS=${MAX_CANARY_VALUE_CHARS}`);
+    if (c.value.length < MIN_CANARY_VALUE_CHARS) throw new RangeError(`canary value length ${c.value.length} < MIN_CANARY_VALUE_CHARS=${MIN_CANARY_VALUE_CHARS}`);
     const buf = Buffer.from(c.value, 'utf8');
     const forms = [
       ['raw', c.value],
@@ -229,16 +233,30 @@ export function prepareCanaries(canaries = []) {
   return prepared;
 }
 
-/** Replace each [start,end) span (sorted by start, may overlap) with replacement(span). O(n + spans). */
+/** Merge [start,end) spans (any order, may overlap) into sorted, disjoint groups covering their
+ *  UNION: {start, end, members}. Overlapping spans are never dropped — a dropped partial overlap would
+ *  leave the tail of the second secret behind (review B2 on PR #12). O(k log k). */
+function mergeSpans(spans) {
+  spans.sort((a, b) => a.start - b.start || b.end - a.end);
+  const groups = [];
+  for (const s of spans) {
+    const last = groups[groups.length - 1];
+    if (last && s.start < last.end) {
+      if (s.end > last.end) last.end = s.end;
+      last.members.push(s);
+    } else groups.push({ start: s.start, end: s.end, members: [s] });
+  }
+  return groups;
+}
+
+/** Replace each merged group of `spans` with replacement(group). O(n + k log k). */
 function applySpans(str, spans, replacement) {
   if (spans.length === 0) return str;
-  spans.sort((a, b) => a.start - b.start || b.end - a.end);
   let out = '';
   let cursor = 0;
-  for (const s of spans) {
-    if (s.start < cursor) continue; // overlaps an earlier, already-redacted span (merged into it)
-    out += str.slice(cursor, s.start) + replacement(s);
-    cursor = s.end;
+  for (const g of mergeSpans(spans)) {
+    out += str.slice(cursor, g.start) + replacement(g);
+    cursor = g.end;
   }
   return out + str.slice(cursor);
 }
@@ -246,7 +264,7 @@ function applySpans(str, spans, replacement) {
 function redactCanaries(str, prepared, findings) {
   if (prepared.length === 0) return str;
   const spans = [];
-  // 1) exact raw substring (any length, any characters — the original contract)
+  // 1) exact raw substring (any characters; length >= MIN_CANARY_VALUE_CHARS is enforced above)
   for (const c of prepared) {
     let i = str.indexOf(c.value);
     while (i !== -1) {
@@ -278,31 +296,52 @@ function redactCanaries(str, prepared, findings) {
       }
     }
   }
-  return applySpans(str, spans, (s) => {
-    findings.push({ kind: 'canary', canaryId: s.c.id, sha256: s.c.sha, encoding: s.form });
-    return marker('canary', s.c.value, s.c.id);
+  // A merged group may cover several canaries (partial overlap): one marker per distinct canary, so
+  // nothing of either value survives and every canary id is still reported.
+  return applySpans(str, spans, (g) => {
+    const seen = new Set();
+    let rep = '';
+    for (const s of g.members) {
+      if (seen.has(s.c)) continue;
+      seen.add(s.c);
+      findings.push({ kind: 'canary', canaryId: s.c.id, sha256: s.c.sha, encoding: s.form });
+      rep += marker('canary', s.c.value, s.c.id);
+    }
+    return rep;
   });
 }
 
-/** Spans (in `view` coordinates) where pattern `p` matches outside our own markers. */
-function patternSpans(view, p) {
-  const ranges = markerRanges(view);
+/**
+ * Spans (in `view` coordinates) where pattern `p` matches, minus our own markers.
+ * `ranges` = sorted [start,end) marker ranges IN VIEW COORDINATES, computed by the caller from the
+ * real string (never by re-parsing a decoded view, where "%5BREDACTED:" would pose as a marker —
+ * review B1 on PR #12).
+ * A match that runs INTO a marker (e.g. "password=hunter2xyz" glued to an earlier AWS-key marker) is
+ * not dropped: the secret span is split around the markers and every outside piece is redacted
+ * (review S2). A match wholly inside a marker yields nothing.
+ */
+function patternSpans(view, p, ranges) {
   let r = 0;
-  const overlapsMarker = (start, end) => {
-    while (r < ranges.length && ranges[r][1] <= start) r++; // matches arrive in increasing offset order
-    return r < ranges.length && ranges[r][0] < end;
-  };
   const spans = [];
+  const push = (start, end, secret) => {
+    while (r < ranges.length && ranges[r][1] <= start) r++; // matches arrive in increasing offset order
+    let s = start;
+    for (let k = r; k < ranges.length && ranges[k][0] < end; k++) {
+      if (ranges[k][0] > s) spans.push({ start: s, end: ranges[k][0], secret: view.slice(s, ranges[k][0]) });
+      s = Math.max(s, ranges[k][1]);
+    }
+    if (s === start) spans.push({ start, end, secret });
+    else if (s < end) spans.push({ start: s, end, secret: view.slice(s, end) });
+  };
   const consider = (index, whole, groups) => {
-    if (overlapsMarker(index, index + whole.length)) return;
     if (p.check && !p.check(whole)) return;
     if (p.group) {
       const secret = groups[p.group - 1];
       if (typeof secret !== 'string') return;
       const keep = groups.slice(0, p.group - 1).join('');
-      spans.push({ start: index + keep.length, end: index + keep.length + secret.length, secret });
+      push(index + keep.length, index + keep.length + secret.length, secret);
     } else {
-      spans.push({ start: index, end: index + whole.length, secret: whole });
+      push(index, index + whole.length, whole);
     }
   };
   if (p.find) {
@@ -323,6 +362,7 @@ function percentDecodedView(s) {
   const parts = [];
   const from = new Int32Array(s.length);
   const to = new Int32Array(s.length);
+  const toView = new Int32Array(s.length + 1); // original offset -> view offset (char boundaries)
   let n = 0;
   let runStart = 0;
   let decodedAny = false;
@@ -330,28 +370,32 @@ function percentDecodedView(s) {
     if (s.charCodeAt(i) === 37 && i + 2 < s.length && isHex(s.charCodeAt(i + 1)) && isHex(s.charCodeAt(i + 2))) {
       if (runStart < i) parts.push(s.slice(runStart, i));
       parts.push(String.fromCharCode(parseInt(s.substr(i + 1, 2), 16)));
+      toView[i] = toView[i + 1] = toView[i + 2] = n;
       from[n] = i;
       to[n++] = i + 3;
       i += 3;
       runStart = i;
       decodedAny = true;
     } else {
+      toView[i] = n;
       from[n] = i;
       to[n++] = i + 1;
       i += 1;
     }
   }
   if (runStart < s.length) parts.push(s.slice(runStart));
-  return decodedAny ? { view: parts.join(''), from, to } : null;
+  toView[s.length] = n;
+  return decodedAny ? { view: parts.join(''), from, to, toView } : null;
 }
 
 function redactPatterns(str, findings) {
   let out = str;
   // Pass 1: the string as-is.
   for (const p of SECRET_PATTERNS) {
-    out = applySpans(out, patternSpans(out, p), (s) => {
-      findings.push({ kind: p.kind, sha256: sha256Short(s.secret) });
-      return marker(p.kind, s.secret);
+    out = applySpans(out, patternSpans(out, p, markerRanges(out)), (g) => {
+      const secret = g.members.length === 1 ? g.members[0].secret : out.slice(g.start, g.end);
+      findings.push({ kind: p.kind, sha256: sha256Short(secret) });
+      return marker(p.kind, secret);
     });
   }
   // Pass 2: %-decoded view (URL query strings are the main exfil vector). Encoding hides secrets from
@@ -361,25 +405,20 @@ function redactPatterns(str, findings) {
   // dropped — a dropped partial overlap could leave a secret's tail behind).
   const dv = percentDecodedView(out);
   if (dv) {
+    // Marker ranges come from the REAL string `out` (every literal "[REDACTED:" there is ours — input
+    // look-alikes were neutralized), mapped into view coordinates. A forged "%5BREDACTED:…%5D" decodes
+    // to a look-alike in the view but is NOT in this list, so its contents are scanned (review B1).
+    const ranges = markerRanges(out).map(([a, b]) => [dv.toView[a], dv.toView[b]]);
     const all = [];
     for (const p of SECRET_PATTERNS) {
-      for (const sp of patternSpans(dv.view, p)) all.push({ start: dv.from[sp.start], end: dv.to[sp.end - 1], kind: p.kind, secret: sp.secret });
+      for (const sp of patternSpans(dv.view, p, ranges)) all.push({ start: dv.from[sp.start], end: dv.to[sp.end - 1], kind: p.kind, secret: sp.secret });
     }
-    all.sort((x, y) => x.start - y.start);
-    const merged = [];
-    for (const sp of all) {
-      const last = merged[merged.length - 1];
-      if (last && sp.start < last.end) {
-        if (sp.end > last.end) {
-          last.end = sp.end;
-          last.secret = null; // union of several matches: hash the original span instead
-        }
-      } else merged.push({ ...sp });
-    }
-    out = applySpans(out, merged, (sp) => {
-      const secret = sp.secret ?? out.slice(sp.start, sp.end);
-      findings.push({ kind: sp.kind, sha256: sha256Short(secret), encoding: 'url' });
-      return marker(sp.kind, secret);
+    const src = out;
+    out = applySpans(out, all, (g) => {
+      // union of several matches: hash the original span instead
+      const secret = g.members.length === 1 ? g.members[0].secret : src.slice(g.start, g.end);
+      findings.push({ kind: g.members[0].kind, sha256: sha256Short(secret), encoding: 'url' });
+      return marker(g.members[0].kind, secret);
     });
   }
   return out;
@@ -434,7 +473,8 @@ export function redactDeep(value, opts = {}) {
       }
       if (v.length <= MAX_REDACT_SCAN_CHARS) budget -= v.length;
       const r = redactWithPrepared(v, prepared);
-      findings.push(...r.findings);
+      // loop, not push(...spread): a spread of >~120K findings overflows the call stack (review S1)
+      for (const f of r.findings) findings.push(f);
       if (r.withheld) withheldCount++;
       return r.value;
     }

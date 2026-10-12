@@ -40,7 +40,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { getMapping, severityName, MAPPING_VERSION, ATLAS_DATA_VERSION } from './mapping.js';
-import { redactDeep, sha256Short, MAX_CANARIES, MAX_CANARY_VALUE_CHARS } from './redact.js';
+import { redactDeep, sha256Short, MAX_CANARIES, MAX_CANARY_VALUE_CHARS, MIN_CANARY_VALUE_CHARS } from './redact.js';
 
 export const SCHEMA_VERSION = 'sentinel.alert/1.0.0';
 
@@ -228,11 +228,12 @@ function optString(x, field, issues) {
 }
 
 /** Canary id is embedded in `[REDACTED:canary:<id>:…]` markers, so it is capped + must not contain
- *  whitespace or brackets (which would break marker parsing). Value length is capped (scan cost). */
+ *  whitespace or brackets (which would break marker parsing). Value length is capped (scan cost) and has a floor (a 1-2 char canary matches everywhere). */
 function checkCanary(c, field, issues) {
   if (c.id.length > BOUNDS.MAX_LABEL_CHARS) issues.push(`${field}.id length ${c.id.length} > MAX_LABEL_CHARS=${BOUNDS.MAX_LABEL_CHARS}`);
   else if (/[\s\[\]]/.test(c.id)) issues.push(`${field}.id must not contain whitespace or [ ]`);
   if (c.value.length > MAX_CANARY_VALUE_CHARS) issues.push(`${field}.value length ${c.value.length} > MAX_CANARY_VALUE_CHARS=${MAX_CANARY_VALUE_CHARS}`);
+  else if (c.value.length < MIN_CANARY_VALUE_CHARS) issues.push(`${field}.value length ${c.value.length} < MIN_CANARY_VALUE_CHARS=${MIN_CANARY_VALUE_CHARS}`);
 }
 
 /** Bound an array: keep head + tail around an explicit marker element. Never drops silently. */
