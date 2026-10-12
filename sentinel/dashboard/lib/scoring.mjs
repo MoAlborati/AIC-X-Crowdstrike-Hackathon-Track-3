@@ -1,21 +1,51 @@
-// Headline pair: detection rate beside benign-run FP rate (T7). T7 has no output yet, so this reads
-// sentinel/scoring/results.json (override: $SENTINEL_SCORING_FILE) when present. Accepted fields
-// (first match wins):
-//   detectionRate | recall,  falsePositiveRate | fpRate,  precision,
-//   latencyMs: {median, p95} | medianLatencyMs/p95LatencyMs,  counts: {attack, benign, fp, fn}
-//   headline: {status}   (T7: "ok" | "awaiting t3: <why>" | "error: <why>"; any non-ok status is shown
-//                         in place of the rates, never a bare "—")
-// When the file is absent the dashboard shows the slot as "awaiting T7". It does NOT invent rates.
-// It reports only the real corpus composition (attack vs benign captures found).
+// Headline metrics from T7's sentinel/scoring/results.json (override: $SENTINEL_SCORING_FILE).
+//
+// Two results.json shapes are read:
+//   * lens shape (T7 PR #28, t7-real-metrics): `detectionRecall` (any finding fired, alert-only included)
+//     and `preventionRecall` (only pre-forward `prevents:true`), plus `headlineLenses.{detection,prevention}`.
+//     The DVAA baseline for each lens is read from detectors['dvaa-baseline'].modes[<headline.mode>]:
+//     `anyFinding` for detection and `prevention` for prevention. These are the same rows T7's own
+//     RESULTS.md report uses.
+//   * legacy shape (T7 before PR #28): only `detectionRate | recall`. It is shown as the detection tile
+//     with `lensSource: 'legacy'`, and the UI puts a visible note on it. Prevention recall is null, never
+//     estimated. Its baseline is the DVAA row for the same metric as the legacy recall (headline.metric,
+//     "blocking" by default).
+// Other fields: falsePositiveRate | fpRate, precision, latencyMs {median, p95} | medianLatencyMs/p95LatencyMs,
+// counts, headline.status ("ok" | "awaiting t3: …" | "error: …"; any non-ok status replaces the numbers).
+// When the file is absent the slot reads "awaiting T7". Nothing here invents a rate: a field that is not
+// a finite number in results.json stays null.
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { REPO_ROOT } from './capture-loader.mjs';
+import { BOUNDS } from './bounds.mjs';
 
-const first = (...v) => v.find(x => Number.isFinite(x)) ?? null;
+const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+const first = (...v) => v.map(num).find(x => x !== null) ?? null;
+
+/** DVAA baseline numbers for the lenses actually shown. All null when the baseline is absent. */
+export function baselineFrom(raw, lensSource) {
+  const base = raw?.detectors?.['dvaa-baseline'];
+  const mode = typeof raw?.headline?.mode === 'string' ? raw.headline.mode : 'enforce';
+  const metric = typeof raw?.headline?.metric === 'string' ? raw.headline.metric : 'blocking';
+  const m = base?.available === false ? null : base?.modes?.[mode];
+  if (!m) return { available: false, detection: null, prevention: null, fpRate: null, latencyMedianMs: null, mode, metric };
+  const legacy = lensSource === 'legacy';
+  return {
+    available: true,
+    mode,
+    metric,
+    detection: legacy ? first(m[metric]?.recall) : first(m.anyFinding?.recall),
+    prevention: legacy ? null : first(m.prevention?.recall),
+    // Same metric as the candidate's headline falsePositiveRate.
+    fpRate: first(m[metric]?.falsePositiveRate),
+    latencyMedianMs: first(base?.latencyMs?.median),
+  };
+}
 
 export async function loadScoring(index, env = process.env) {
   const file = env.SENTINEL_SCORING_FILE || path.join(REPO_ROOT, 'sentinel', 'scoring', 'results.json');
+  const rel = path.relative(REPO_ROOT, file);
   const corpus = { attack: 0, benign: 0, placeholder: 0 };
   for (const e of index.values()) {
     if (e.source === 'placeholder') corpus.placeholder++;
@@ -24,22 +54,40 @@ export async function loadScoring(index, env = process.env) {
   }
   let raw;
   try {
+    const { size } = await stat(file);
+    if (size > BOUNDS.MAX_SCORING_BYTES) {
+      const msg = `MAX_SCORING_BYTES exceeded: size=${size} cap=${BOUNDS.MAX_SCORING_BYTES} — refusing to truncate`;
+      console.error(`[sentinel-dashboard] ALERT ${rel}: ${msg}`);
+      return { available: false, error: `${rel}: ${msg}`, corpus };
+    }
     raw = JSON.parse(await readFile(file, 'utf8'));
   } catch (err) {
-    if (err.code === 'ENOENT') return { available: false, file: path.relative(REPO_ROOT, file), corpus };
+    if (err.code === 'ENOENT') return { available: false, file: rel, corpus };
     // Present but unreadable: say so loudly, don't fall back to "awaiting".
-    return { available: false, error: `${path.relative(REPO_ROOT, file)}: ${err.message}`, corpus };
+    return { available: false, error: `${rel}: ${err.message}`, corpus };
   }
+  const legacyRecall = first(raw.detectionRate, raw.recall);
+  const lensDetection = first(raw.detectionRecall, raw.headlineLenses?.detection?.recall);
+  const lensPrevention = first(raw.preventionRecall, raw.headlineLenses?.prevention?.recall);
+  const hasLens = lensDetection !== null || lensPrevention !== null;
+  const lensSource = hasLens ? 'lenses' : 'legacy';
   return {
     available: true,
-    file: path.relative(REPO_ROOT, file),
+    file: rel,
     corpus,
-    detectionRate: first(raw.detectionRate, raw.recall),
+    lensSource,
+    detectionRecall: hasLens ? lensDetection : legacyRecall,
+    preventionRecall: hasLens ? lensPrevention : null,
+    // Legacy `recall` (rule-intent blocking) is kept so the note can name it; it is not a tile in lens mode.
+    legacyRecall,
+    // Back-compat alias for older callers.
+    detectionRate: legacyRecall,
     fpRate: first(raw.falsePositiveRate, raw.fpRate),
     precision: first(raw.precision),
     latencyMs: { median: first(raw.latencyMs?.median, raw.medianLatencyMs), p95: first(raw.latencyMs?.p95, raw.p95LatencyMs) },
     counts: raw.counts ?? null,
-    // T7 `headline.status` ("ok" | "awaiting t3: …" | "error: …"). The UI shows it instead of a bare "—".
+    baseline: baselineFrom(raw, lensSource),
+    // T7 `headline.status` ("ok" | "awaiting t3: …" | "error: …"). The UI shows it instead of numbers.
     status: typeof raw.headline?.status === 'string' ? raw.headline.status : null,
   };
 }

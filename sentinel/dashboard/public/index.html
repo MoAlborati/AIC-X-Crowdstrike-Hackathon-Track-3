@@ -34,19 +34,36 @@
 
   <div id="banners"></div>
 
-  <section class="headline" aria-label="Headline metrics">
-    <div class="tile pair">
-      <div>
-        <div class="tile-label">Detection rate</div>
-        <div class="tile-value" id="det-rate">—</div>
-      </div>
-      <div class="pair-sep" aria-hidden="true"></div>
-      <div>
-        <div class="tile-label">Benign false-positive rate</div>
-        <div class="tile-value" id="fp-rate">—</div>
-      </div>
-      <div class="tile-note" id="scoring-note"></div>
+  <section class="headline-main" aria-label="Headline metrics (T7 scoring)">
+    <div class="big-tile" id="tile-det">
+      <div class="big-label">Detection recall</div>
+      <div class="big-sub">any finding fired</div>
+      <div class="big-value" id="det-rate">—</div>
+      <div class="big-base" id="det-base"></div>
     </div>
+    <div class="big-tile" id="tile-prev">
+      <div class="big-label">Prevention recall</div>
+      <div class="big-sub">blocked before forwarding</div>
+      <div class="big-value" id="prev-rate">—</div>
+      <div class="big-base" id="prev-base"></div>
+    </div>
+    <div class="big-tile" id="tile-fp">
+      <div class="big-label">Benign FP rate</div>
+      <div class="big-sub">lower is better</div>
+      <div class="big-value" id="fp-rate">—</div>
+      <div class="big-base" id="fp-base"></div>
+    </div>
+    <div class="big-tile" id="tile-lat">
+      <div class="big-label">Median latency</div>
+      <div class="big-sub">per case, full corpus</div>
+      <div class="big-value" id="t7-lat">—</div>
+      <div class="big-base" id="lat-base"></div>
+    </div>
+    <div class="lens-note" id="lens-note" role="status" hidden></div>
+    <div class="tile-note headline-note" id="scoring-note"></div>
+  </section>
+
+  <section class="headline" aria-label="Replay metrics">
     <div class="tile">
       <div class="tile-label">Detection latency (this run)</div>
       <div class="tile-value" id="latency">—</div>
