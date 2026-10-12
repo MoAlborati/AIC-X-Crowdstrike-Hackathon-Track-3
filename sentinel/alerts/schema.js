@@ -111,6 +111,7 @@ export const ALERT_SCHEMA = Object.freeze({
     MitreAttack: '[{TechniqueId, Technique, TacticId, Tactic}] — may be empty',
     OwaspLlm: '[{Id: LLM0x, Name}]', OwaspAgentic: '[{Id: ASI0x, Name}]',
     Oasb: '{Benchmark: "OASB-1", Category, Slug}',
+    References: '[{Id, Type, Name, Url, Cvss?}] — optional/additive CVE or advisory attribution for the attack class ([] when none applies)',
     Entities: '{Agent:{Name,Id,Port}, Session:{Id}, ToolCall:{Id,Name,ArgsPreview}|null, Sink:{Type,Destination}|null}',
     TaintPath: '[{Step, Kind: source|propagate|sink|truncated, Label, ToolCallId, Trust, OmittedHops?}]',
     PatternDispositionDescription: 'Blocked|Allowed|ReportOnly',
@@ -380,6 +381,9 @@ export function buildAlert(verdict, opts = {}) {
     OwaspLlm: mapping.OwaspLlm,
     OwaspAgentic: mapping.OwaspAgentic,
     Oasb: mapping.Oasb,
+    // Optional, additive public reference attribution (CVE/advisory) for the detected attack class.
+    // Resolved from the single mapping table; [] when the class has no applicable public CVE.
+    References: mapping.References,
     Entities: {
       Agent: { Name: e.agent.name, Id: e.agent.id ?? null, Port: e.agent.port ?? null },
       Session: { Id: e.session.id },
@@ -511,5 +515,13 @@ export function validateAlert(alert) {
   if (!isNonEmptyString(alert.Entities?.Agent?.Name)) problems.push('Entities.Agent.Name missing');
   if (!isNonEmptyString(alert.Entities?.Session?.Id)) problems.push('Entities.Session.Id missing');
   if (!isNonEmptyString(alert.CaseCard?.Narrative)) problems.push('CaseCard.Narrative missing');
+  // References is optional/additive: absent is fine (older alerts); present must be a well-formed array.
+  if ('References' in alert) {
+    if (!Array.isArray(alert.References)) problems.push('References must be an array when present');
+    else alert.References.forEach((r, i) => {
+      if (!r || typeof r !== 'object') problems.push(`References[${i}] must be an object`);
+      else if (!isNonEmptyString(r.Id) || !isNonEmptyString(r.Type) || !isNonEmptyString(r.Name)) problems.push(`References[${i}] needs Id, Type, Name`);
+    });
+  }
   return problems;
 }

@@ -3106,6 +3106,7 @@
         "Category": "Data Exfiltration",
         "Slug": "data-exfiltration"
       },
+      "References": [],
       "Entities": {
         "Agent": {
           "Name": "ChainBot",

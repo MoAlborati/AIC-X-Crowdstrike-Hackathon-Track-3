@@ -44,6 +44,7 @@
           "Category": "Prompt Injection",
           "Slug": "prompt-injection"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7005",
@@ -80,7 +81,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.427,
+        "DetectionLatencyMs": 0.511,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -94,19 +95,19 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.058
+              "LatencyMs": 0.084
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.none",
               "Fired": false,
-              "LatencyMs": 0
+              "LatencyMs": 0.05
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.261
+              "LatencyMs": 0.3
             },
             {
               "Layer": "egress",
@@ -118,7 +119,7 @@
               "Layer": "mandate",
               "Rule": "mandate.none",
               "Fired": false,
-              "LatencyMs": 0.088
+              "LatencyMs": 0.057
             },
             {
               "Layer": "velocity",
@@ -236,6 +237,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7005",
@@ -276,7 +278,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 1.032,
+        "DetectionLatencyMs": 0.978,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -290,31 +292,31 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.086
+              "LatencyMs": 0.036
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.224
+              "LatencyMs": 0.249
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.348
+              "LatencyMs": 0.315
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.067
+              "LatencyMs": 0.066
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.221
+              "LatencyMs": 0.219
             },
             {
               "Layer": "velocity",
@@ -435,6 +437,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7005",
@@ -475,7 +478,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 1.032,
+        "DetectionLatencyMs": 0.978,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -489,31 +492,31 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.086
+              "LatencyMs": 0.036
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.224
+              "LatencyMs": 0.249
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.348
+              "LatencyMs": 0.315
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.067
+              "LatencyMs": 0.066
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.221
+              "LatencyMs": 0.219
             },
             {
               "Layer": "velocity",
@@ -634,6 +637,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7005",
@@ -674,7 +678,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 1.032,
+        "DetectionLatencyMs": 0.978,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -688,31 +692,31 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.086
+              "LatencyMs": 0.036
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.224
+              "LatencyMs": 0.249
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.348
+              "LatencyMs": 0.315
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.067
+              "LatencyMs": 0.066
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.221
+              "LatencyMs": 0.219
             },
             {
               "Layer": "velocity",
@@ -812,6 +816,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7005",
@@ -852,7 +857,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 1.032,
+        "DetectionLatencyMs": 0.978,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -866,31 +871,31 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.086
+              "LatencyMs": 0.036
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.224
+              "LatencyMs": 0.249
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.348
+              "LatencyMs": 0.315
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.067
+              "LatencyMs": 0.066
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.221
+              "LatencyMs": 0.219
             },
             {
               "Layer": "velocity",
@@ -990,6 +995,7 @@
           "Category": "Capability Abuse",
           "Slug": "capability-abuse"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7005",
@@ -1030,7 +1036,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 1.032,
+        "DetectionLatencyMs": 0.978,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -1044,31 +1050,31 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.086
+              "LatencyMs": 0.036
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.224
+              "LatencyMs": 0.249
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.348
+              "LatencyMs": 0.315
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.067
+              "LatencyMs": 0.066
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.221
+              "LatencyMs": 0.219
             },
             {
               "Layer": "velocity",
@@ -1151,6 +1157,7 @@
           "Category": "Prompt Injection",
           "Slug": "prompt-injection"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7014",
@@ -1187,7 +1194,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.224,
+        "DetectionLatencyMs": 0.489,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -1201,19 +1208,19 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.05
+              "LatencyMs": 0.048
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.none",
               "Fired": false,
-              "LatencyMs": 0
+              "LatencyMs": 0.097
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.111
+              "LatencyMs": 0.286
             },
             {
               "Layer": "egress",
@@ -1225,7 +1232,7 @@
               "Layer": "mandate",
               "Rule": "mandate.none",
               "Fired": false,
-              "LatencyMs": 0.046
+              "LatencyMs": 0.041
             },
             {
               "Layer": "velocity",
@@ -1343,6 +1350,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7014",
@@ -1383,7 +1391,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.365,
+        "DetectionLatencyMs": 0.498,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -1397,37 +1405,37 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.017
+              "LatencyMs": 0.062
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.051
+              "LatencyMs": 0.074
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.108
+              "LatencyMs": 0.159
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.023
+              "LatencyMs": 0.032
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.064
+              "LatencyMs": 0.061
             },
             {
               "Layer": "velocity",
               "Rule": "velocity.none",
               "Fired": false,
-              "LatencyMs": 0.005
+              "LatencyMs": 0.004
             }
           ]
         },
@@ -1542,6 +1550,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7014",
@@ -1582,7 +1591,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.365,
+        "DetectionLatencyMs": 0.498,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -1596,37 +1605,37 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.017
+              "LatencyMs": 0.062
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.051
+              "LatencyMs": 0.074
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.108
+              "LatencyMs": 0.159
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.023
+              "LatencyMs": 0.032
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.064
+              "LatencyMs": 0.061
             },
             {
               "Layer": "velocity",
               "Rule": "velocity.none",
               "Fired": false,
-              "LatencyMs": 0.005
+              "LatencyMs": 0.004
             }
           ]
         },
@@ -1741,6 +1750,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7014",
@@ -1781,7 +1791,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.365,
+        "DetectionLatencyMs": 0.498,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -1795,37 +1805,37 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.017
+              "LatencyMs": 0.062
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.051
+              "LatencyMs": 0.074
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.108
+              "LatencyMs": 0.159
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.023
+              "LatencyMs": 0.032
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.064
+              "LatencyMs": 0.061
             },
             {
               "Layer": "velocity",
               "Rule": "velocity.none",
               "Fired": false,
-              "LatencyMs": 0.005
+              "LatencyMs": 0.004
             }
           ]
         },
@@ -1919,6 +1929,7 @@
           "Category": "Data Exfiltration",
           "Slug": "data-exfiltration"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7014",
@@ -1959,7 +1970,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.365,
+        "DetectionLatencyMs": 0.498,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -1973,37 +1984,37 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.017
+              "LatencyMs": 0.062
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.051
+              "LatencyMs": 0.074
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.108
+              "LatencyMs": 0.159
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.023
+              "LatencyMs": 0.032
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.064
+              "LatencyMs": 0.061
             },
             {
               "Layer": "velocity",
               "Rule": "velocity.none",
               "Fired": false,
-              "LatencyMs": 0.005
+              "LatencyMs": 0.004
             }
           ]
         },
@@ -2097,6 +2108,7 @@
           "Category": "Capability Abuse",
           "Slug": "capability-abuse"
         },
+        "References": [],
         "Entities": {
           "Agent": {
             "Name": "dvaa :7014",
@@ -2137,7 +2149,7 @@
           "Blocked": false,
           "ReportOnly": true
         },
-        "DetectionLatencyMs": 0.365,
+        "DetectionLatencyMs": 0.498,
         "Timestamp": "2026-10-12T18:11:58.071Z",
         "State": "new",
         "CaseCard": {
@@ -2151,37 +2163,37 @@
               "Layer": "bounds",
               "Rule": "bounds.none",
               "Fired": false,
-              "LatencyMs": 0.017
+              "LatencyMs": 0.062
             },
             {
               "Layer": "honeytoken",
               "Rule": "honeytoken.exact_match",
               "Fired": true,
-              "LatencyMs": 0.051
+              "LatencyMs": 0.074
             },
             {
               "Layer": "taint",
               "Rule": "inbound.exfil_instruction",
               "Fired": true,
-              "LatencyMs": 0.108
+              "LatencyMs": 0.159
             },
             {
               "Layer": "egress",
               "Rule": "egress.pii_pattern",
               "Fired": true,
-              "LatencyMs": 0.023
+              "LatencyMs": 0.032
             },
             {
               "Layer": "mandate",
               "Rule": "destination.payee_not_confirmed",
               "Fired": true,
-              "LatencyMs": 0.064
+              "LatencyMs": 0.061
             },
             {
               "Layer": "velocity",
               "Rule": "velocity.none",
               "Fired": false,
-              "LatencyMs": 0.005
+              "LatencyMs": 0.004
             }
           ]
         },

@@ -13,6 +13,9 @@
 //   - OWASP Top 10 for Agentic Applications (ASI01–ASI10, Dec 2025): https://genai.owasp.org
 //   - OASB-1 (Open Agent Security Benchmark) categories as listed in the DVAA README
 //     (opena2a-org/damn-vulnerable-ai-agent, "Attack Categories", https://oasb.ai).
+//   - Public reference attribution (optional, additive): a CVE/advisory is attached to a category only
+//     when it genuinely maps to that attack class (see CATALOG.references); no CVE is invented for a
+//     class that has none. CVE-2025-32711 "EchoLeak" (NVD) maps to the markdown/image-exfil class.
 
 export const MAPPING_VERSION = '1.0.0';
 export const ATLAS_DATA_VERSION = '2026.09';
@@ -61,6 +64,25 @@ export const CATALOG = deepFreeze({
     'capability-abuse': 'Capability Abuse',
     'context-overflow': 'Context Overflow',
   },
+  // Public reference attribution (CVE / vendor advisory) for the attack CLASS a detector fires on.
+  // Additive analyst context on top of the taxonomy tags above. A reference is attached to a category
+  // ONLY when it genuinely maps to that class (see CATEGORY_MAP[...].references); a class with no
+  // applicable public CVE carries an empty list and relies on its MITRE ATLAS / ATT&CK / OWASP tags.
+  // Rule: never invent a CVE for a class that has none.
+  //   CVE-2025-32711 "EchoLeak" — the first known zero-click AI exploit: an LLM scope violation /
+  //   indirect prompt injection in Microsoft 365 Copilot that exfiltrates sensitive context by
+  //   rendering a markdown image whose URL encodes the data (bypassing CSP via an allowlisted image
+  //   proxy). CVSS 9.3. Disclosed by Aim Labs, fixed by Microsoft 2025-06. It is the canonical
+  //   real-world instance of the markdown/image-exfiltration class, so it maps ONLY to
+  //   egress_markdown_image — not to the generic prompt-injection or capability-abuse classes.
+  references: {
+    'CVE-2025-32711': {
+      Type: 'CVE',
+      Name: 'EchoLeak — zero-click data exfiltration from Microsoft 365 Copilot via markdown image rendering',
+      Url: 'https://nvd.nist.gov/vuln/detail/CVE-2025-32711',
+      Cvss: 9.3,
+    },
+  },
 });
 
 // Falcon-style severity bands (numeric 0–100 + name).
@@ -94,6 +116,7 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM02', 'LLM01', 'LLM06'],
     owaspAgentic: ['ASI01', 'ASI02'],
     oasb: 'data-exfiltration',
+    references: [],
   },
   taint_flow_exfil: {
     detectName: 'PromptInjectionDrivenExfiltration',
@@ -107,6 +130,7 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM01', 'LLM02', 'LLM06'],
     owaspAgentic: ['ASI01', 'ASI02'],
     oasb: 'data-exfiltration',
+    references: [],
   },
   indirect_prompt_injection: {
     detectName: 'IndirectPromptInjection',
@@ -119,6 +143,7 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM01'],
     owaspAgentic: ['ASI01'],
     oasb: 'prompt-injection',
+    references: [],
   },
   egress_secret_pattern: {
     detectName: 'SensitiveDataEgress',
@@ -131,6 +156,7 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM02'],
     owaspAgentic: ['ASI02'],
     oasb: 'data-exfiltration',
+    references: [],
   },
   egress_markdown_image: {
     detectName: 'MarkdownImageExfiltration',
@@ -143,6 +169,8 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM01', 'LLM02'],
     owaspAgentic: ['ASI01'],
     oasb: 'data-exfiltration',
+    // EchoLeak (CVE-2025-32711): the canonical real-world markdown/image data-exfil vulnerability.
+    references: ['CVE-2025-32711'],
   },
   egress_unallowlisted_domain: {
     detectName: 'NonAllowlistedEgressDestination',
@@ -155,6 +183,7 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM06'],
     owaspAgentic: ['ASI02'],
     oasb: 'capability-abuse',
+    references: [],
   },
   scan_cap_exceeded: {
     detectName: 'ScanCapExceeded',
@@ -168,6 +197,7 @@ export const CATEGORY_MAP = deepFreeze({
     owaspLlm: ['LLM01'],
     owaspAgentic: ['ASI01'],
     oasb: 'context-overflow',
+    references: [],
   },
 });
 
@@ -196,6 +226,11 @@ export function getMapping(category) {
     const t = CATALOG.attackTechniques[id];
     return { TechniqueId: id, Technique: t.name, TacticId: t.tactic, Tactic: CATALOG.attackTactics[t.tactic] };
   });
+  // Optional, additive reference attribution. Empty for classes with no applicable public CVE.
+  const references = (m.references ?? []).map((id) => {
+    const r = CATALOG.references[id];
+    return { Id: id, Type: r.Type, Name: r.Name, Url: r.Url, ...(r.Cvss !== undefined ? { Cvss: r.Cvss } : {}) };
+  });
   return {
     category,
     detectName: m.detectName,
@@ -208,6 +243,7 @@ export function getMapping(category) {
     OwaspLlm: m.owaspLlm.map((id) => ({ Id: id, Name: CATALOG.owaspLlm[id] })),
     OwaspAgentic: m.owaspAgentic.map((id) => ({ Id: id, Name: CATALOG.owaspAgentic[id] })),
     Oasb: { Benchmark: 'OASB-1', Category: CATALOG.oasb[m.oasb], Slug: m.oasb },
+    References: references,
   };
 }
 
@@ -234,6 +270,8 @@ export function validateMappingTable(map = CATEGORY_MAP, catalog = CATALOG) {
     for (const id of m.owaspLlm ?? []) if (!catalog.owaspLlm[id]) problems.push(`${cat}: unknown OWASP LLM ${id}`);
     for (const id of m.owaspAgentic ?? []) if (!catalog.owaspAgentic[id]) problems.push(`${cat}: unknown ASI ${id}`);
     if (!catalog.oasb[m.oasb]) problems.push(`${cat}: unknown OASB-1 category ${m.oasb}`);
+    if (m.references !== undefined && !Array.isArray(m.references)) problems.push(`${cat}: references must be an array`);
+    for (const id of m.references ?? []) if (!catalog.references?.[id]) problems.push(`${cat}: unknown reference ${id}`);
     try {
       severityName(m.severity);
     } catch (e) {
