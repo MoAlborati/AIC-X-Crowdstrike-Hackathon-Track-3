@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { runScoring, runDetector } from '../src/harness.mjs';
 import { noopDetector, t3Detector } from '../src/detectors.mjs';
 import { loadCorpus, textUnits } from '../src/corpus.mjs';
@@ -60,8 +61,9 @@ test('no invented numbers: headline is null while the T3 detector is not present
 });
 
 test('real T3 wiring: default adapter loads sentinel/detectors from the branch and scores the full corpus with zero errors', async () => {
-  // Real seam: the merged T3 module at its default path, no stub. Asserts properties of the verdicts, not
-  // exact rates, so corpus growth (T6b) does not make this brittle.
+  // Real seam: the merged T3 module at its default path, no stub, over the full real corpus (353 cases at
+  // f354411). Asserts verdict invariants, not recall floors: T3 does NOT catch every attack (e.g. 9
+  // exfil-bearing t6-variant agentdojo/injecagent cases are missed) and that is a measured result.
   const t3 = await t3Detector();
   assert.equal(t3.available, true, t3.unavailableReason);
   assert.equal(t3.provenance.module, path.join('sentinel', 'detectors', 'index.js'));
@@ -72,9 +74,55 @@ test('real T3 wiring: default adapter loads sentinel/detectors from the branch a
   assert.deepEqual(d.failClosed, [], 'no corpus case may trip a fail-closed path');
   assert.equal(r.headline.detector, 't3');
   assert.equal(r.headline.status, 'ok');
+
+  // Every case is scored, none dropped; the confusion matrices account for all of them in every lens.
   assert.equal(d.perCase.length, r.corpus.total, 'every corpus case scored, none dropped');
+  const e = d.modes.enforce;
+  for (const lens of ['blocking', 'anyFinding', 'prevention']) {
+    assert.equal(e[lens].tp + e[lens].fn, r.corpus.positives, `${lens}: tp+fn = positives`);
+    assert.equal(e[lens].fp + e[lens].tn, r.corpus.negatives, `${lens}: fp+tn = negatives`);
+  }
+
+  // Zero benign hits in any lens (not just blocking).
   assert.deepEqual(d.falsePositives, [], 'no benign case blocked');
-  assert.equal(d.recallByPositiveKind.exfil.fn, 0, 'every exfil-bearing attack blocked');
+  assert.deepEqual(d.falsePositivesAnyFinding, [], 'no benign case raises any finding');
+  assert.deepEqual(d.falsePositivesPrevention, [], 'no benign case prevented');
+  assert.equal(e.anyFinding.fp, 0);
+
+  // Both evadesBaseline (DVAA 8KB head/tail blind spot) cases are caught AND prevented by T3. Checked from
+  // the corpus labels so it holds even without a DVAA checkout.
+  const evading = loadCorpus(REPO_ROOT).cases.filter((c) => c.evadesBaseline === true).map((c) => c.id).sort();
+  assert.deepEqual(evading, ['EVA-BENCH-MIDDLE-001', 'EVA-POS-MIDDLE-001']);
+  for (const id of evading) {
+    const row = d.perCase.find((x) => x.id === id);
+    assert.equal(row.blockedEnforce, true, `${id} blocked`);
+    assert.equal(row.preventedEnforce, true, `${id} prevented`);
+  }
+
+  // Lens ordering: prevention is a subset of detection, per case and in aggregate.
+  for (const row of d.perCase) if (row.preventedEnforce) assert.equal(row.detectedAny, true, `${row.id} prevented but not detected`);
+  assert.ok(e.prevention.tp <= e.anyFinding.tp, 'detection >= prevention');
+  for (const kind of ['exfil', 'injectionOnly']) {
+    assert.ok(d.recallByPositiveKindPrevention[kind].tp <= d.recallByPositiveKindAnyFinding[kind].tp, `${kind}: detection >= prevention`);
+  }
+
+  // Regression guard: the exact T3 counts must equal the committed, reviewed results.json. No recall
+  // literal lives in this test. To update after an intended detector/corpus change: run
+  // `npm run rescore` in sentinel/scoring, review the RESULTS.md diff, and commit results.json with it.
+  const committed = JSON.parse(readFileSync(path.join(REPO_ROOT, 'sentinel', 'scoring', 'results.json'), 'utf8'));
+  const c = committed.detectors.t3;
+  assert.equal(r.corpus.total, committed.corpus.total, 'corpus changed: rerun `npm run rescore` and commit results.json');
+  const counts = (det) => ({
+    lenses: Object.fromEntries(['blocking', 'anyFinding', 'prevention'].map((l) => {
+      const { tp, fn, fp, tn } = det.modes.enforce[l];
+      return [l, { tp, fn, fp, tn }];
+    })),
+    byKind: det.recallByPositiveKind,
+    byKindAnyFinding: det.recallByPositiveKindAnyFinding,
+    byKindPrevention: det.recallByPositiveKindPrevention,
+    fnIds: det.falseNegatives.map((x) => x.id).sort(),
+  });
+  assert.deepEqual(counts(d), counts(c), 'T3 counts differ from committed results.json: rerun `npm run rescore`, review, commit');
   if (dvaa) {
     const both = runScoring({ detectors: [dvaa, t3], iterations: 1 });
     const bt = both.beatsBaseline.byDetector.t3;
