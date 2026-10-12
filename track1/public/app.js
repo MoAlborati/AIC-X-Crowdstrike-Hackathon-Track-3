@@ -1,4 +1,5 @@
 const queueEl = document.getElementById('queue');
+const meterEl = document.getElementById('meter');
 const queueStateEl = document.getElementById('queue-state');
 const queueCountEl = document.getElementById('queue-count');
 const briefingEl = document.getElementById('briefing');
@@ -43,6 +44,25 @@ function dispositionLabel(briefing) {
   return briefing?.disposition ? DISPOSITION_TEXT[key].label : 'Unknown';
 }
 
+const BANDS = [
+  { key: 'escalate', label: 'Escalate' },
+  { key: 'review', label: 'Needs a human' },
+  { key: 'dismiss', label: 'Dismiss' },
+];
+
+function bandRank(row) {
+  const key = dispositionKey(row.briefing);
+  const index = BANDS.findIndex((band) => band.key === key);
+  return index === -1 ? 1 : index;
+}
+
+function sortRows(list) {
+  return list
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => (bandRank(a.row) - bandRank(b.row)) || (a.index - b.index))
+    .map(({ row }) => row);
+}
+
 function phaseText(phase) {
   return phase ? String(phase).replace(/_/g, ' ') : 'outside window';
 }
@@ -66,40 +86,72 @@ function fmt(value) {
 
 function renderQueue() {
   queueEl.replaceChildren();
+  meterEl.replaceChildren();
   queueCountEl.textContent = rows.length ? `${rows.length} alerts` : '';
   if (!rows.length) {
     queueStateEl.hidden = false;
     queueStateEl.className = 'state';
     queueStateEl.textContent = 'The queue is empty. No alerts to triage right now.';
+    meterEl.setAttribute('aria-label', 'No alerts');
     return;
   }
   queueStateEl.hidden = true;
-  rows.forEach((row, index) => {
-    const key = dispositionKey(row.briefing);
-    const open = index === openIndex;
-    const item = el('li', { class: key, 'data-index': String(index) },
-      el('button', {
-        class: 'alert-toggle',
-        type: 'button',
-        'aria-expanded': open ? 'true' : 'false',
-      },
-        el('span', { class: 'chevron', 'aria-hidden': 'true' }, open ? '▾' : '▸'),
-        el('span', { class: 'row-title' }, row.title || row.briefing?.headline || row.id),
-        el('span', { class: `tag ${key}` }, dispositionLabel(row.briefing)),
-      ),
-    );
-    item.querySelector('button').addEventListener('click', () => select(index));
-    item.querySelector('button').addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowDown') { event.preventDefault(); focusRow(index + 1); }
-      if (event.key === 'ArrowUp') { event.preventDefault(); focusRow(index - 1); }
-    });
-    queueEl.append(item);
-  });
+  const groups = BANDS.map((band) => ({ ...band, items: [] }));
+  rows.forEach((row, index) => groups[bandRank(row)].items.push({ row, index }));
+  meterEl.setAttribute('aria-label', groups.map((group) => `${group.items.length} ${group.label}`).join(', '));
+  const tracks = [];
+  let gridRow = 1;
+  for (const group of groups) {
+    const seg = el('div', {
+      class: `meter-seg ${group.key}`,
+      title: `${group.items.length} ${group.label}`,
+    }, group.items.length ? String(group.items.length) : '');
+    meterEl.append(seg);
+
+    const list = el('ul', { class: 'band-list', role: 'listbox', 'aria-label': `${group.items.length} ${group.label}` });
+    for (const { row, index } of group.items) {
+      const key = dispositionKey(row.briefing);
+      const open = index === openIndex;
+      const item = el('li', { class: key },
+        el('button', {
+          class: 'alert-toggle',
+          type: 'button',
+          'data-index': String(index),
+          'aria-expanded': open ? 'true' : 'false',
+        },
+          el('span', { class: 'chevron', 'aria-hidden': 'true' }, open ? '▾' : '▸'),
+          el('span', { class: 'row-title' }, row.title || row.briefing?.headline || row.id),
+          el('span', { class: `tag ${key}` }, dispositionLabel(row.briefing)),
+        ),
+      );
+      const button = item.querySelector('button');
+      button.addEventListener('click', () => select(index));
+      button.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown') { event.preventDefault(); focusRow(index + 1); }
+        if (event.key === 'ArrowUp') { event.preventDefault(); focusRow(index - 1); }
+      });
+      list.append(item);
+    }
+    const section = el('section', { class: 'band', 'aria-label': group.label }, list);
+    if (group.items.length) {
+      tracks.push(`${group.items.length}fr`);
+      seg.style.gridColumn = '1';
+      seg.style.gridRow = String(gridRow);
+      section.style.gridColumn = '2';
+      section.style.gridRow = String(gridRow);
+      gridRow += 1;
+    } else {
+      seg.hidden = true;
+      section.hidden = true;
+    }
+    queueEl.append(section);
+  }
+  meterEl.parentElement.style.gridTemplateRows = tracks.join(' ') || '1fr';
+  queueEl.querySelector('.alert-toggle[aria-expanded="true"]')?.scrollIntoView({ block: 'nearest' });
 }
 
 function focusRow(index) {
-  const item = queueEl.children[Math.max(0, Math.min(rows.length - 1, index))];
-  const button = item?.querySelector('button');
+  const button = queueEl.querySelector(`[data-index="${Math.max(0, Math.min(rows.length - 1, index))}"]`);
   if (button) button.focus();
 }
 
@@ -210,7 +262,7 @@ async function getJson(path) {
 async function loadQueue() {
   try {
     const data = await getJson('/api/queue');
-    rows = Array.isArray(data) ? data : [];
+    rows = sortRows(Array.isArray(data) ? data : []);
     openIndex = null;
     renderQueue();
     showClosed();
@@ -249,11 +301,29 @@ pasteForm.addEventListener('submit', async (event) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    openIndex = null;
+    const row = {
+      id: data.id,
+      source: data.source,
+      family: data.family,
+      scenario: data.scenario,
+      phase: data.phase,
+      timestamp: data.timestamp,
+      title: data.title || data.briefing?.headline || 'Pasted email',
+      host: data.host,
+      src: data.src,
+      dst: data.dst,
+      ruleId: data.ruleId,
+      vendorLevel: data.vendorLevel,
+      groups: data.groups,
+      relatedCount: data.relatedCount ?? 0,
+      briefing: data.briefing,
+      model: data.model ?? null,
+    };
+    rows = sortRows([row, ...rows]);
+    openIndex = rows.findIndex((item) => item.id === row.id);
     renderQueue();
-    renderBriefing(data.briefing, { model: data.model ?? null, title: 'Pasted email' });
-    pasteState.textContent = 'Briefing shown above.';
-    briefingEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    renderBriefing(row.briefing, row);
+    pasteState.textContent = 'Added to the queue.';
   } catch (err) {
     pasteState.textContent = `Could not brief this email: ${err.message}`;
   } finally {

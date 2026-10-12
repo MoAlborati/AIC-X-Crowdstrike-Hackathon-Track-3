@@ -136,6 +136,8 @@ async function serveStatic(res, pathname) {
 
 export function createApp({ queue = buildQueue(), complete = null } = {}) {
   const model = typeof complete === 'function';
+  const pasted = [];
+  let pasteSeq = 0;
 
   return async function handler(req, res) {
     try {
@@ -148,7 +150,7 @@ export function createApp({ queue = buildQueue(), complete = null } = {}) {
 
       if (req.method === 'GET' && pathname === '/api/queue') {
         const rows = [];
-        for (const item of queue) {
+        for (const item of [...queue, ...pasted]) {
           const { card, relatedCount } = unwrap(item);
           const view = toView({ ...card, relatedCount });
           const chain = await runChain(card, { relatedCount, complete });
@@ -179,10 +181,16 @@ export function createApp({ queue = buildQueue(), complete = null } = {}) {
         if (!payload || typeof payload.emailText !== 'string' || !payload.emailText.trim()) {
           return sendJson(res, 400, { error: 'emailText is required' });
         }
+        pasteSeq += 1;
         const parsed = parseEmailText(payload.emailText);
-        const card = normalizeAlert({ id: 'pasted-email', record: { ...parsed, source: 'email' } }, new Map());
+        const card = normalizeAlert({ id: `paste-${pasteSeq}`, record: { ...parsed, source: 'email' } }, new Map());
+        pasted.push({ card, relatedCount: 0 });
         const chain = await runChain(card, { relatedCount: 0, complete });
-        return sendJson(res, 200, { briefing: chain.briefing, model: chain.model });
+        return sendJson(res, 200, {
+          ...toView({ ...card, relatedCount: 0 }),
+          briefing: chain.briefing,
+          model: chain.model,
+        });
       }
 
       if (req.method === 'GET' && !pathname.startsWith('/api/')) {

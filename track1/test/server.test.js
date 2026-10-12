@@ -141,6 +141,10 @@ test('integration: queue, eval, static files, triage', { skip }, async () => {
     const out = JSON.parse(triage.text);
     assert.equal(out.briefing.activity, 'malware_lure');
     assert.equal(out.model.status, 'skipped');
+    assert.match(out.id, /^paste-\d+$/);
+    const withPaste = JSON.parse((await call(port, 'GET', '/api/queue')).text);
+    assert.equal(withPaste.length, rows.length + 1);
+    assert.equal(withPaste.some((row) => row.id === out.id), true);
 
     const big = JSON.stringify({ emailText: 'a'.repeat(70 * 1024) });
     assert.equal((await call(port, 'POST', '/api/triage', big)).status, 413);
