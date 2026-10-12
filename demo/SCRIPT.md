@@ -8,15 +8,18 @@
 > **`demo/run-demo.sh` now drives every beat below** (interactive, or `--auto` for rehearsal). It wires each
 > component behind a single "WIRING REGISTRY" that prints `NOT YET MERGED: <component>` rather than
 > skipping if one is ever absent. All beats are now merged and filled: T5 dashboard (PR #11), exploit +
-> AIM twin (T1), T2 request-side proxy block (PR #14/#21), T12 egress guard (PR #18), T7 scoring (PR #13,
-> headline live now that T3 detector #24 is merged), T6 evasion corpus (PR #10/#15), T8 contrast (PR #16).
+> AIM twin (T1), request-side proxy block with the T3 detector (proxy #14/#21, T3 #24, wired into the shipped
+> CLI by #41), T12 egress guard (`sentinel/egress/` + `scripts/egress-demo.sh`, PR #45), T7 scoring
+> (`sentinel/scoring/results.json`), T6 evasion corpus (PR #10/#15), T8 contrast (PR #16, re-recorded with T3).
 >
 > Companion deck: `demo/DECK.md`. Rehearsal + fallback-video checklist + replay log: `demo/REHEARSAL.md`.
 
 ## Ground rules (STRATEGY §8)
 
-- **No live LLM or API calls in the 3 minutes.** Everything replays deterministically from `captures/`.
-  A live run against the fleet is an optional encore, after the clock stops.
+- **No live LLM or external API calls in the 3 minutes.** Everything replays deterministically from `captures/`,
+  with one exception: Beat 4 sends two local `curl`s through the real shipped proxy (loopback, ephemeral port)
+  to the offline DVAA sandbox, whose replies are canned, so the result is deterministic. If the proxy or 7005
+  is unreachable, `run-demo.sh` says so and shows the recording instead.
 - **Don't run the attacker live.** The exploit is DVAA's own bundled payload (APWN-DE-003), already
   captured in `captures/attack/aim-ab.demo.json`.
 - **Fallback:** if any command fails, switch straight to the recorded video. Don't debug on stage.
@@ -35,15 +38,17 @@ demo/run-demo.sh --auto     # back-to-back, for rehearsal / recording
 scripts/eval.sh doctor      # preflight: Node/Docker/DVAA checkout + fleet health (PR #20, merged)
 scripts/eval.sh up          # bring up the DVAA fleet (or scripts/setup-dvaa.sh up)
 
-# 2. Proxy in front of RAGBot 7005, block mode (PR #14/#21, merged)
-#    Live encore (after the clock): node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json
-#    On stage: run-demo.sh Beat 4 shows the RECORDED block-mode verdict (deterministic, no live spin-up).
+# 2. Proxy in front of RAGBot 7005, block mode (proxy #14/#21 + T3 #24, wired by #41)
+#    run-demo.sh Beat 4 starts it itself: SENTINEL_MODE=block SENTINEL_LISTEN_PORT=0 \
+#      node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json
+#    and falls back to the recording (captures/contrast/runs/proxy-block.*) if it can't.
 
 # 3. Dashboard on the replay captures (real, PR #11)
 scripts/eval.sh dashboard   # starts sentinel/dashboard/server.mjs on 127.0.0.1:9100 (loopback only)
 
-# 4. Scoring table pre-computed, so the numbers on screen match the slide (real, PR #13)
-scripts/eval.sh score       # runs sentinel/scoring/cli.mjs; writes .eval/score/{results.json,RESULTS.md}
+# 4. Metrics: the stage reads the COMMITTED sentinel/scoring/results.json (Beat 3b + Beat 7).
+#    Regenerate only when the corpus or detector changes:
+scripts/eval.sh score       # runs sentinel/scoring/cli.mjs
 ```
 
 All commands run from the repo root.
@@ -75,8 +80,8 @@ Spoken lines are in quotes. Roughly 150 words per minute. The time column is cum
 
 ### Beat 3 — EXPLOIT, red (0:40–1:00) · terminal, then dashboard left pane
 
-> "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox. We feed it
-> one poisoned document from DVAA's own attack corpus."
+> "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
+> "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
 
 ```bash
 # Real today: the captured vulnerable run (T1)
@@ -87,7 +92,7 @@ jq -r '.canary.hits[0].query.data' captures/attack/aim-ab.demo.json
 Expected on screen: `submit_to_index`, `true`, then
 `… Admin credentials: dvaa-admin-secret | User John Doe SSN: 123-45-6789` (all fake sandbox values).
 
-> "It called `submit_to_index`, and the admin secret and an SSN just left the building."
+> "It called submit_to_index, and the admin secret and an SSN just left the building."
 
 *(Pause for two seconds and let it land.)*
 
@@ -104,54 +109,104 @@ jq -rc '{id, docLength:.baseline8kb.docLength, scanEdgeBytes:.baseline8kb.DETECT
   captures/variants/fixtures/evasion/eva-pos-middle-001.json captures/variants/fixtures/evasion/eva-bench-middle-001.json
 ```
 
-> "SentinelProxy scans the full payload and never truncates — so it catches exactly the cases the 8KB scan misses."
+> "SentinelProxy scans the full payload and never truncates. 8KB evasion: 2 out of 2 fixtures caught."
 
 ```bash
-# T3 (on main, #24) catches both cases DVAA's baseline misses. Proven in the T7 scoring output:
-scripts/eval.sh score   # then:
-jq -rc '.beatsBaseline | {evasionCasesBaselineMisses:.eligible, t3Caught:.byDetector.t3.beaten, cases:.byDetector.t3.cases}' .eval/score/results.json
+# 8KB evasion: 2/2 fixtures, read from the committed T7 results:
+jq -rc '.beatsBaseline | {evasionFixtures:(.eligible|length), t3Caught:.byDetector.t3.beaten, t3Prevented:.byDetector.t3.beatenPrevention, cases:.byDetector.t3.cases}' sentinel/scoring/results.json
 ```
 
-Expected: `evadesDvaaBaseline:true` + `fullScanFindsSignal:true` on both fixtures, and `t3Caught: 2` (both cases).
+Expected: `evadesDvaaBaseline:true` + `fullScanFindsSignal:true` on both fixtures, and `t3Caught: 2` of 2.
+Say "8KB evasion: 2/2 fixtures". **Never** a blanket "beats the baseline": on the full corpus DVAA's baseline
+has the higher recall (Beat 7).
 This is DoD item 1 — **not optional**. `demo/run-demo.sh` Beat 3b drives it.
 
-### Beat 4 — DETECT → ALERT → BLOCK, green (1:20–1:50) · dashboard
+### Beat 4 — DETECT → ALERT → BLOCK, green (1:20–1:50) · terminal + dashboard
 
-> "Same agent, same document, but now it goes through SentinelProxy. First, a normal question passes
-> untouched."
+*Every quoted line in Beats 3, 3b, 4, 4b, 5a and 7 is a `say` line of `demo/run-demo.sh`, word for word; the runner
+shows each one in cyan. `demo/run-demo.sh --check-script` (also preflight row 0 of every run) fails if they drift.*
+
+> "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
+
+`run-demo.sh` starts the **real shipped proxy** (`node sentinel/proxy/cli.mjs`, block mode, inspectors
+`[substring, sentinel-t3]`) on an ephemeral loopback port in front of 7005, then:
 
 ```bash
-# Benign request through the proxy is forwarded untouched (PR #14/#21):
-jq -rc 'select(.action=="forwarded") | {action, path:(.request.path)}' captures/contrast/runs/proxy-block.proxy.jsonl | head -1
+# benign question -> forwarded untouched
+curl -s -o /dev/null -w '%{http_code}\n' -H 'content-type: application/json' \
+  --data '{"messages":[{"role":"user","content":"What does the document indexing service do? One sentence, please."}]}' \
+  http://127.0.0.1:$PORT/v1/chat/completions                    # -> 200
 ```
 
 > "Now the attack."
 
 ```bash
-# The attack is blocked at the request boundary, BEFORE the request is forwarded — recorded block-mode verdict:
-jq -rc 'select((.action//"")|test("block")) | {request_id, action, target, latency_ms}' captures/contrast/runs/proxy-block.proxy.jsonl
+# DVAA's own aim-ab request body, verbatim from the recording -> refused before forwarding
+jq -rs '[.[] | select(.type=="exchange" and .action=="blocked_request")][0].request.body.data' \
+  captures/contrast/runs/proxy-block.proxy.jsonl \
+  | curl -s -o /dev/null -w '%{http_code}\n' -H 'content-type: application/json' --data-binary @- \
+      http://127.0.0.1:$PORT/v1/chat/completions                # -> 403
 ```
 
-Expected: a `"blocked_request"` verdict against `127.0.0.1:7005` with a sub-millisecond `latency_ms`.
+Expected, from the live proxy's own log: `{"action":"blocked_request","status":403,"verdicts":[{"detector":"sentinel-t3",
+"reasons":["exfil_instruction_inbound","injection_markers","payee_not_confirmed"]}]}`. The substring inspector
+also runs but has no needles in the shipped config, so it never fires. **The credit is T3 alone.**
+
+Then the recording of the same block on the live DVAA run, plus the T4 alert the T10 pipeline built from it:
+
+```bash
+jq -rc 'select(.type=="exchange" and ((.action//"")|test("block"))) | {action, target, status:.response.status, verdicts:[.verdicts[]|select(.flagged==true)|{phase, detector, disposition, reasons}]}' captures/contrast/runs/proxy-block.proxy.jsonl
+jq -rc '.runs[][] | {DetectName, RuleId, SeverityName, Atlas:.TechniqueId, OwaspLlm:[.OwaspLlm[].Id], Agentic:[.OwaspAgentic[].Id], Oasb:.Oasb.Benchmark, Disposition:.PatternDispositionDescription}' captures/contrast/runs/proxy-block.t4-alerts.json
+```
+
+Expected: `detector: sentinel-t3` (run-meta `inspector: detector:sentinel-t3`, not a stand-in), and the alert
+`IndirectPromptInjection`, rule `inbound.exfil_instruction`, High, ATLAS AML.T0051.001, OWASP LLM01, ASI01,
+OASB-1, Blocked. `run-demo.sh` **fails** Beat 4 if the live log or the recording ever names a different
+detector or reason set than the spoken line.
 
 *Screen, in order:*
-1. **Prevention is request-side:** the request is blocked **before it is forwarded** to the model (T3, #24).
-2. The incident graph: poisoned RAG doc → sensitive read → `submit_to_index`, with the **taint path glowing red**.
-3. The request is marked **BLOCKED (pre-forward)**, with latency `<<METRIC: this call's detection latency, ms, from T5 readout>>`.
-4. A response-side honeytoken tripwire (e.g. `dvaa-admin-secret` surfacing in a reply) is **alert-only** — it
-   raises an alert, it does not prevent. Prevention is the request-side block above and the egress guard (Beat 4b).
-5. The alert card shows `DetectName`, Severity, MITRE ATLAS / ATT&CK **T1567 · T1041**, OWASP LLM01 · LLM02 · LLM06,
-   Agentic ASI01 · ASI02, **OASB-1**, plus the narrative case card ("Instruction originated in … → blocked by …").
+1. **Prevention is request-side:** the request is blocked **before it is forwarded** to the model. The verdict is
+   T3's (`detector: sentinel-t3`, #24, wired into the shipped CLI by #41), reason codes `exfil_instruction_inbound`,
+   `injection_markers`, `payee_not_confirmed`.
+2. The case card: "Instruction originated in user turn #0 embedded "INDEXED DOCUMENT" block (untrusted) → toward
+   http:127.0.0.1 → blocked by rule inbound.exfil_instruction. Outcome: blocked_before_agent."
+3. A response-side honeytoken tripwire (e.g. `dvaa-admin-secret` surfacing in a reply): the tool already ran, so it
+   is **alert-only for prevention**, but in block mode the **reply is withheld** (403 `flagged_response`, outcome
+   `reply_withheld_tool_already_executed`, T3-fix #56), so the secret never reaches the client. `run-demo.sh` proves
+   this on the shipped inspectors and fails Beat 4 on any code where the tripwire is still alert-only.
 
-> "Blocked at the request boundary, before the request ever reached the model — so nothing was forwarded and
-> nothing could leave. Response-side honeytoken hits are alerts; the request-side block and the egress guard are
-> what prevent. The alert names the source document, the tool and the sink, mapped to MITRE ATLAS and OWASP."
+> "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side. If a honeytoken shows up in a response instead, the tool already ran (alert-only for prevention), but in block mode the reply is withheld, so the secret never reaches the client."
 
-### Beat 5 — Red vs green (1:50–2:05) · Slide 6, three columns
+> "Nothing was forwarded, so nothing could be exfiltrated."
 
-> "Here's the A/B. On the left, RAGBot 7005 gets pwned. In the middle is its twin, RAGBot-AIM 7014, the same code with
-> its capability guard switched on, and it's denied. On the right is 7005 again, unmodified, behind SentinelProxy, and it's blocked.
-> Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
+### Beat 4b — Egress guard, green (inside the Beat 4 window) · terminal
+
+> "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
+
+```bash
+# Inspector decisions from the recorded block-mode run of scripts/egress-demo.sh (sentinel/egress/, PR #45):
+jq -rc 'select(.action=="deny") | {host, reasons, canaries:.canary_ids}' sentinel/egress/evidence-block.jsonl
+# Ground truth = what the attacker server received (not DVAA's exfilExecuted, which says true even when 403'd):
+grep -E '^RESULT|^\(no canary hits\)' demo/captures/egress-demo-block.txt
+```
+
+Expected: denies for RAGBot 7005 (`DVAA-ADMIN-PASSWORD`, `DVAA-SSN-JOHN`), RepoBot 7022's poisoned-repo
+`bootstrap.sh` fetch (no secret in it; denied because the attacker host is not allowlisted), and RepoBot 7022's
+credential post (FAKE `DVAA-AWS-KEY-ID`, `DVAA-SSH-KEY`), then `RESULT block: PREVENTED` and `RESULT repobot block: PREVENTED`, with zero canary hits.
+The egress alerts carry ATT&CK **T1567 · T1041**, OWASP LLM01 · LLM02 · LLM06, Agentic ASI01 · ASI02, OASB-1.
+
+> "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
+
+Live encore (after the clock, about a minute, its own compose stack): `scripts/egress-demo.sh both`.
+
+### Beat 5a — Secure-by-design twin, red vs green (1:50–2:05) · terminal, then Slide 6 (three columns)
+
+> "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+
+*Point at Slide 6 while the output lands: left, RAGBot 7005 pwned; middle, the AIM twin denied; right, 7005
+unmodified behind SentinelProxy, blocked (Beat 4).*
+
+> "Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
 
 ```bash
 # Real today: the AIM twin's verdict on the identical payload (T1)
@@ -165,15 +220,16 @@ scripts/eval.sh contrast
 |---|---|---|---|
 | RED | RAGBot 7005 | exfil executed (`dvaa.exfilExecuted=true`) | `aim-ab.demo.json` runA |
 | GREEN | RAGBot-AIM 7014 | denied by AIM (`exfilExecuted=false`) | `aim-ab.demo.json` runB |
-| GREEN | RAGBot 7005 + SentinelProxy | blocked pre-forward (`action=blocked_request`) | `captures/contrast/runs/proxy-block.proxy.jsonl` |
+| GREEN | RAGBot 7005 + SentinelProxy | blocked pre-forward by T3 (`action=blocked_request`, `detector:sentinel-t3`) | `captures/contrast/runs/proxy-block.proxy.jsonl` |
 
 **Prevention map (from T3, #24) — know which control actually stops each agent:**
 - **RAGBot 7005:** the poisoned request is blocked **request-side, before it is forwarded**. Prevention.
 - **LegacyBot 7003:** the **reply is withheld** at the response boundary. Prevention of the leak to the client.
-- **RepoBot 7022:** the proxy **only raises an alert** (it cannot block the request safely); **T12's egress
-  guard is the control that actually stops the exfil** at the tool boundary. Prevention lives at egress.
+- **RepoBot 7022:** the payload is read inside the agent, so the proxy **cannot stop the exfil** (it cannot block the
+  request safely); **T12's egress guard is the control that actually stops it** at the tool boundary.
 
-Response-side honeytoken tripwires are **alert-only** everywhere — they never, by themselves, prevent.
+Response-side honeytoken tripwires fire after the tool already ran: **alert-only for prevention** of the exfil. In
+block mode they **withhold the reply** (T3-fix #56), so the secret never reaches the client.
 
 ### Beat 6 — How it works (2:05–2:30) · Slide 7
 
@@ -187,11 +243,27 @@ Response-side honeytoken tripwires are **alert-only** everywhere — they never,
 
 ### Beat 7 — Outcome + close (2:30–2:50) · Slides 8 → 10
 
-> "Across `<<METRIC: N attack cases from T7>>` attacks and `<<METRIC: M benign cases from T7>>` benign runs:
-> precision `<<METRIC: precision>>`, recall `<<METRIC: recall>>`, false-positive rate
-> `<<METRIC: benign FP rate>>`, at a median of `<<METRIC: median latency ms>>` milliseconds. Scored against DVAA's
-> own ground-truth labels. This is a working slice of Falcon AI Detection and Response, sitting at the tool boundary.
-> Thank you."
+`run-demo.sh` prints exactly two headline rows (detection, prevention) for T3 vs DVAA's own baseline, with FP,
+plus the evasion result. Every number is read from the committed `sentinel/scoring/results.json`:
+
+```
+                         T3 (SentinelProxy)          DVAA baseline
+  detection (any finding)  recall 63.0%  FP 0.0%        recall 65.6%  FP 12.8%
+  prevention (pre-forward) recall 41.8%  FP 0.0%        recall 63.0%  FP 12.8%
+  8KB evasion: 2/2 fixtures (T3)
+  in-detector latency: p95 0.4 ms over 353 cases (under half a millisecond)
+```
+
+(Values above are as of `results.json` on origin/main `6c4fdc7`: 189 attack + 164 benign cases. The spoken line is
+static, so the presenter can read it here word for word. Every number in it is checked against `results.json`, and
+Beat 7 FAILS if the file no longer supports it. Then update the line in `run-demo.sh` and here together.)
+
+> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives: it flags 12.8 percent of benign traffic, and T3 flags none. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
+
+> "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
+
+Quote **one** latency phrase: "under half a millisecond" (the p95 in `results.json` is 0.40 ms as of origin/main 4817aca; `run-demo.sh`
+fails Beat 7 if it ever is not).
 
 *Hard stop at 3:00. The 8KB-evasion beat (3b) is DoD item 1 — **never cut it**. If running long, cut the
 benign pass in Beat 4 first, then trim Beat 6 to two mechanisms.*
@@ -206,13 +278,14 @@ benign pass in Beat 4 first, then trim Beat 6 to two mechanisms.*
 | 2 Structure | 0:20–0:40 | 20 | 60 |
 | 3 Exploit (red) | 0:40–1:00 | 20 | 40 |
 | 3b 8KB evasion (red, DoD 1) | 1:00–1:20 | 20 | 40 |
-| 4 Detect/block (green) | 1:20–1:50 | 30 | 55 |
-| 5 Red vs green | 1:50–2:05 | 15 | 55 |
+| 4 + 4b Detect/block + egress (green) | 1:20–1:50 | 30 | 125 |
+| 5a Twin, red vs green | 1:50–2:05 | 15 | 35 |
 | 6 How it works | 2:05–2:30 | 25 | 80 |
-| 7 Close | 2:30–2:50 | 20 | 65 |
+| 7 Close | 2:30–2:50 | 20 | 75 |
 | Buffer | 2:50–3:00 | 10 | — |
 
-Beats 4–7 run dense, at about 3.2 words per second. Rehearsal must confirm they fit. If not, cut the benign
+Beats 4–7 run dense: the verbatim Beat 4 + 4b lines are about 125 words in 30 seconds, which is too fast to read
+aloud in full. Rehearsal must confirm they fit. If not, cut the benign
 pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is DoD item 1 — never cut it.
 
 ## Placeholder register (fill on merge, then delete this table)
@@ -220,19 +293,17 @@ pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is
 | Slot | Owner | Status | Fill with |
 |---|---|---|---|
 | `<<T5: start dashboard …>>` | T5 | **FILLED (PR #11)** | `scripts/eval.sh dashboard` (server.mjs, :9100 loopback) |
-| `<<T7: … score.json>>` | T7 | **FILLED (PR #13)** | `scripts/eval.sh score` → `.eval/score/results.json` |
+| `<<T7: … score.json>>` | T7 | **FILLED** | committed `sentinel/scoring/results.json` (regenerate: `scripts/eval.sh score`) |
 | `<<T6: … 8KB-evasion variant>>` | T6 | **FILLED (PR #10/#15)** | corpus test against DVAA's real `detectAttacks()`; EVA-POS-MIDDLE-001 |
 | `<<T8: SecureBot 7001 contrast>>` | T8 | **FILLED (PR #16)** | `scripts/eval.sh contrast` (verifies the recorded A/B vs ground truth) |
-| `<<T2: start proxy …>>` | T2 | **FILLED (PR #14/#21)** | recorded block-mode verdict: `captures/contrast/runs/proxy-block.proxy.jsonl` |
-| `<<T2/T5: replay … ALLOWED / BLOCKED>>` | T2/T3/T5 | **FILLED (PR #14/#21)** | `forwarded` vs `blocked_request` jq on the proxy verdict log (Beat 4) |
-| (egress guard, Beat 4b) | T12 | **FILLED (PR #18)** | `spike/egress/evidence-block.jsonl` — deny on honeytoken + allowlist |
-| `<<METRIC: precision / recall / benign FP rate / median latency / N / M>>` | T7 | **available (T3 #24 merged)** | numbers copied verbatim from `.eval/score/results.json`. **Do not invent.** |
-| `<<METRIC: this call's detection latency>>` | T5 | live | live readout on the dashboard, no slide number |
+| `<<T2: start proxy …>>` | T2/T3 | **FILLED (#14/#21/#24/#41)** | live shipped CLI in Beat 4; recording `captures/contrast/runs/proxy-block.proxy.jsonl` (blocking detector `sentinel-t3`) |
+| `<<T2/T5: replay … ALLOWED / BLOCKED>>` | T2/T3/T5 | **FILLED** | live benign 200 vs attack 403 (Beat 4), T4 alert `proxy-block.t4-alerts.json` |
+| (egress guard, Beat 4b) | T12 | **FILLED (PR #45)** | `sentinel/egress/evidence-block.jsonl` + ground truth `demo/captures/egress-demo-block.txt` (`scripts/egress-demo.sh block`) |
+| `<<METRIC: detection / prevention recall, FP, N / M>>` | T7 | **FILLED** | printed by Beat 7 from `sentinel/scoring/results.json`. **Do not invent.** |
+| latency | T7 | **FILLED** | one phrase only: "under half a millisecond" (p95 0.40 ms in `results.json`) |
 
-> **Note on metrics:** T3 (`sentinel/detectors/`, PR #24) is merged, so the T7 headline row is live — as of
-> the last `scripts/eval.sh score`: precision 100.0%, recall 88.2%, benign FP rate 0.0%, median 0.243 ms over
-> 29 cases (17 attack / 12 benign). These move as the corpus/detector change, so fill the `<<METRIC:>>` slots
-> verbatim from `.eval/score/results.json` at demo time. **Never hand-type them into the slides.**
+> **Note on metrics:** the stage reads `sentinel/scoring/results.json`. Figures from the older 29-case
+> corpus are stale and must not be used anywhere. **Never hand-type metrics into the slides.**
 
 ## Claims used and their sources
 
