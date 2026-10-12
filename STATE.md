@@ -10,17 +10,15 @@
   stock bash 3.2, Node 26 (moving to node@24). Mac QA issues #58–#61 are routed.
 - **Submissions (#63):** (1) **Track 3** = Path A (`track3a/` OpsBot, #62) + Path B (SentinelProxy), ONE submission.
   (2) **Track 1** = Shruti's SOC analyst tool (`track1/`, #64/#68), a separate submission; advisor agents review it every ~30 min.
-- **Merged to `main` (38):** #1 #2 #3 #4 #5 #7 #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #18 #19 #20 #21 #22 #24 #25 #26 #28
-  #29 #30 #31 #33 #35 #41 #42 #43 #44 #45 #47 #48 #65. Closed unmerged: #6 (superseded by #7), #27 (folded into T3-fix).
+- **Merged to `main` (40):** #1 #2 #3 #4 #5 #7 #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #18 #19 #20 #21 #22 #24 #25 #26 #28
+  #29 #30 #31 #33 #35 #41 #42 #43 #44 #45 #47 #48 #65 #67 #69. Closed unmerged: #6 (superseded by #7), #27 (folded into T3-fix).
 - **Open PRs:**
   | PR | Ticket | Owner | State |
   |---|---|---|---|
   | #56 → #62 | T3-fix → Track 3A OpsBot | MoAlborati (loop) → c-awad | **Serial merge queue 3**: #56 first, then #62 |
   | #49 → #46 | T5-lens headline → T3-recall | MoAlborati (loop) | **Serial merge queue 2**: #49 first, then #46 |
-  | #67 | T2 consolidate on `.mjs` proxy (closes #37) | MoAlborati (loop) | Has a merge steward |
   | #57 | T12-live egress test isolation | MoAlborati (loop) | Self-merge on green |
   | #50 | T9-fix beat 4 detector credit | MoAlborati (loop) | Self-merge on green |
-  | #69 | SUBMISSION.md + metrics filler | MoAlborati (loop) | Docs; tag `v1.0-submission` planned for 15:45 |
   | #23 | Orchestrator loop | shrutidoshi94 | To be closed at 13:00 (one orchestrator, #36) |
 - **Open needs-human issues:** #40 (pre-public, @MoAlborati by 14:00), #52 (how/where to submit, @MoAlborati by 13:30),
   #54 (Track 3A status, @c-awad by 14:45), #55 (presentation format, @c-awad by 14:30), #66 (demo video, by 15:00),
@@ -31,7 +29,7 @@
 ### Schedule (operator, #39; replaces the 11:58 schedule)
 | Window (PDT) | Work |
 |---|---|
-| now–15:00 | Drain merge queues (#56 → #62, #49 → #46), #67, #57, #50, #69 |
+| now–15:00 | Drain merge queues (#56 → #62, #49 → #46), #57, #50 |
 | **15:00** | **Final rescore** (RESULTS.md); pitch framing decided from it (#38) |
 | **15:15** | **CODE FREEZE** |
 | 15:15–15:45 | Delivery gate on `main` AND on Catherine's Mac; tag `v1.0-submission` at 15:45 |
@@ -50,7 +48,7 @@ Current `sentinel/scoring/RESULTS.md` on `main`:
 - T3 catches both cases that evade DVAA's 8 KB scan baseline (2/2, prevented 2/2). DVAA's recall comes with 12.8% benign FP.
 
 ## Backlog pointer
-See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #67, #57, #50, #69; final rescore 15:00; freeze 15:15; delivery gate; submit.
+See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #57, #50; final rescore 15:00; freeze 15:15; delivery gate; submit.
 
 ## Decision Log (append-only, newest first)
 - 2026-10-12 ~13:00 PDT — **Schedule change (#39):** submit by 16:00, present at 18:00. Code freeze moves 14:30 → **15:15**.
@@ -61,13 +59,13 @@ See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #67, #57, #5
 - 2026-10-12 — **Tracks (#63):** multiple tracks are allowed, each as its own submission. Track 3 Path A (`track3a/`,
   OpsBot, PR #62) and Path B (SentinelProxy) ship as ONE submission. Track 1 (Shruti, `track1/`, #64/#68) is a separate
   submission, with advisor agents reviewing it every ~30 min.
-- 2026-10-12 — **Canonical proxy (#37):** the `.mjs` proxy (#14) is canonical. Consolidation PR #67 retires the #21 `.js` proxy.
+- 2026-10-12 — **Canonical proxy (#37):** the `.mjs` proxy (#14) is canonical. Consolidation PR #67 (merged, via its steward) retires the #21 `.js` proxy.
 - 2026-10-12 — **One orchestrator (#36):** Shruti's loop is off; this loop is the only orchestrator. #23 is closed at 13:00.
 - 2026-10-12 — **Pre-public (#40):** no secrets in tree or history. Local paths scrubbed (#44); other-project references
   scrubbed (#48). Shruti's commit email is OK. Benchmark exfil targets kept verbatim (default). Recommendation: squash-publish
   after the hackathon.
 - 2026-10-12 — **Pitch framing (#38):** deferred until the 15:00 final rescore. Pure-injection policy = **alert** (not block).
-- 2026-10-12 — **Submission (#52):** no submission format found in the DVAA repo. SUBMISSION.md drafted (#69); tag
+- 2026-10-12 — **Submission (#52):** no submission format found in the DVAA repo. SUBMISSION.md drafted and merged (#69); tag
   `v1.0-submission` planned for 15:45.
 - 2026-10-12 — **Process (endgame):** chat intake via issues (#32/#33); 1-minute orchestrator tick ("orchestrator should
   always be active and working"); serial merge queues (queue 2: #49 → #46, queue 3: #56 → #62); every `needs-human` issue
@@ -134,12 +132,12 @@ See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #67, #57, #5
 | DoD item | Ticket | PR(s) | Status | Notes |
 |---|---|---|---|---|
 | 1 Exploit+evasion | T1, T6, T6b | #5, #10, #15, #29, #31 | MERGED | Corpus 353 cases (189/164); #31 fixed exfil labels |
-| 2 Detect+block | T2, T3, T3-fix, T3-recall | #14, #21, #24, #41, #42; #56, #46, #67 open | MERGED core; queues 3 (#56) and 2 (#46) | Request-side block only; `.mjs` canonical (#37 → #67) |
+| 2 Detect+block | T2, T3, T3-fix, T3-recall | #14, #21, #24, #41, #42, #67; #56, #46 open | MERGED core; queues 3 (#56) and 2 (#46) | Request-side block only; `.mjs` canonical (#37 → #67) |
 | 3 AIDR alert | T4, T10 | #3, #12, #26 | MERGED | #26 wires verdicts → alerts → dashboard |
 | 4 Incident graph | T5, T5-lens | #11; #49 open | MERGED; #49 heads queue 2 | Headline Detected/Prevented vs DVAA (mock judge review) |
 | 5 Scoring | T7, T7-real | #13, #28 | MERGED | 63.0% / 41.8% / 0 FP now; 83.1% / 50.3% / 0 FP with #46 |
 | 6 Secure contrast | T8, spike, T12, T12-live | #16, #18, #22, #45; #57 open | MERGED; #57 self-merge | Response-side alert-only; egress enforced at tool boundary |
 | 7 Demo script | T9, T9-fix | #9, #35, #65; #50 open | MERGED; #50 self-merge | Presenter Catherine (Mac); video #66 |
 | Track 3A | OpsBot | #62 open | Queue 3 after #56 | Same submission as Path B (#63) |
-| Submission | docs | #69 open | Drafted | Tag `v1.0-submission` at 15:45 |
+| Submission | docs | #69 | MERGED | Tag `v1.0-submission` at 15:45 |
 | Infra | T11, chat | #20, #33 | MERGED | One-command eval + merge gate; Mac QA #58–#61 |
