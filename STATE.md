@@ -6,14 +6,13 @@
 ## Status (overwrite each iteration)
 - **As of:** 2026-10-12 12:35 PDT. **Deadline: 16:00 PDT.** **FEATURE FREEZE: 14:30 PDT.**
 - **Phase:** ENDGAME: landing T3 follow-ups, T10, T9 runner and real metrics before the freeze.
-- **Merged to `main` (28):** #1 #2 #3 #4 #5 #7 #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #18 #19 #20 #21 #22 #24 #25
-  #29 #30 #33 #41 #42. #6 was closed (superseded by #7).
+- **Merged to `main` (29):** #1 #2 #3 #4 #5 #7 #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #18 #19 #20 #21 #22 #24 #25
+  #29 #30 #31 #33 #41 #42. #6 was closed (superseded by #7).
 - **Open PRs:**
   | PR | Ticket | Owner | State |
   |---|---|---|---|
   | #41 → #35 → #26 | T2-fix / T9 runner / T10 alerts | MoAlborati (loop) | **Serial merge queue**, in this order (#41 merged; #35 next, then #26) |
   | #28 | T7-real metrics | MoAlborati (loop) | Being fixed |
-  | #31 | fix-23 findings | MoAlborati (loop) | Merge steward assigned |
   | #27 | T3 follow-up (384 KiB cap, decode dedupe) | MoAlborati (loop) | Superseded by T3-fix; to be closed |
   | #23 | Orchestrator loop | shrutidoshi94 | Teammate's PR; the loop does not touch it |
 - **Open needs-human issues:** #36 (run ONE orchestrator, urgent), #37 (canonical T2 proxy: #14 .mjs vs #21 .js),
@@ -40,7 +39,7 @@
 - In-flight levers: **T3-fix** (supersedes #27), **T3-recall**, **T12 egress** (tool-boundary prevention).
 
 ## Backlog pointer
-See BACKLOG.md. Next: drain the merge queue (#35, #26), land #28/#31, then T3-fix, T3-recall, T12, then the delivery gate.
+See BACKLOG.md. Next: drain the merge queue (#35, #26), land #28, then T3-fix, T3-recall, T12, then the delivery gate.
 
 ## Decision Log (append-only, newest first)
 - 2026-10-12 — **CPU-time timing test fix (in flight; first step #42 merged):** the T3 timing test now bounds CPU time (40 ms), not
@@ -104,7 +103,7 @@ See BACKLOG.md. Next: drain the merge queue (#35, #26), land #28/#31, then T3-fi
 ## Metrics (update as tickets land)
 | DoD item | Ticket | PR(s) | Status | Notes |
 |---|---|---|---|---|
-| 1 Exploit+evasion | T1, T6, T6b | #5, #10, #15, #29, #31 | MERGED (#31 open) | Corpus 353 cases; #31 fixes exfil labels |
+| 1 Exploit+evasion | T1, T6, T6b | #5, #10, #15, #29, #31 | MERGED | Corpus 353 cases; #31 fixed exfil labels |
 | 2 Detect+block | T2, T3 | #14, #21, #24, #41, #42; #27 superseded | MERGED core; T3-fix/T3-recall in flight | Request-side block only; canonical proxy = #37 |
 | 3 AIDR alert | T4, T10 | #3, #12; #26 | MERGED; T10 in queue | #26 wires verdicts → alerts → dashboard |
 | 4 Incident graph | T5 | #11 | MERGED | Real metrics pending delivery gate |
