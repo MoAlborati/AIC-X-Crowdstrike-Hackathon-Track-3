@@ -1,4 +1,4 @@
-# SentinelProxy — deck outline (10 slides + 1 backup)
+# SentinelProxy — deck outline (10-slide Track 3 core + Slides 11–12 for the expanded ≈6:00 run + 1 backup)
 
 > **Status: T9 — wired to merged components.** Pairs with `demo/SCRIPT.md` (driven by `demo/run-demo.sh`), and
 > the slide numbers here match the beat sheet. Main now has T2–T8 + T11; the 8KB-evasion beat is required (DoD 1).
@@ -243,6 +243,65 @@ On screen at about 2:30 for the close. Spoken: "Flagging isn't stopping: in our 
 still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize.
 Thank you." (Watch-only = the recorded observe-mode egress run, `sentinel/egress/evidence-observe.jsonl`; never
 "nothing gets out".) If a judge bypasses the proxy live: "Thank you. That's layer 1. Layer 2 doesn't read words." Hard stop at 3:00. Hold it during Q&A, with Slide 9 and backup B1 ready.
+
+---
+
+## Slide 11 — It generalizes: OpsBot, our own agent (Path A) · expanded run
+
+**On slide**
+- Badge: **Track 3 Path A** (we built the agent too, not just a detector for DVAA).
+- **OpsBot:** a support agent with Willison's lethal trifecta — `read_ticket` (untrusted input), `lookup_customer` (private data), `http_post` (egress).
+- Layering table (committed `track3a/RESULTS.md`):
+
+| Stack | Indirect | Direct | Attacks stopped | Benign FP |
+|---|---|---|---|---|
+| Undefended OpsBot | LEAKED | LEAKED | 0/2 | 0/2 |
+| + SentinelProxy chat proxy | LEAKED | blocked (request) | 1/2 | 0/2 |
+| + chat proxy + egress guard | blocked (egress) | blocked (request) | 2/2 | 0/2 |
+| Hardened OpsBot (mandate only) | blocked (mandate) | LEAKED | 1/2 | 0/2 |
+| Hardened + chat proxy + egress guard | blocked | blocked | 2/2 | 0/2 |
+
+- Takeaway: **no single layer is enough; together they stop both attacks with 0 benign false positives.** Same unmodified `sentinel/**`, a different agent.
+
+**Speaker notes**
+Beat 8 (≈0:35), expanded run only. Run `node track3a/run-demo.mjs` (about 2 s) live, or show the committed
+`track3a/RESULTS.md`. The chat proxy can't see an injection that arrives inside a tool result (the same architecture
+finding as the DVAA A/B on Slide 6); the mandate trusts the principal, so it can't stop a malicious user turn. Every
+number is from `track3a/RESULTS.md` / `track3a/runs/results.json`; per-stack median latency (2.5–13.6 ms) is on the
+committed table if a judge asks. **Cut this slide first if running long** (after Slide 12's SOC footer).
+
+---
+
+## Slide 12 — SentinelProxy as a product (Ciocca Venture Award) · expanded run
+
+**On slide**
+- **Title:** SentinelProxy — a drop-in egress guard for tool-using agents.
+- **Problem:** agents with tools read untrusted text; an indirect injection makes the agent send private data out with the user's authority (the "lethal trifecta").
+- **Who uses & pays:** teams running agents they can't rebuild — vendor, open-source, or legacy internal — with no enterprise AIDR budget. User: the platform / AppSec engineer shipping an OpenAI-compatible agent. Pain: "we can't ship until security signs off on what it can send out."
+- **Wedge:** one egress sidecar — the agent's only route out. No code or model changes; runs in observe mode first.
+- **How it stands apart** (destination provenance vs prompt-content classifiers):
+
+| | What it is | Where SentinelProxy fits |
+|---|---|---|
+| **SWG / SASE** (network egress) | A secure web gateway enforces a destination allowlist on employee web traffic — by destination, not content | We apply the same default-deny egress model one layer down, to an agent's tool calls |
+| Falcon AIDR | CrowdStrike's enterprise AI detection & response platform | We complement it at the tool boundary; not integrated. Alerts use an AIDR-shaped schema |
+| NeMo Guardrails | NVIDIA's programmable rails inside the app | We need no app changes: a sidecar in front of the chat endpoint plus an egress proxy |
+| Lakera Guard, Prompt Guard | Classifiers that score text for injection or jailbreak | We decide on **where data goes**, not how the text reads. Pair us with one |
+
+- **Edge:** drop-in sidecar · default-deny egress at the tool boundary · deterministic rules · low-false-positive posture.
+- **Path to launch:** (1) prototype today — DVAA + our OpsBot, scored corpus, working demo → (2) open-source sidecar, design partners in observe mode (*exit test:* a partner leaves it in block mode) → (3) paid managed policy + alert routing → (4) SOC integration (prototype today via `scripts/soc-handoff.sh`).
+- **Evidence (`results.json`):** where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA's scanner prevents 64 of 71 but blocks 21 of 164.
+
+**Speaker notes**
+Beat 9 (≈1:25) + optional Beat 10 (≈0:25). Source: `demo/slides/VENTURE.md` (merged #134); every number there comes
+from `results.json`. **Do not say** any market size, price point, or customer name; don't say "better than
+Lakera / Prompt Guard / AIDR at detection" (we didn't benchmark them); don't say "57 of 71" without the baseline's
+"64 of 71 at 21 of 164 blocked" in the same breath; don't say "integrated with Falcon" (it's an AIDR-*shaped* schema
+only). The SWG / SASE row is an analogy for what the egress guard *is* — a destination allowlist — not a claim that it
+works because gateways work (ADJACENT precondition rule). **Beat 10 (SOC) only if time:** `scripts/soc-handoff.sh`
+turns the real request-side and egress alerts into a plain-English P1 analyst brief, offline (no model key, no network;
+writes `.eval/soc-handoff/brief.md`). That is path-to-launch step 4, running today as a prototype (PR #86). **Never cut
+Beat 9** — it is the venture-award criteria itself.
 
 ---
 
