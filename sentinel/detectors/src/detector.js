@@ -26,6 +26,7 @@ import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
   findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
+import { findStructuralMarkers } from './structural.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
 let warmedUp = false;
@@ -42,6 +43,7 @@ export const RULES = Object.freeze({
   'taint.instruction_in_untrusted_content': { category: 'indirect_prompt_injection', layer: 'taint' },
   'inbound.instruction_in_principal_turn': { category: 'indirect_prompt_injection', layer: 'taint' },
   'inbound.exfil_instruction': { category: 'indirect_prompt_injection', layer: 'taint' },
+  'taint.structural_injection_marker': { category: 'indirect_prompt_injection', layer: 'taint' },
   'egress.secret_pattern': { category: 'egress_secret_pattern', layer: 'egress' },
   'egress.pii_pattern': { category: 'egress_secret_pattern', layer: 'egress' },
   'egress.markdown_image_exfil': { category: 'egress_markdown_image', layer: 'egress' },
@@ -214,6 +216,7 @@ export function createDetector(opts = {}) {
     ];
     for (const u of inboundTexts) {
       u.phrases = findInjectionPhrases(u.text);
+      u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
     const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
@@ -231,6 +234,15 @@ export function createDetector(opts = {}) {
     // Pass 2: per untrusted (or suspect) text, decide pre-forward.
     ts = performance.now();
     for (const u of inboundTexts) {
+      // Structural markers: ALERT ONLY, and only when the lexicon did not already raise this text. They never
+      // block, never mark a principal turn suspect and never set the untrusted-input taint flag.
+      if (u.structural.length && !u.phrases.length) {
+        push(ctx, {
+          ruleId: 'taint.structural_injection_marker', action: 'alert', mode: policy.mode, direction: 'request',
+          evidence: `pre-forward scan of ${u.label} (${u.text.length} chars, full scan); structural injection markers: ${u.structural.join(', ')}`,
+          originatedIn: u.label, reason: 'structural_injection_marker', reasonCodes: ['structural_markers'],
+        });
+      }
       if (u.principal && !u.ref.suspect) continue; // a clean principal turn is the mandate, not a threat
       const phrases = u.phrases;
       // Honeytokens in raw AND decoded forms (%-decoded up to maxDecodeDepth, \u/\x, base64, hex): the

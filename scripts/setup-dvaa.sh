@@ -29,6 +29,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DVAA_DIR="${DVAA_DIR:-$REPO_ROOT/.dvaa/dvaa-target}"
 PROJECT="${DVAA_PROJECT:-dvaa-t1}"
 IMAGE_TAG="${PROJECT}-dvaa"
+# Architecture: the image is built from the pinned source for the host's native arch. Its base image
+# (node:24-alpine, pinned by digest) is a multi-arch index with linux/arm64, and the only native npm dep
+# (onnxruntime-node) ships linux/arm64 binaries, so Apple Silicon builds a native arm64 image. Escape
+# hatch if a native build ever fails: DVAA_PLATFORM=linux/amd64 (runs under Rosetta/QEMU emulation).
+if [ -n "${DVAA_PLATFORM:-}" ]; then export DOCKER_DEFAULT_PLATFORM="$DVAA_PLATFORM"; fi
 
 # All API agent ports + dashboard. Container binds 0.0.0.0 internally; compose
 # publishes each to 127.0.0.1 only.
