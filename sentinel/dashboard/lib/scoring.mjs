@@ -17,7 +17,7 @@ export async function loadScoring(index, env = process.env) {
   const corpus = { attack: 0, benign: 0, placeholder: 0 };
   for (const e of index.values()) {
     if (e.source === 'placeholder') corpus.placeholder++;
-    else if (/^benign\//.test(e.id)) corpus.benign++;
+    else if (e.expected === 'benign' || (!e.expected && /^benign\//.test(e.id))) corpus.benign++;
     else corpus.attack++;
   }
   let raw;

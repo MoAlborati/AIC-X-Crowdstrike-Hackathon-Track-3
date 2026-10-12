@@ -45,7 +45,24 @@ const percentile = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0,
 
 async function withServer(roots, fn) {
   const srv = createServer({ roots });
-  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  // Port 0 draws from the kernel's ephemeral range, which this shared WSL host exhausts (4,096 ports,
+  // >15k sockets in TIME-WAIT from concurrent agents' test runs), giving EADDRINUSE on listen in ~1/15
+  // runs. So bind an explicit port below that range and retry on collision. Any other error is thrown.
+  for (let attempt = 1; ; attempt++) {
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    try {
+      await new Promise((resolve, reject) => {
+        srv.once('error', reject);
+        srv.listen(port, '127.0.0.1', () => {
+          srv.off('error', reject);
+          resolve();
+        });
+      });
+      break;
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE' || attempt >= 20) throw err;
+    }
+  }
   const base = `http://127.0.0.1:${srv.address().port}`;
   try {
     return await fn(base);
@@ -316,4 +333,51 @@ test('T4 buildAlert is the real producer of the long-path marker (no hand-writte
   }, { onWarning: (m) => warnings.push(m) });
   assert.equal(a.TaintPath.filter(h => h.Kind === 'truncated').length, 1);
   assert.equal(warnings.length, 1, 'T4 warns loudly about the truncation');
+});
+
+// ---- T6 corpus (captures/variants) ------------------------------------------------------------
+test('T6 corpus is indexed through its manifest: every listed case replays, labels carried, non-case JSON not indexed', async () => {
+  const manifest = JSON.parse(await readFile(path.join(REPO_ROOT, 'captures/variants/manifest.json'), 'utf8'));
+  const index = await indexCaptures();
+  for (const c of manifest.cases) {
+    const id = `variants/${c.path.replace(/\.json$/, '')}`;
+    const entry = index.get(id);
+    assert.ok(entry, `manifest case ${c.id} not indexed`);
+    assert.equal(entry.expected, c.groundTruth === 'negative' ? 'benign' : 'attack');
+    const r = await replayPayload(index, id, 'run');
+    assert.equal(r.status, 200, `${id}: ${r.body.error}`);
+    assert.equal(r.body.capture.expectedLabel, entry.expected);
+  }
+  assert.ok(![...index.keys()].some(k => /^variants\/(corpus|tools|tests)\/|manifest/.test(k)), 'generator inputs are not listed as captures');
+  const { loadScoring } = await import('../lib/scoring.mjs');
+  const s = await loadScoring(index, { SENTINEL_SCORING_FILE: path.join(os.tmpdir(), 'no-such-results.json') });
+  assert.equal(s.corpus.benign, 6 + manifest.cases.filter(c => c.groundTruth === 'negative').length);
+});
+
+test('T6 data-rich benign case (400-row tool output, >32 KB) is kept whole in the graph', async () => {
+  const index = await indexCaptures();
+  const raw = JSON.parse(await readFile(path.join(REPO_ROOT, 'captures/variants/fixtures/benign/benign-toolrows.json'), 'utf8'));
+  const { body } = await replayPayload(index, 'variants/fixtures/benign/benign-toolrows', 'run');
+  const msg = body.graph.nodes.find(n => n.kind === 'user_message');
+  assert.equal(msg.text, raw.request.messages[0].content);
+  assert.ok(msg.bytes > 32 * 1024);
+});
+
+test('a manifest case that is missing stays in the capture list with its error (never silently skipped)', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-dash-'));
+  try {
+    await mkdir(path.join(dir, 'variants', 'fixtures'), { recursive: true });
+    await writeFile(path.join(dir, 'variants', 'manifest.json'), JSON.stringify({ cases: [{ id: 'A', path: 'fixtures/a.json', groundTruth: 'negative' }, { id: 'B', path: 'fixtures/gone.json' }, { id: 'C', path: '../../escape.json' }] }));
+    await writeFile(path.join(dir, 'variants', 'fixtures', 'a.json'), JSON.stringify({ id: 'A', request: { messages: [{ role: 'user', content: 'hello' }] }, label: { groundTruth: 'negative' } }));
+    await withServer([{ dir, source: 'captures' }], async (base) => {
+      const list = (await (await fetch(`${base}/api/captures`)).json()).captures;
+      assert.equal(list.length, 3);
+      assert.ok(!list.find(c => c.id === 'variants/fixtures/a').error);
+      assert.match(list.find(c => c.id === 'variants/fixtures/gone').error, /missing/);
+      assert.match(list.find(c => /escape/.test(c.id)).error, /escapes/);
+      assert.equal((await fetch(`${base}/api/replay?id=variants/fixtures/gone`)).status, 422);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

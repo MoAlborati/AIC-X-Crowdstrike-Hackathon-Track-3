@@ -67,7 +67,9 @@ async function loadList() {
   sel.replaceChildren();
   const groups = new Map();
   for (const c of state.captures) {
-    const g = c.source === 'placeholder' ? 'Placeholder fixtures' : c.id.startsWith('benign/') ? 'Benign captures (T1)' : 'Attack captures (T1)';
+    const g = c.source === 'placeholder' ? 'Placeholder fixtures'
+      : c.id.startsWith('variants/') ? `T6 eval corpus (${c.expectedLabel ?? 'unlabeled'})`
+        : c.id.startsWith('benign/') ? 'Benign captures (T1)' : 'Attack captures (T1)';
     if (!groups.has(g)) groups.set(g, h('optgroup', { label: g }));
     const label = c.error ? `⚠ ${c.id} — ${c.error}` : `${c.title ?? c.id}${c.placeholder ? ' [PLACEHOLDER]' : ''}`;
     groups.get(g).append(h('option', { value: c.id, disabled: Boolean(c.error) }, label));

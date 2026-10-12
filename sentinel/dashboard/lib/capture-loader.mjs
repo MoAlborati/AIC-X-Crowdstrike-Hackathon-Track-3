@@ -13,7 +13,8 @@
 //   'demo-acts'   DVAA `demo flight --json`: {act1, act2, act3, canary, target}
 //   'pair'        benign/<port>_<agent>.req.json + .resp.json (OpenAI request + response)
 //   'openai'      {request, response} | {exchanges:[...]} with optional toolResults/alerts.
-//                 Used by placeholder fixtures and by T6 variants.
+//                 Used by placeholder fixtures and by T6 variants ({id, request, label:{groundTruth, dvaa}}),
+//                 which are indexed through captures/variants/manifest.json.
 //
 // Text that the capture did NOT record (e.g. the body of the poisoned RAG doc in aim-ab) is never
 // invented. Those nodes carry `recorded:false` and a descriptor naming what is missing.
@@ -41,6 +42,32 @@ export function defaultRoots(env = process.env) {
   return roots;
 }
 
+// A directory with a manifest.json listing `cases[].path` (T6 `captures/variants/`) is indexed through
+// that manifest: exactly the listed cases, nothing else from that tree (its corpus/, tools/ and tests/
+// hold inputs and generators, not captures). A listed case that is missing or points outside the
+// directory stays in the index carrying an error, so the list shows it instead of skipping it.
+async function manifestCases(dir) {
+  let raw;
+  try {
+    raw = await readFile(path.join(dir, 'manifest.json'), 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+  let m;
+  try {
+    m = JSON.parse(raw);
+  } catch (err) {
+    throw new CaptureFormatError(path.join(dir, 'manifest.json'), `invalid JSON: ${err.message}`);
+  }
+  if (!Array.isArray(m?.cases) || !m.cases.every(c => typeof c?.path === 'string')) return null;
+  return m.cases.map(c => {
+    const file = path.resolve(dir, c.path);
+    const inside = file.startsWith(dir + path.sep);
+    return { file, manifestCase: c, error: inside ? null : `manifest path escapes ${dir}: ${c.path}` };
+  });
+}
+
 async function jsonFilesIn(dir, depth) {
   let entries;
   try {
@@ -52,8 +79,11 @@ async function jsonFilesIn(dir, depth) {
   const out = [];
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const full = path.join(dir, e.name);
-    if (e.isDirectory() && depth > 0) out.push(...(await jsonFilesIn(full, depth - 1)));
-    else if (e.isFile() && e.name.endsWith('.json') && !e.name.endsWith('.schema.json')) out.push(full);
+    if (e.isDirectory() && depth > 0) {
+      const cases = await manifestCases(full);
+      if (cases) out.push(...cases);
+      else out.push(...(await jsonFilesIn(full, depth - 1)));
+    } else if (e.isFile() && e.name.endsWith('.json') && !e.name.endsWith('.schema.json')) out.push({ file: full });
   }
   return out;
 }
@@ -70,13 +100,25 @@ export async function indexCaptures(roots = defaultRoots()) {
     const files = await jsonFilesIn(dir, 2);
     total += files.length;
     enforce('MAX_CAPTURE_FILES', total, `while indexing ${dir}`);
-    for (const file of files) {
+    for (const { file, manifestCase, error } of files) {
       let rel = path.relative(dir, file).split(path.sep).join('/').replace(/\.json$/, '');
-      const pairPart = rel.match(/^(.*)\.(req|resp)$/);
-      const { size } = await stat(file);
+      const pairPart = manifestCase ? null : rel.match(/^(.*)\.(req|resp)$/);
       if (pairPart) rel = pairPart[1];
       const id = source === 'placeholder' ? `placeholder/${rel}` : rel;
       const entry = index.get(id) ?? { id, source, files: {}, bytes: 0 };
+      if (manifestCase) {
+        entry.expected = manifestCase.groundTruth === 'negative' ? 'benign' : manifestCase.groundTruth === 'positive' ? 'attack' : null;
+      }
+      let size = 0;
+      if (error) entry.error = error;
+      else {
+        try {
+          ({ size } = await stat(file));
+        } catch (err) {
+          if (err.code !== 'ENOENT') throw err;
+          entry.error = `listed in manifest but missing: ${path.relative(dir, file)}`;
+        }
+      }
       if (pairPart) entry.files[pairPart[2]] = file;
       else entry.files.main = file;
       entry.bytes += size;
@@ -105,6 +147,7 @@ async function readJson(file, id) {
 }
 
 export async function loadCapture(entry) {
+  if (entry.error) throw new CaptureFormatError(entry.id, entry.error);
   enforce('MAX_CAPTURE_BYTES', entry.bytes, `capture ${entry.id}`);
   let raw;
   let bytes = 0;
@@ -267,7 +310,9 @@ function normalizeDemoActs(raw) {
 function normalizeOpenAI(raw, entry) {
   const exRaw = Array.isArray(raw.exchanges) ? raw.exchanges : [{ request: raw.request, response: raw.response }];
   if (!exRaw.length) throw new CaptureFormatError(entry.id, 'exchanges[] is empty');
-  const exchanges = exRaw.map((ex, i) => openaiExchange(ex.request, ex.response, i, ex.dvaa));
+  // T6 fixtures carry their ground truth in label.dvaa (pre-computed, not a recorded run).
+  const labelDvaa = !Array.isArray(raw.exchanges) && raw.label?.dvaa ? raw.label.dvaa : undefined;
+  const exchanges = exRaw.map((ex, i) => openaiExchange(ex.request, ex.response, i, ex.dvaa ?? labelDvaa));
   const port = raw.agent?.port ?? raw.port ?? (entry.id.match(/(\d{4})_/)?.[1] ? Number(entry.id.match(/(\d{4})_/)[1]) : null);
   const name = raw.agent?.name ?? raw.agentName ?? entry.id.match(/\d{4}_([\w-]+)$/)?.[1] ?? 'agent';
   const dv = exchanges.map(e => e.dvaa).find(Boolean);
@@ -300,10 +345,10 @@ export function normalizeCapture(raw, entry = { id: raw?.id ?? 'inline', source:
     shape,
     placeholder: raw.placeholder === true || entry.source === 'placeholder',
     placeholderNote: raw.placeholderNote ?? null,
-    title: raw.title ?? (raw.payload?.name ? `${raw.scenario ?? ''} · ${raw.payload.name}`.replace(/^ · /, '') : raw.scenario ?? entry.id),
+    title: raw.title ?? (raw.label && raw.id ? `${raw.id} · ${raw.scenario ?? ''} [T6 ${raw.label.groundTruth ?? 'unlabeled'}]` : null) ?? (raw.payload?.name ? `${raw.scenario ?? ''} · ${raw.payload.name}`.replace(/^ · /, '') : raw.scenario ?? entry.id),
     scenario: raw.scenario ?? (shape === 'pair' ? 'benign' : null),
     payload: raw.payload ?? null,
-    expectedLabel: raw.expectedLabel ?? (shape === 'pair' ? 'benign' : runs.some(r => r.outcome.exfilExecuted) ? 'attack' : null),
+    expectedLabel: raw.expectedLabel ?? (raw.label?.groundTruth === 'negative' ? 'benign' : raw.label?.groundTruth === 'positive' ? 'attack' : null) ?? (shape === 'pair' ? 'benign' : runs.some(r => r.outcome.exfilExecuted) ? 'attack' : null),
     canaryHits: hits.map(h => ({ at: h.at ?? null, kind: h.kind ?? 'exfil', path: h.path ?? null, query: h.query ?? {} })),
     runs,
     alerts: Array.isArray(raw.alerts) ? raw.alerts : null,
