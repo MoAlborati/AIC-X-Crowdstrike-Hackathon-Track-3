@@ -199,6 +199,56 @@ classifier such as Prompt Guard."
 
 ---
 
+## Ciocca Venture Award (product and venture questions)
+
+Criteria (issue #128): clarity of the problem · who would use and pay · how it stands apart from existing tools ·
+credible path from prototype to launch · alongside a working demo. Slide content: `demo/slides/VENTURE.md`.
+**Never invent a market figure, a price, or a customer.** If pressed, say "we haven't sized it yet".
+
+**V1. "How big is the market, and what would you charge?"**
+"We haven't sized it, and we won't make up a number on stage. What we can say is who feels the pain first: a
+mid-size software team shipping agents on OpenAI-compatible APIs, with no enterprise AIDR budget. The likely model is
+the usual open-core one: a free sidecar, and paid managed policy and alert routing. Validating the price with design
+partners is part of the next 90 days."
+**Proof:** none on purpose. This is a plan, not a result.
+
+**V2. "Why not just use Falcon AIDR?"**
+"If you have it, use it. We complement it; we don't replace it. AIDR is an enterprise platform. We're a drop-in
+sidecar for teams that don't have that budget yet, and we sit at the tool boundary, where a default-deny egress
+allowlist decides where data can go. Our alerts already use an AIDR-shaped schema, mapped to MITRE ATLAS and OWASP, so a team can
+grow into a SOC without rewriting anything. We haven't integrated with Falcon's APIs."
+**Proof:** `sentinel/alerts` (T4 schema); `planning/CITATIONS.md` AIDR rows (AIDR plus NeMo Guardrails integration, Mar 2026).
+
+**V3. "What's your moat? Couldn't anyone write a regex and a host allowlist?"**
+"The parts are simple on purpose, and the regex is not the moat: it's bypassable, and we showed that ourselves. The
+defensible pieces are the deployment shape and the evidence. A drop-in sidecar plus default-deny egress needs no app
+changes. Deterministic verdicts can be audited. And we have a scored, pinned corpus where 0 of 164 legitimate requests get
+blocked. Over time, the policy and honeytoken library, plus the integrations into alert routing, are what a competitor
+would have to rebuild. That's a hypothesis, not a proven moat."
+**Proof:** RESULTS.md (TN 164, FP 0); issue #112 (critic B: request side bypassed, egress still denies).
+
+**V4. "What do the next 90 days look like?"**
+"Three things. First, harden what judges broke: request-side normalization, TLS-aware egress, and testing against a
+real LLM, not a canned sandbox. Second, package the open-source sidecar so it's one compose file in front of any
+OpenAI-compatible agent. Third, run it in observe mode with a few design partners to measure false positives on real
+traffic before anyone switches to block. That's also how we'd learn the pricing."
+**Proof:** limitations in SUBMISSION.md; `sentinel/egress/compose.egress.yml`; QA-PREP Q8 (observe first, then block).
+
+**V5. "Who's the first customer, concretely?"**
+"A platform or AppSec engineer at a mid-size software company whose agent reads tickets or documents and can call
+out to the web. Their blocker is 'security won't sign off on what this agent can send out'. Our pitch to them: put it in observe
+mode for a week, see the alerts, then turn on block. We don't have that customer yet; that's the next step."
+**Proof:** `track3a/` OpsBot, the exact shape of that agent (ticket reader, customer lookup, `http_post`), defended
+by the same unmodified proxy.
+
+**V6. "Why won't CrowdStrike just build this?" (15-second answer)**
+"They might, and that would prove the problem is real. They sell to enterprises with a Falcon budget. We start where
+that budget doesn't exist yet: teams running agents they can't rebuild. Our alerts already use an AIDR-shaped schema, so we're a feeder for
+that platform or an acquisition target, not a rival to it."
+**Proof:** `sentinel/alerts` (AIDR-shaped T4 schema); `planning/CITATIONS.md` (AIDR is GA and integrates NeMo Guardrails, so platforms do partner).
+
+---
+
 ### If you blank
 1. **Provenance, not keywords:** content can ask for something. Only the user's own turn can authorize it.
 2. **Where data actually leaves, we prevent 57 of 71 with 0 of 164 legit requests blocked; DVAA prevents 64 of 71 but

@@ -110,6 +110,19 @@ Source: `sentinel/scoring/results.json`. The file was generated 2026-10-12T20:10
 - **Corpus scope:** a single pinned DVAA version, published benchmark strings and our own benign set. The evasion set is small.
 - **OpsBot (Path A)** uses a deterministic regex planner instead of a real LLM, which keeps replays exact. Its egress guard scans full bodies only for core `http.request`, and `fetch()` traffic tunnels through CONNECT, so only the host is checked.
 
+## Product & venture
+
+- **Problem:** tool-using agents leak data through indirect prompt injection. A hidden instruction in a ticket or document makes the agent send private data out with the user's authority.
+- **Who uses and pays:** teams running agents they can't rebuild: vendor, open-source or legacy agents whose prompts and tool code they can't change, but whose network they control. The user is the platform or AppSec engineer shipping an agent on an OpenAI-compatible API. The buyer is the head of engineering or security at a mid-size software company that ships agents without an enterprise AIDR budget. We have no customers or pricing yet, and we don't claim a market size.
+- **Wedge:** an egress sidecar for agent tool calls. It is one container that becomes the agent's only route out, with no code or model changes, and it runs in observe mode first.
+- **How it stands apart:** destination provenance vs prompt-content classifiers. Classifiers judge the wording, which an attacker can change. We judge whether the user authorized the destination and whether it is allowlisted. We are not a better classifier. Our edge is a drop-in sidecar (no app code changes), default-deny egress at the tool boundary, deterministic rules, and a low false-positive posture.
+  - Falcon AIDR is an enterprise platform. We complement it at the tool boundary, but we have not integrated with it.
+  - NeMo Guardrails puts programmable rails inside the app.
+  - Lakera Guard and Prompt Guard classify text. We decide on where data goes, and we pair with a classifier for generic jailbreaks.
+- **Path to launch:** prototype (today) → open-source sidecar run by design partners in observe mode; the exit test is a partner leaving it in block mode → paid managed policy and alert routing, priced with those partners → SOC integration. The SOC step already has a working offline prototype: our alerts feed the Track 1 SOC Brief (`scripts/soc-handoff.sh`).
+- **Evidence:** where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked. DVAA's own scanner prevents 64 of 71 but blocks 21 of 164 (`sentinel/scoring/results.json`).
+- **Working demo:** `demo/run-demo.sh --auto`. Slide content: [`demo/slides/VENTURE.md`](demo/slides/VENTURE.md).
+
 ## Provenance and licenses
 
 - Every **attack** string in the corpus is copied verbatim from a published benchmark or from DVAA. Each one is pinned to an upstream commit with its locator and sha256, and `captures/variants/tools/verify-upstream.mjs` re-checks them. The team wrote only the benign material.
