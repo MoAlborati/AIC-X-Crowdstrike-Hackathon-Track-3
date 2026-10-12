@@ -2,7 +2,7 @@
 
 Run by the orchestrator/implementer before writing code for a ticket. Goal: the ticket's spec,
 acceptance criteria and **bounds** are explicit, so nothing silently degrades as data grows. Encodes the
-firm's data-scale rules (see `/home/gingy/.claude/rules/generated/content-engine-data-scale-silent-failures-2026-07-10-learnings.md`).
+team's data-scale reliability rules (bounded/fail-loud, data-rich testing, delete-the-fix proof).
 
 If any box can't be checked, do not guess — raise it in STATE.md **Blockers** and stop.
 

@@ -10,8 +10,27 @@ export function renderMarkdown(r) {
   L.push(`Corpus: ${r.corpus.total} cases (${r.corpus.positives} attack, ${r.corpus.negatives} benign), digest \`${r.corpus.digest.slice(0, 19)}…\`.`);
   L.push(`Label rule: ${r.labelRule}.`, '');
   L.push(`**Headline (SentinelProxy, enforce):** ${r.headline.status === 'ok'
-    ? `recall ${pct(r.recall)} · benign FP rate ${pct(r.falsePositiveRate)} · precision ${pct(r.precision)} · median ${ms(r.latencyMs.median)}`
+    ? `${r.headlineLenses ? `detection recall ${pct(r.detectionRecall)} · **prevention recall ${pct(r.preventionRecall)}** · rule-intent block recall ${pct(r.recall)} (legacy \`recall\`)` : `recall ${pct(r.recall)}`} · benign FP rate ${pct(r.falsePositiveRate)} · precision ${pct(r.precision)} · median ${ms(r.latencyMs.median)}`
     : r.headline.status}`, '');
+  if (r.headline.status === 'ok' && r.headlineLenses) {
+    const H = r.headlineLenses;
+    const base = r.detectors['dvaa-baseline'];
+    const bb0 = r.beatsBaseline.byDetector[r.headline.detector];
+    L.push('**Honest lenses (enforce).** *Detection* = any finding fired (alert-only and post-execution findings included). ' +
+      '*Prevention* = a finding with `prevents:true`: it acts before the agent runs (pre-forward) or withholds the reply. ' +
+      'Response-side tool-call findings on an in-process agent (DVAA) fire after the tool already ran: alert + evidence only, ' +
+      'counted in detection, NOT in prevention. *Rule-intent block* = the original `recall` field (any would-block rule fired); it overstates prevention.', '');
+    L.push('| detector | lens | recall | precision | benign FP rate | TP | FP | TN | FN | beats baseline (evadesBaseline) |', '|---|---|---|---|---|---|---|---|---|---|');
+    const row = (name, lens, m, beat) => L.push(`| ${name} | ${lens} | ${pct(m.recall)} | ${pct(m.precision)} | ${pct(m.falsePositiveRate)} | ${m.tp} | ${m.fp} | ${m.tn} | ${m.fn} | ${beat} |`);
+    row(r.headline.detector, '**detection (any finding)**', H.detection, bb0 ? `${bb0.beaten}/${bb0.eligible}` : 'n/a');
+    row(r.headline.detector, '**prevention (prevents:true)**', H.prevention, bb0 ? `${bb0.beatenPrevention}/${bb0.eligible}` : 'n/a');
+    row(r.headline.detector, 'rule-intent block (legacy `recall`)', H.blocking, bb0 ? `${bb0.beaten}/${bb0.eligible}` : 'n/a');
+    if (base?.available) {
+      row('dvaa-baseline', 'detection (any finding)', base.modes.enforce.anyFinding, '—');
+      row('dvaa-baseline', 'prevention (request-side hit)', base.modes.enforce.prevention, '—');
+    }
+    L.push('');
+  }
   L.push('| detector | kind | mode | precision | recall | benign FP rate | TP | FP | TN | FN | median latency | p95 latency |');
   L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const [name, d] of Object.entries(r.detectors)) {
@@ -29,14 +48,26 @@ export function renderMarkdown(r) {
   L.push('');
   const bb = r.beatsBaseline;
   L.push(`**Beats DVAA baseline** (cases T6 marks evadesBaseline=true: ${bb.eligible.join(', ') || 'none'}):`);
-  for (const [name, b] of Object.entries(bb.byDetector)) L.push(`- ${name}: ${b.beaten}/${b.eligible}${b.cases.length ? ` (${b.cases.join(', ')})` : ''}`);
+  for (const [name, b] of Object.entries(bb.byDetector)) L.push(`- ${name}: ${b.beaten}/${b.eligible}${b.cases.length ? ` (${b.cases.join(', ')})` : ''} · prevented ${b.beatenPrevention ?? 'n/a'}/${b.eligible}`);
   if (bb.baselineMismatch.length) L.push(`- WARNING: dvaa-baseline flagged ${bb.baselineMismatch.join(', ')} although T6 says it evades`);
   L.push('');
   for (const [name, d] of Object.entries(r.detectors)) {
     if (!d.available) continue;
     L.push(`## ${name}`, '');
     const k = d.recallByPositiveKind;
-    L.push(`Recall by positive kind: exfil ${pct(k.exfil.recall)} (${k.exfil.tp}/${k.exfil.positives}) · injection-only ${pct(k.injectionOnly.recall)} (${k.injectionOnly.tp}/${k.injectionOnly.positives})`, '');
+    const kk = (x) => `exfil ${pct(x.exfil.recall)} (${x.exfil.tp}/${x.exfil.positives}) · injection-only ${pct(x.injectionOnly.recall)} (${x.injectionOnly.tp}/${x.injectionOnly.positives})`;
+    L.push(`Recall by positive kind (rule-intent block): ${kk(k)}`);
+    if (d.recallByPositiveKindAnyFinding) L.push(`Recall by positive kind (detection, any finding): ${kk(d.recallByPositiveKindAnyFinding)}`);
+    if (d.recallByPositiveKindPrevention) L.push(`Recall by positive kind (prevention): ${kk(d.recallByPositiveKindPrevention)}`);
+    L.push('');
+    if (d.detectedNotPrevented?.length) {
+      L.push(`Detected but NOT prevented (alert + evidence only): ${d.detectedNotPrevented.length}`);
+      for (const x of d.detectedNotPrevented) L.push(`- ${x.id} — ${x.rules.map((f) => `${f.ruleId}${f.postExecution ? ' [post-execution]' : f.direction ? ` [${f.direction}]` : ''}${f.prevents ? ' [prevents]' : ''}`).join(', ')}`);
+      L.push('');
+    }
+    if (d.falsePositivesAnyFinding?.length) {
+      L.push(`Benign cases with any finding (alert-only included): ${d.falsePositivesAnyFinding.map((x) => `${x.id} (${x.rules.join(', ')})`).join('; ')}`, '');
+    }
     L.push(`False positives (benign cases flagged; blocks in enforce): ${d.falsePositives.length || 'none'}`);
     for (const f of d.falsePositives) L.push(`- ${f.id} — ${f.errored ? `DETECTOR ERROR (scored as fail-closed block): ${f.error}` : f.rules.map((x) => x.ruleId).join(', ')}`);
     L.push(`False negatives (attacks missed): ${d.falseNegatives.length || 'none'}`);

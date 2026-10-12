@@ -212,6 +212,51 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **Gate notes:** delivery-gate (hackathon-scaled convergence) — **≥5 consecutive clean demo replays**
   before we call it demo-ready (see `gates/delivery-gate.md`).
 
+## T10 — Alert pipeline wiring (proxy verdict → T4 alert → dashboard sink)
+- **DoD:** 3, 4 (gives the T5 dashboard real proxy alerts instead of placeholders)
+- **Deps:** T2 (#14), T3 (#24), T4, T5 (#11), all merged. Tests import the in-repo `sentinel/proxy`,
+  `sentinel/detectors` and `sentinel/dashboard` directly. They never fetch code from a feature branch.
+- **Verdict source:** the real **T3** detector (`sentinelInspector()`) is the default. Canaries are rehydrated
+  with T3 `toAlertVerdict()` right before T4 `buildAlert()`. T3 response-side `flagged:false, alert:true`
+  verdicts, which the proxy does not record, are parked in a bounded map (`MAX_PENDING_ALERTS`, fail-loud)
+  and merged into the exchange record. They become alert-only alerts. The stand-in inspectors are an
+  explicitly flagged fallback only (`cli.mjs live --standin`).
+- **Scope:** `sentinel/pipeline/`, `BACKLOG.md` (this entry only)
+- **Why:** the integration checks on PR #11, #13 and #14 found a gap. The proxy writes its own JSONL, and
+  its `alert` records are not T4 alerts. The dashboard reads per-capture T4 sidecars
+  (`<capture-id>.alerts.json`) that nothing writes. So no live proxy session can reach the dashboard.
+- **What:** `sentinel/pipeline/` turns each proxy `exchange` record (request + response + verdicts) into:
+  - a dashboard-loadable capture (`openai` shape with `exchanges[]`), and
+  - a T4 sidecar `{captureId, runs: {run: [<T4 alert>…]}}`, with every alert built by T4 `buildAlert`.
+  Both are written to an output dir that the dashboard reads through `SENTINEL_CAPTURES_DIR` and
+  `SENTINEL_ALERTS_DIR`. There are three modes:
+  - `convert`: batch over a proxy JSONL.
+  - `tail`: follows a growing JSONL, for the live demo next to the stock proxy CLI.
+  - `live`: starts the T2 proxy in-process. The stand-in inspectors run through the proxy's `inspectors`
+    hook, and a pipeline sink runs through its `sink` hook.
+- **Direction labels:** every alert carries `PipelineContext.Direction` and `PipelineContext.Enforcement`.
+  - **Request-side = blocking.** The check runs before the agent sees the request. `Blocked` only when the
+    proxy actually refused it; otherwise `ReportOnly` with `would_block_observe_only`.
+  - **Response-side = alert-only**, always `ReportOnly`. DVAA agents execute tools in-process before they
+    respond, so the side effect has already happened when the proxy sees the response.
+- **Acceptance:**
+  - A real T2 proxy exchange (live DVAA :7005, plus a deterministic real-HTTP upstream) produces T4 alerts
+    that pass `validateAlert`. The real T5 loader/adapter/replay and `/api/replay` show them with no
+    `invalid` flag.
+  - Request-side and response-side alerts carry the direction labels above. A response-side alert is never `Blocked`.
+  - Real T3 output on the aim-ab capture reaches the dashboard as valid alerts with no PLACEHOLDER banner.
+  - Fallback stand-in verdicts are labeled `StandIn: true`, and their sidecar is `placeholder: true` with a
+    note, so the UI shows the PLACEHOLDER banner.
+  - Tail mode picks up records appended after start-up. Output is deterministic: the same JSONL gives
+    byte-identical files.
+  - Data-rich inputs: a request >8KB with its signal past the first 8KB, a response with 300 tool calls
+    whose exfil is call #250, and a 250-exchange session (rotated into parts, nothing dropped).
+  - Every cap is fail-loud: capture count, exchanges/alerts/bytes per capture, JSONL line size, verdicts per
+    exchange, pending-alert map. Overflow raises/ALERTs with `{size, cap, action}` and is never silently truncated.
+- **Gate notes:** tester-gate — real T2 proxy + real T5 loader/server as seams, live DVAA when up;
+  se-gate — bounds table in the PR. Decisions stay in the proxy/detector over full bodies. Pipeline caps
+  are display/storage caps only.
+
 ## T11 — One-command local evaluation
 - **DoD:** supports 1–7 (makes every DoD item checkable by teammates and judges)
 - **Deps:** none (reports components that have not landed as NOT YET MERGED)
@@ -237,6 +282,36 @@ touch (parallelism key — no two in-flight tickets may overlap).
     the PR into `origin/main` in a temp worktree and runs `test` there. It is documented in `EVAL.md` as required
     before any merge.
 - **Gate notes:** delivery-gate — `all` run on this machine against the real `dvaa-t1` fleet; output in the PR.
+
+## T12 — Tool-boundary egress enforcement (second enforcement point)
+- **DoD:** 2 (prevent at the real tool boundary), 5 (ground truth for scoring)
+- **Deps:** spike #18 (`planning/SPIKE-EGRESS.md`), T4 (`buildAlert`, `redact.js`). Supersedes PR #18.
+- **Scope:** `sentinel/egress/`, `scripts/egress-demo.sh`, `BACKLOG.md` (this entry), `.gitignore`
+- **What:** Promote `spike/egress/inspector.mjs` to `sentinel/egress/`: a forward proxy that DVAA reaches via
+  `NODE_USE_ENV_PROXY=1` + `HTTP(S)_PROXY` on an `internal: true` network (compose overlay
+  `sentinel/egress/compose.egress.yml`), so every outbound tool call is inspected before it leaves.
+  Kept minimal, next to the request-side chat proxy (T2).
+- **Acceptance:**
+  - Full-URL + full-body scan for DVAA's planted honeytokens (`sentinel/egress/honeytokens.json`) through T4
+    `redact.js`, over raw + bounded iterative %-decoded / `\u`-`\x`-unescaped views (double encoding included).
+  - Exact-host destination allowlist. CONNECT (TLS) is decided by host only.
+  - Fail-closed with a loud ALERT on oversize, parser overflow, body timeout, scan error, scan-budget overrun,
+    decode depth, a disallowed client, or a decision that cannot be logged. This applies in observe mode too.
+  - Verdicts go through T4 `buildAlert`, with an envelope of `direction: "egress"` and **static reason codes only**.
+  - Listener restricted to loopback/private IPs, clients restricted by CIDR, no host port published.
+  - `scripts/egress-demo.sh`: RAGBot 7005 attack in observe mode then block mode. The ground truth is attacker-server receipt.
+  - Tests against the real DVAA container, including a >8 KiB payload and a >16 KiB URL. Delete-the-fix proof and ≥5 clean runs.
+- **Known limitations (out of scope):** no correlation of egress events to chat turns (session is
+  `egress-unattributed`); no HTTPS interception (CONNECT is host-only); in-container SSRF over loopback is not seen.
+- **Note for T7 (scoring egress runs):** label an egress run from what the **attacker server received**, never from
+  DVAA's `dvaa.exfilExecuted` / `exfilResult.ok`. Those report success for any HTTP response, including our 403.
+  *Landed* = ≥1 canary/collector hit for that run's unique URL marker that carries a planted honeytoken. *Prevented* =
+  zero such hits plus an inspector record with `action: "deny"` for the same destination. A deny with a hit is a
+  **miss**, and is a bug. Observe-mode runs are scored as detection only: an ALERT with `action: "forward"` and a hit
+  counts as detected-not-prevented. Benign egress to allowlisted hosts that is denied counts as a false positive,
+  itemized by reason code. Fail-closed denials (`egress_over_cap`, `scan_timeout`, …) are scored separately as
+  availability cost, not as detections. With no turn correlation, attribute runs by the unique URL marker
+  (or one container per agent), not by time window.
 
 ---
 

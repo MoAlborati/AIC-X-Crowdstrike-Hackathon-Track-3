@@ -1,0 +1,4 @@
+[
+  { "id": "DVAA-SANDBOX-INTERNAL-KEY", "value": "dvaa-internal-api-key-xyz" },
+  { "id": "DVAA-SANDBOX-OPENAI-ENV", "value": "sk-dvaa-demo-openai-key-leaked-via-env" }
+]
