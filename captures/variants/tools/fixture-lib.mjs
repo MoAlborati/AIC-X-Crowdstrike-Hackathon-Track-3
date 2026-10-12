@@ -53,6 +53,27 @@ export function toolConversation(userTurn, toolName, args, payload) {
   };
 }
 
+/**
+ * T6b: a full ground-truth transcript (AgentDojo user task without injection): one assistant tool_call +
+ * tool result per call, in order. The first tool message is the payload message (payloadIndex).
+ * @param {string} userTurn
+ * @param {{tool: string, args: object, output: string}[]} calls
+ */
+export function toolTranscript(userTurn, calls) {
+  if (!calls.length) throw new Error('toolTranscript: no calls');
+  const messages = [{ role: 'user', content: userTurn }];
+  calls.forEach((c, i) => {
+    const id = `call_${String(i + 1).padStart(4, '0')}`;
+    messages.push({
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id, type: 'function', function: { name: c.tool, arguments: JSON.stringify(c.args) } }],
+    });
+    messages.push({ role: 'tool', tool_call_id: id, name: c.tool, content: c.output });
+  });
+  return { messages };
+}
+
 /** Index of the message that carries the payload for a fixture's channel. */
 export function payloadIndex(fixture) {
   const role = PAYLOAD_ROLE[fixture.channel];
@@ -85,6 +106,14 @@ export const FRAMEWORKS_BY_CATEGORY = Object.freeze({
     owaspAgentic: ['ASI01', 'ASI02'],
     // same slugs as mapping.js indirect_prompt_injection / taint_flow_exfil
     oasb: ['prompt-injection', 'data-exfiltration'],
+  },
+  indirect_prompt_injection: {
+    // T6b: indirect PI whose goal is an action, not a data send (AgentDojo non-exfil injection tasks,
+    // InjecAgent Direct Harm). Same tags as mapping.js CATEGORY_MAP.indirect_prompt_injection.
+    atlas: ['AML.T0051.001'], // LLM Prompt Injection: Indirect
+    owaspLlm: ['LLM01'], // Prompt Injection
+    owaspAgentic: ['ASI01'], // Agent Goal Hijack
+    oasb: ['prompt-injection'],
   },
   benign: { atlas: [], owaspLlm: [], owaspAgentic: [], oasb: [] },
 });
