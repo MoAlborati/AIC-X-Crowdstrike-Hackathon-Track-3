@@ -1,0 +1,22 @@
+{
+  "name": "@sentinelproxy/proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelProxy reverse-proxy guardrail in front of DVAA /v1/chat/completions (T2). Zero dependencies.",
+  "type": "module",
+  "main": "index.js",
+  "bin": { "sentinel-proxy": "./cli.js" },
+  "exports": {
+    ".": "./index.js",
+    "./server": "./server.js",
+    "./config": "./config.js",
+    "./inspector": "./inspector.js",
+    "./sink": "./sink.js"
+  },
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node cli.js",
+    "bench": "node bench/latency.js",
+    "test": "node --test \"test/*.test.js\""
+  }
+}
