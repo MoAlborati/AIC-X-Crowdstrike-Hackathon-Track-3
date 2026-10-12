@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { createDetector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../index.js';
-import { findIbans, findSpacedRuns, foldConfusables, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
+import { findIbans, findSpacedRuns, foldConfusables, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases, stripInvisible } from '../src/text.js';
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
@@ -63,6 +63,8 @@ const ADVERSARIAL = {
   begin_lines: '----- BEGIN DOC -----\n',
   info_tags: '<INFORMATION>\n',
   phrases: 'ignore previous ',
+  zero_width: 'ign\u200Bore\u2060 ',
+  tag_chars: '\u{E0069}\u{E0067}\u{E006E}\u200B',
   // #112: one 170K-element spaced run, re-joined into two variants and re-scanned by every extractor
   spaced_singles: 'a ',
   spaced_iban: 'U S 1 3 0 0 ',
@@ -140,9 +142,10 @@ test('every text scanner alone is linear: < 50 ms CPU (median of 3) at the paylo
     findSsns: [findSsns, ['123-45-', '1-2-3']],
     decodedVariants: [(t) => decodedVariants(t, { depth: 3, minRun: 12 }), ['QUFB', '%25', '41', 'QUFBQUFBQUFBQUFB ']],
     splitUntrustedSegments: [splitUntrustedSegments, ['----- BEGIN A -----\n', '[BEGIN A]\n', '<INFORMATION>\n', `${'-'.repeat(199)}\n`]],
-    findInjectionPhrases: [findInjectionPhrases, ['ignore previous ', 'aaaa']],
+    findInjectionPhrases: [findInjectionPhrases, ['ignore previous ', 'aaaa', 'ign\u200Bore ', '\u{E0069}\u{E0067}\u200B']],
+    stripInvisible: [stripInvisible, ['\u200B', 'a\u200B', '\u{E0041}', '\uDB40a', '\u202Eab\u2066']],
     findIbans: [findIbans, ['US13300000012121 ', 'US133000000121212121212121212121212']],
-    foldConfusables: [foldConfusables, ['a\u0430 ', '\u0430', '\uff53']],
+    foldConfusables: [foldConfusables, ['a\u0430 ', '\u0430', '\uff53', '\u{E0041}', 'a\u200B']],
     findSpacedRuns: [findSpacedRuns, ['a ', 'a . ', 'a - b ', 'a   b    ', 'ab a ']],
   };
   for (const [name, [fn, units]] of Object.entries(scanners)) {
