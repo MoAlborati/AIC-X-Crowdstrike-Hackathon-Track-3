@@ -33,6 +33,12 @@ own branch, runs the `gates/`, and opens one PR per ticket for the operator to r
 PR and advances other unblocked tickets meanwhile. Full protocol: **`LOOP.md`**. Degradation/handoff
 handling: `AGENTS.md`.
 
+## Chat with the orchestrator
+Open an issue with the **"Chat with the orchestrator"** template, or comment on pinned issue **#32**. This is a
+priority async intake that runs in parallel with the build loop: the orchestrator answers chat before other
+work, usually in about a minute. Ask about status, decisions, or request work. Label `chat-urgent` to be answered
+first. Details: **[`CHAT.md`](CHAT.md)**.
+
 ## How to review PRs
 Each PR links its ticket + DoD item and fills `.github/pull_request_template.md` with gate evidence
 (SE / tester / reviewer / delivery), the bounds it introduced + their fail-loud failure modes, and how to

@@ -18,6 +18,11 @@ defensive and scoped to this repo + the authorized local DVAA target.
   so the operator's review starts clean.
 - **Merge-steward** (child agent): merges PRs that meet the endgame merge rule. It has no other authority.
 
+## Chat with the orchestrator (mirror of LOOP.md)
+Humans can chat with the orchestrator through GitHub Issues (`CHAT.md`, pinned issue #32, labels `chat` /
+`chat-urgent`). It is a priority async intake that runs in parallel with the build loop. The orchestrator answers chat
+**before** other work, then resumes the loop. Child agents don't poll chat. The orchestrator relays anything they need.
+
 ## Endgame policies (mirror of LOOP.md §Endgame policies; operator, 2026-10-12 11:58 PDT)
 Operator's direction: "limit scope, our goal is to win the hackathon".
 - **Deadline 16:00 PDT. Feature freeze 14:30 PDT.** Delivery gate (≥5 clean replays) and real metrics run 13:30–14:30.
