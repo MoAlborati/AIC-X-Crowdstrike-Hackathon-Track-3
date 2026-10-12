@@ -36,7 +36,7 @@ ground-truth block (like DVAA's `dvaa{}`), with `injectionFollowed`, `exfilAttem
    from the user turn (`tool` + `destination` dimensions). Tool output can never widen it. A call outside it
    → denied as `attempted_escalation`. Same planner, one variable, like DVAA's AIM twin.
 
-## Results (`node track3a/run-demo.mjs` → `RESULTS.md`, `runs/results.json`)
+## Results (committed snapshot in `RESULTS.md` / `runs/results.json`)
 | stack | indirect | direct | benign (2 tasks) |
 |---|---|---|---|
 | Undefended | LEAKED | LEAKED | OK |
@@ -53,7 +53,8 @@ ground-truth block (like DVAA's `dvaa{}`), with `injectionFollowed`, `exfilAttem
 
 ## Run it
 ```bash
-node track3a/run-demo.mjs                 # full matrix, about 2 s, writes RESULTS.md
+node track3a/run-demo.mjs                 # full matrix, about 2 s; output in .eval/track3a/ (gitignored)
+node track3a/run-demo.mjs --write-results # also refresh the committed RESULTS.md + runs/results.json
 node --test track3a/test/*.test.mjs       # real seams: real proxy, egress guard, agent, canary
 ```
 Manual, one stack at a time:
@@ -68,6 +69,8 @@ curl -s 127.0.0.1:8181/v1/chat/completions -d '{"messages":[{"role":"user","cont
 ```
 
 ## Known limitations
+- Needs Node ≥24: the egress-guard stacks rely on `NODE_USE_ENV_PROXY`. Older Node exits 2 with a clear error
+  instead of reporting false LEAKED rows.
 - The planner is deterministic and regex-based, not a real LLM. That's deliberate for a replayable demo, and the
   tool boundary and defenses are the same either way.
 - The egress guard needs core `http.request`: `fetch()` opens a CONNECT tunnel, so the guard sees only the host

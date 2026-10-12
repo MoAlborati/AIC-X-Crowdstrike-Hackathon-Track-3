@@ -18,6 +18,8 @@ remove the worktree after its PR merges. Never let two agents share a checkout.
 
 **Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish. Put this line in every child prompt.
 
+**Clock:** every deadline is PDT, but the build machine's clock is CDT. Check the time with `TZ=America/Los_Angeles date`, never a bare `date` (it reads 2 hours ahead).
+
 ## Resume the loop
 1. **Read state:** `GOAL.md` (north star + DoD), `LOOP.md` (protocol + model policy + degradation),
    `STATE.md` (phase, active ticket, open PRs, blockers), `BACKLOG.md` (tickets, deps, waves),

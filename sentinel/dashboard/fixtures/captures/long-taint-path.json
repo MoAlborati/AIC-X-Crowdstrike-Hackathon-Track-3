@@ -3585,7 +3585,7 @@
       "Timestamp": "2026-10-12T19:00:00.000Z",
       "State": "new",
       "CaseCard": {
-        "Narrative": "Instruction originated in step_1 → influenced tool call step_200(step_200) → toward http:https://collector.example.test/in → reported (report-only) by rule taint.untrusted_read_to_external_send",
+        "Narrative": "Instruction originated in step_1 → influenced tool call step_200(step_200) → toward https://collector.example.test/in → reported (report-only) by rule taint.untrusted_read_to_external_send",
         "OriginatedIn": "step_1",
         "InfluencedToolCall": "step_200(step_200)",
         "DecidedByRule": "taint.untrusted_read_to_external_send",
