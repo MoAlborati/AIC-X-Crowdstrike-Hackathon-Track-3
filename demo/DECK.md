@@ -126,7 +126,7 @@ and response-side tripwires are alert-only. Don't claim we beat AIM. We compleme
 |---|---|---|
 | Payments fraud | Confirmation of Payee: check the payee before money moves | **Destination provenance:** a destination that appears only in untrusted tool output → BLOCK `payee_not_confirmed` |
 | Agency law / OAuth | Limited power of attorney: the agent can't exceed what the principal granted | **User-turn mandate:** `{tool, destination, max_amount, expires}` derived only from the user's turn, and content can't widen it |
-| Counterintelligence / firm rule | Dead-man switch: silence means stop | **Fail-closed:** timeout, crash or oversize input → deny egress + ALERT. Full-payload scan, never truncated |
+| Counterintelligence / reliability engineering | Dead-man switch: silence means stop | **Fail-closed:** timeout, crash or oversize input → deny egress + ALERT. Full-payload scan, never truncated |
 
 - Footnote: "Confirmation of Payee passed 2 billion checks (Pay.UK, Mar 2024)."
 

@@ -1,5 +1,5 @@
 // Every cap the T10 alert pipeline introduces, with why that value and what happens on overflow.
-// Firm rule: bounded + fail-loud. Nothing here truncates silently.
+// Team rule: bounded + fail-loud. Nothing here truncates silently.
 //
 // These are STORAGE/DISPLAY caps. They only shape what is written for the T5 dashboard. Block/allow
 // decisions are made earlier, by the proxy's inspectors over the FULL request/response body. No cap

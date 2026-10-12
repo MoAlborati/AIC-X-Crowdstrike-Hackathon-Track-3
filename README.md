@@ -1,63 +1,142 @@
-# AIC X Crowdstrike Hackathon
+# SentinelProxy
 
-> **SentinelProxy** — this repo's Track 3 project. (Repo title preserved from `main`.)
+**An inline AI detection-and-response guardrail for agents: a working slice of Falcon AIDR.**
 
-**SentinelProxy** is an inline, tool-boundary **detection-and-response guardrail** for AI agents — a
-working slice of CrowdStrike Falcon AIDR. It sits as a reverse proxy in front of an agent's
-OpenAI-compatible `/v1/chat/completions`, turns an indirect prompt injection into a Falcon/AIDR-shaped
-alert (mapped to MITRE ATLAS + OWASP), and detects + **blocks** data exfiltration the instant the agent
-tries it at the tool boundary — even when the attack evades the baseline 8KB scanner. Our target is
-**DVAA** (Damn Vulnerable AI Agent), the organizers' intentionally-vulnerable training sandbox, run
-offline on localhost. This is an authorized, sanctioned hackathon; all work is defensive.
+CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
+model and tools. It turns an indirect prompt injection into a Falcon/AIDR-shaped alert, mapped to MITRE
+ATLAS and OWASP, and it blocks data exfiltration before the agent acts. Our target is **DVAA** (Damn
+Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox, run offline on
+`127.0.0.1`. This is an authorized hackathon project, and all of the work is defensive.
+
+## The problem
+
+> "AI is rewriting the enterprise attack surface at breakneck speed. Each prompt becomes an entry point
+> for the adversary." (George Kurtz, CEO & founder, CrowdStrike)
+
+An agent with tools is a **confused deputy** (Hardy, "The Confused Deputy", ACM SIGOPS OSR 22(4):36–38,
+1988). It acts with the user's authority, but it takes instructions from any text it reads. In an
+**indirect prompt injection** (Greshake et al., "Not What You've Signed Up For", AISec '23), the attack
+arrives inside a tool result or a retrieved document, not from the user. The agent then sends private data
+to the attacker. Simon Willison calls this the "lethal trifecta": private data, untrusted content, and
+external communication (Jun 2025). OWASP lists it as LLM01 Prompt Injection and LLM02 Sensitive Information
+Disclosure. It is also ASI01 Agent Goal Hijack and ASI02 Tool Misuse in the OWASP Top 10 for Agentic
+Applications 2026. All pitch wording comes from [`planning/CITATIONS.md`](planning/CITATIONS.md).
+
+## Two enforcement points
+
+1. **Request-side proxy** ([`sentinel/proxy`](sentinel/proxy), with the T3 detectors in
+   [`sentinel/detectors`](sentinel/detectors)). It is a reverse proxy in front of the agent's
+   OpenAI-compatible `/v1/chat/completions`. It scans the **full** payload, with no 8KB window, for
+   honeytokens (including encoded forms), destination provenance (did the user or system turns
+   authorize this destination, or did it come only from untrusted tool output?), taint flow and secret shapes. It fails closed and **blocks before the request is forwarded**,
+   so the agent never acts on it.
+2. **Egress guard at the tool boundary** ([`sentinel/egress`](sentinel/egress), T12, PR #45). It is a forward
+   proxy on an internal Docker network whose only exit is the guard. Every outbound tool call is decided
+   **before it leaves**: honeytoken match, an exact-host allowlist, and fail-closed handling of oversize or
+   over-encoded payloads. This is what stops attacks that the agent reads inside its own process, such as a
+   poisoned `AGENTS.md`.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Agent client] -->|chat request| P[SentinelProxy<br/>sentinel/proxy + T3 detectors]
+  P -->|allowed only| D[DVAA agent<br/>127.0.0.1 only]
+  D -->|response, alert-only| P --> A
+  D -->|outbound tool call| E[Egress guard<br/>sentinel/egress, T12]
+  E -->|allowlisted only| X[(Internet / attacker canary)]
+  P -->|verdict| AL[T4 alerts<br/>ATLAS + OWASP, redacted]
+  E -->|verdict| AL
+  AL --> PL[T10 pipeline] --> DB[T5 dashboard<br/>127.0.0.1:9100]
+  C[(T1 captures + T6 corpus)] --> S[T7 scoring<br/>vs DVAA baseline]
+```
+
+More detail is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Quickstart
+
+You need Node 22 or newer (24 preferred), Docker with compose v2, git, curl and python3. No API keys are
+needed and no LLM is called.
+
+```bash
+scripts/eval.sh doctor    # check the tools and the pinned DVAA checkout; every FAIL prints a fix
+scripts/eval.sh up        # start the DVAA fleet, bound to 127.0.0.1 only
+scripts/eval.sh all       # doctor, up, test, score, contrast, dashboard, then a summary table
+demo/run-demo.sh --auto   # the deterministic demo, every beat back to back
+scripts/egress-demo.sh both   # egress guard live: observe (exfil lands), then block (prevented)
+```
+
+- [`EVAL.md`](EVAL.md) explains what each step shows and how to fix failures.
+- [`CHAT.md`](CHAT.md) explains how to ask the team's orchestrator agent a question through GitHub Issues.
+
+## Results
+
+The current numbers are in **[`sentinel/scoring/RESULTS.md`](sentinel/scoring/RESULTS.md)**, which is
+regenerated from the committed corpus by `scripts/eval.sh score`. We don't copy figures into this README,
+so it can't go stale. How to read them:
+
+- **Two lenses.** *Detection* asks whether we raised the right alert. *Prevention* asks whether the
+  exfiltration was actually stopped. We report both separately, because an alert-only check detects but
+  does not prevent.
+- **Benign false positives.** The 0% benign FP rate is measured against the same benign corpus that the
+  DVAA baseline detector is scored on, so the comparison is like for like.
+- **Beyond the baseline.** DVAA's own scanner looks only at the head and tail 8KB of a payload. Injections
+  placed in the middle of a long benign document evade it. SentinelProxy scans the full payload, and the
+  `evadesBaseline` cases in the corpus measure that difference.
+
+## Honest limitations
+
+- **DVAA runs its tools in-process.** The request-side proxy therefore cannot stop an action decided inside
+  the agent, so response-side checks are **alert-only**. Prevention happens at two points: before the
+  request is forwarded, and at the egress guard.
+- **Known redaction gaps in T4 alert redaction** (listed in PR #12). A card number that follows another
+  short digit group can pass unredacted. Double %-encoded and `\u`-escaped canaries can leak into alert
+  text. The egress guard decodes these forms for its *blocking* decision, but alert redaction does not.
+- **Egress guard scope** (T12). It does not intercept HTTPS: CONNECT is decided by host only. It does not
+  correlate egress events to chat turns. In-container loopback SSRF never reaches it.
+- Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
+  An injection that never attempts exfiltration may be flagged without being blocked.
 
 ## Repo map
+
 | Path | What |
 |---|---|
-| `GOAL.md` | North star + Definition of Done (the 7-item winning minimum). |
-| `LOOP.md` | The autonomous PR-driven goal-loop protocol + model policy + degradation protocol. |
-| `STATE.md` | Living loop state (phase, active ticket, open PRs, blockers, decision log). |
-| `BACKLOG.md` | Ordered tickets T1–T9 + stretch, deps graph, parallel waves. |
-| `AGENTS.md` | Roles, model policy, status-line contract, how `handoffs/` works. |
-| `gates/` | SE / tester / reviewer / delivery checklists (encode the firm's data-scale rules). |
-| `prompts/` | Reusable child-agent prompt templates the orchestrator fills per ticket. |
-| `handoffs/` | Per-ticket handoff files written on a degradation/safety stop. |
-| `sentinel/` | The product: `proxy/`, `detectors/`, `alerts/`, `dashboard/`, `scoring/`. |
-| `captures/` | Deterministic exploit transcripts + variants + contrast (replayed on stage). |
-| `demo/` | `<3-min` demo script, `run-demo.sh`, rehearsal logs. |
-| `planning/` | `STRATEGY.md` (why/how) + `RESEARCH.md` (evidence + citations). |
+| `sentinel/proxy` | T2 reverse proxy: bounded, fail-loud, observe or block mode |
+| `sentinel/egress` | T12 egress guard: forward proxy at the tool boundary, exact-host allowlist |
+| `sentinel/detectors` | T3 detectors: honeytokens, provenance, full-payload fail-closed scan |
+| `sentinel/alerts` | T4 alert schema, ATLAS/OWASP mapping, redaction |
+| `sentinel/pipeline` | T10 wiring: proxy verdicts → T4 alerts → dashboard sink |
+| `sentinel/dashboard` | T5 dashboard: deterministic replay, incident graph, alert feed |
+| `sentinel/scoring` | T7 harness: precision, recall, benign FP rate, latency, override rates |
+| `captures/` | T1 exploit transcripts, T6 attack and benign corpus, T8 secure-by-design contrast |
+| `demo/` | T9 demo runner, script, deck, rehearsal log |
+| `scripts/` | `eval.sh` (one-command evaluation and merge gate), DVAA setup, capture |
+| `planning/` | Strategy, research, verified citations, T3 spec, egress spike |
+| `GOAL.md`, `BACKLOG.md`, `STATE.md` | Definition of Done, tickets T1–T12, live loop state |
+| `LOOP.md`, `AGENTS.md`, `gates/`, `prompts/` | How the agent team builds this: PR-gated loop, roles, quality gates |
 
-## How the loop works
-The build runs as an autonomous, **PR-review-gated** loop: an orchestrator (main Opus 5.5 session) picks
-tickets from `BACKLOG.md`, dispatches child agents (`model: "opus"`) to implement/test/review each on its
-own branch, runs the `gates/`, and opens one PR per ticket for the operator to review. It pauses at each
-PR and advances other unblocked tickets meanwhile. Full protocol: **`LOOP.md`**. Degradation/handoff
-handling: `AGENTS.md`.
+**How it was built.** An orchestrator agent dispatched child agents, one branch and one PR per ticket.
+Each PR passed SE, tester, reviewer and delivery gates (`gates/`) and the merge gate
+`scripts/eval.sh gate <PR#>`, then a human or agent reviewer merged it. See [`LOOP.md`](LOOP.md).
 
-## Chat with the orchestrator
-Open an issue with the **"Chat with the orchestrator"** template, or comment on pinned issue **#32**. This is a
-priority async intake that runs in parallel with the build loop: the orchestrator answers chat before other
-work, usually in about a minute. Ask about status, decisions, or request work. Label `chat-urgent` to be answered
-first. Details: **[`CHAT.md`](CHAT.md)**.
+## Provenance and licensing
 
-## How to review PRs
-Each PR links its ticket + DoD item and fills `.github/pull_request_template.md` with gate evidence
-(SE / tester / reviewer / delivery), the bounds it introduced + their fail-loud failure modes, and how to
-verify locally. Check the gate boxes, confirm bounds are fail-loud (never silent truncation), then
-approve/merge. The orchestrator never merges its own PR without operator approval.
+- Every **attack** string in the corpus is copied **verbatim** from a published benchmark or from DVAA,
+  pinned to an upstream commit with its exact locator and sha256. `captures/variants/tools/verify-upstream.mjs`
+  re-checks them. We wrote only benign material.
+- Sources and licenses: deepset/prompt-injections (Apache-2.0), AgentDojo (MIT), InjecAgent (MIT) and DVAA
+  (Apache-2.0, OpenA2A). Copied DVAA code keeps its SPDX header and notice. The full table is in
+  [`captures/variants/LICENSES.md`](captures/variants/LICENSES.md).
+- Exfiltration destinations are the benchmarks' own static values or a local `127.0.0.1` canary. No real
+  secrets are used, and nothing is sent off the machine.
+- This repository does not have a top-level license file yet. Third-party content stays under its upstream
+  license.
 
-## Evaluate everything locally
-`scripts/eval.sh all` runs doctor, DVAA up, every test suite, scoring, the contrast and the dashboard. See
-**[`EVAL.md`](EVAL.md)** for what each step shows and how to fix failures.
+## Credits
 
-## Quickstart (placeholder — filled by T1/T2)
-```bash
-# 1. Bring up DVAA offline (organizer sandbox; no API key needed)
-#    Docker: docker run -p 127.0.0.1:9000:9000 -p 127.0.0.1:7001-7021:7001-7021 opena2a/dvaa:0.9.2
-#    Source: npm install && npm start   (Node >=24)   dashboard: http://localhost:9000
-#
-# 2. Run SentinelProxy in front of a target agent port   (added by T2)
-#    node sentinel/proxy/...   --target 7005 --mode block
-#
-# 3. Replay the demo deterministically from captures/     (added by T9)
-#    ./demo/run-demo.sh
-```
+- **Team:** Shruti Doshi and Mo Alborati, with an Opus 5.5 agent team (orchestrator plus implementer,
+  tester and reviewer agents).
+- **Target:** DVAA (Damn Vulnerable AI Agent) by OpenA2A, provided by the organizers.
+- **Benchmarks:** AgentDojo (Debenedetti et al., NeurIPS 2024), InjecAgent (Zhan et al., ACL Findings
+  2024) and deepset/prompt-injections.
+- **Hosts:** CrowdStrike and Santa Clara University.
