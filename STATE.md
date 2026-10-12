@@ -7,8 +7,8 @@
 - **As of:** 2026-10-12 ~12:00 PDT. **Deadline: 16:00 PDT.** **FEATURE FREEZE: 14:30 PDT.**
 - **Phase:** ENDGAME (operator decisions 11:58 PDT are below and in LOOP.md §Endgame policies)
 - **Merged to `main`:** #1 (T0), #2 (T0b), #3 (T4), #4 (T0c), #5 (T1), #7 (catch-up T0b+T0c+T1), #8 (citations),
-  #9 (T9 draft), #10 (T6), #11 (T5), #13 (T7), #15 (T6-fix). (#6 was closed and superseded by #7.)
-- **Open PRs:** #12 (T4-fix redaction), #14 (T2 proxy skeleton), #16 (T8 secure contrast)
+  #9 (T9 draft), #10 (T6), #11 (T5), #13 (T7), #15 (T6-fix), #16 (T8). (#6 was closed and superseded by #7.)
+- **Open PRs:** #12 (T4-fix redaction), #14 (T2 proxy skeleton)
 - **Active ticket:** T3 at its frozen minimum scope, plus #14, T10, and fixes (until 13:30)
 - **Last green gate:** delivery gate not yet run (scheduled 13:30–14:30, needs ≥5 clean replays)
 - **Demo rehearsal:** not started (scheduled 14:30–15:30; fallback video recorded last)
@@ -80,5 +80,5 @@ See BACKLOG.md. Next: **T3 at its frozen minimum scope** (see Decision Log 11:58
 | 3 AIDR alert | T4 | #3 | MERGED | T4-fix #12 open (ReDoS bounds) |
 | 4 Incident graph | T5 | #11 | MERGED | Deterministic replay; real metrics pending delivery gate |
 | 5 Scoring | T7 | #13 | MERGED | Real numbers pending delivery gate (13:30–14:30) |
-| 6 Secure contrast | T8 | #16 open | IN REVIEW | Finding: response-side is alert-only |
+| 6 Secure contrast | T8 | #16 | MERGED | Finding: response-side is alert-only |
 | 7 Demo script | T9 | #9 (draft) | DRAFT MERGED | Final deck + video at end; pitch claim after egress spike |
