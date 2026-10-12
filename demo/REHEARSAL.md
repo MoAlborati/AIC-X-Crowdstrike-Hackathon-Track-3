@@ -85,30 +85,42 @@ first, then the benign pass in Beat 4, then drop one mechanism in Beat 6.
 `gates/delivery-gate.md` (hackathon-scaled) requires **≥5 consecutive clean `demo/run-demo.sh` replays**,
 no errors, no nondeterministic variance, on the data-rich environment. Record each here and in STATE.md.
 
-**Environment for this log**
-- Machine: build host (WSL2 Linux); Node v24.16.0 (nvm) for dashboard + scoring.
-- Data-rich: real `captures/` corpus — dashboard served 33 replay captures; T7 scored 29 cases
-  (17 attack, 12 benign, incl. the >8KB EVA-POS-MIDDLE evasion fixture). DVAA fleet was also up
-  (22/22 ports healthy per `doctor`); replays used `--no-dvaa` so as not to stop the shared fleet.
-- Command: `demo/run-demo.sh --auto --no-dvaa`.
-- **All six core beats exercised live and PASS** (nothing NOT-YET-MERGED): doctor preflight, dashboard
-  (T5/#11), exploit + AIM twin (T1), request-side proxy block (T2/#14/#21), egress guard (T12/#18),
-  scoring (T7/#13). T7 headline is live now that the T3 detector (#24) is merged:
-  precision 100.0% · recall 88.2% · benign FP 0.0% · median 0.243 ms.
+**Environment for this log** (pass 3, 2026-10-12T19:43Z, branch `t9-beat4-fix` on origin/main `e0e5920`)
+- Machine: build host (WSL2 Linux); Node v22.22.3.
+- Data-rich: the dashboard served **357 replay captures**; T7 scored the full corpus. The live DVAA fleet
+  `dvaa-t1` was up, **22/22 ports healthy** per `doctor`. The runner detected the already-up fleet and did not
+  stop it on teardown.
+- Command: `EVAL_DASHBOARD_PORT=9107 demo/run-demo.sh --auto` (full mode, live fleet, no `--no-dvaa`).
+  Port 9107 was used because 9100 was held by another session's dashboard. On 9100 the dashboard preflight
+  reports FAIL/WARN by design.
+- **Beat 4 evidence re-recorded** with the shipped post-#41 CLI (`demo/record-beat4.sh`): block mode, shipped
+  `sentinel/config/sentinel.config.json`, live RAGBot 7005, request sent by DVAA's own `demo aim-ab`. Inspectors
+  registered: `[substring, sentinel-t3]`. **Blocking detector: `sentinel-t3` only**, reasons
+  `exfil_instruction_inbound`, `injection_markers`, `payee_not_confirmed`. The substring inspector produced no verdict,
+  because the shipped config has no `flagSubstrings`. Beat 4 now fails if the capture's detector or reason set
+  ever differs from the spoken credit. This guard was proven RED on the old T8 substring capture and GREEN on the
+  new one.
+- Every beat PASS, nothing NOT YET MERGED: doctor, DVAA, dashboard, exploit (2), 8KB evasion (2), AIM twin,
+  proxy block (T3), egress guard, scoring, dashboard stop. T7 headline at this pass (copied from the run, not
+  invented): detection recall 63.0% · prevention recall 41.8% · benign FP 0.0% · precision 100.0% · median 0.081 ms.
 
-| Replay | Date/time (UTC) | Exit | Duration | Beats PASS | Failing | Result |
+| Replay | Date/time (UTC) | Exit | Duration | Summary rows PASS | FAIL / WARN / NYM | Result |
 |---|---|---|---|---|---|---|
-| 1 | 2026-10-12T19:22Z | 0 | 3s | 6/6 | 0 | CLEAN |
-| 2 | 2026-10-12T19:22Z | 0 | 3s | 6/6 | 0 | CLEAN |
-| 3 | 2026-10-12T19:22Z | 0 | 4s | 6/6 | 0 | CLEAN |
-| 4 | 2026-10-12T19:22Z | 0 | 3s | 6/6 | 0 | CLEAN |
-| 5 | 2026-10-12T19:22Z | 0 | 4s | 6/6 | 0 | CLEAN |
+| 1 | 2026-10-12T19:43:18Z | 0 | 2s | 12/12 | 0 / 0 / 0 | CLEAN |
+| 2 | 2026-10-12T19:43:20Z | 0 | 2s | 12/12 | 0 / 0 / 0 | CLEAN |
+| 3 | 2026-10-12T19:43:22Z | 0 | 2s | 12/12 | 0 / 0 / 0 | CLEAN |
+| 4 | 2026-10-12T19:43:25Z | 0 | 2s | 12/12 | 0 / 0 / 0 | CLEAN |
+| 5 | 2026-10-12T19:43:27Z | 0 | 2s | 12/12 | 0 / 0 / 0 | CLEAN |
 
-**Verdict (this pass): PASS** — 5/5 consecutive clean replays, exit 0, 6/6 beats PASS each, no variance.
+**Verdict (this pass): PASS.** 5/5 consecutive clean replays, exit 0. The Beat 4 output was byte-identical
+across all 5 (same md5), so there was no variance.
 
+> Pass 2 (19:22Z, `--no-dvaa`) was also 5/5 clean, but its Beat 4 credited T3 for a capture whose
+> blocking detector was the T2 substring inspector (PR #35 review). Pass 3 above supersedes it.
 > An earlier pass (19:17Z, before T2/T12/T3 landed) was also 5/5 clean with the proxy/egress beats
 > correctly reporting NOT YET MERGED. Re-run this gate after any further corpus/detector change so the
 > T7 headline metrics on the slide stay in sync with `.eval/score/results.json`. Reproduce:
 > ```bash
-> for i in 1 2 3 4 5; do demo/run-demo.sh --auto --no-dvaa || echo "replay $i FAILED"; done
+> demo/record-beat4.sh          # optional: re-record Beat 4 from live DVAA with the shipped CLI
+> for i in 1 2 3 4 5; do demo/run-demo.sh --auto || echo "replay $i FAILED"; done
 > ```

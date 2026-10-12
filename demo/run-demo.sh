@@ -117,13 +117,29 @@ t3_beats_baseline_cmd() {   # T3 catches exactly the mid-document cases DVAA's b
            t3Caught:.byDetector.t3.beaten, cases:.byDetector.t3.cases}' "$RESULTS_JSON"
 }
 
-# T2 — request-side proxy block (PR #14/#21, MERGED). On stage we show the RECORDED block-mode proxy
-# verdict log from the T8 contrast run — deterministic, no live proxy spin-up inside the 3-min window
+# Beat 4 — request-side proxy block. On stage we show the RECORDED block-mode proxy log, re-recorded with the
+# SHIPPED CLI after #41 (inspectors [substring, sentinel-t3], shipped config, live DVAA RAGBot 7005, DVAA's own
+# aim-ab request) by demo/record-beat4.sh. Deterministic, no live proxy spin-up inside the 3-min window
 # (GOAL.md ground rule). Live encore after the clock stops:
 #   node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json   (then send a request through it)
-PROXY_BLOCK_JSONL="$REPO/captures/contrast/runs/proxy-block.proxy.jsonl"
+PROXY_BLOCK_JSONL="$REPO/demo/captures/beat4-proxy-block.proxy.jsonl"
+# The detector the spoken line credits. proxy_block_cmd FAILS if the capture's flagged verdict names anything
+# else, so the narration can never drift from the evidence.
+BEAT4_CREDITED_DETECTOR="sentinel-t3"
+BEAT4_CREDITED_REASONS='["exfil_instruction_inbound","injection_markers","payee_not_confirmed"]'
 proxy_block_cmd() {
-  jq -rc 'select((.action // "") | test("block")) | {request_id, action, target, latency_ms}' "$PROXY_BLOCK_JSONL"
+  jq -rc 'select(.type=="exchange" and ((.action // "") | test("block")))
+          | {action, target, status:.response.status, latency_ms,
+             verdicts:[.verdicts[] | select(.flagged==true) | {phase, detector, disposition, reasons}]}' "$PROXY_BLOCK_JSONL" || return 1
+  local got
+  got="$(jq -rc '[select(.type=="exchange" and ((.action // "") | test("block"))) | .verdicts[]? | select(.flagged==true) | .detector] | unique' \
+         "$PROXY_BLOCK_JSONL" | jq -sc 'add // [] | unique')"
+  [ "$got" = "[\"$BEAT4_CREDITED_DETECTOR\"]" ] || { echo "credited $BEAT4_CREDITED_DETECTOR but the capture's blocking detector(s) are $got"; return 1; }
+  local reasons
+  reasons="$(jq -rc 'select(.type=="exchange" and ((.action // "") | test("block"))) | [.verdicts[]? | select(.flagged==true) | .reasons[]] | sort' \
+             "$PROXY_BLOCK_JSONL" | jq -sc 'add // [] | unique')"
+  [ "$reasons" = "$BEAT4_CREDITED_REASONS" ] || { echo "spoken reason codes $BEAT4_CREDITED_REASONS but the capture has $reasons"; return 1; }
+  echo "blocking detector(s) in capture: $got, reasons $reasons (match the spoken credit)"
 }
 
 # T12 — egress-guard block (spike PR #18, MERGED). On stage we show the RECORDED egress-guard denials
@@ -270,15 +286,15 @@ else
 fi
 advance
 
-# ---- Beat 4 — request-side proxy BLOCK (T2 / PR #14) --------------------------
+# ---- Beat 4 — request-side proxy BLOCK (T2 proxy + T3 detector, #14/#24/#41) -----
 hdr "Beat 4 — DETECT -> BLOCK (green) · SentinelProxy in front of 7005"
 say "Same agent, same document, but now it goes through SentinelProxy."
-say "The poisoned request is blocked at the request boundary, before it is ever forwarded to the model — prevention is request-side (T3), not the response-side tripwire, which only raises an alert."
+say "The poisoned request is blocked at the request boundary, before it is ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side, not the response-side tripwire, which only raises an alert."
 if [ -f "$PROXY_BLOCK_JSONL" ]; then
-  run_cmd "proxy block: recorded block-mode verdict, pre-forward (action=blocked_request)" proxy_block_cmd
+  run_cmd "proxy block: recorded block-mode verdict from T3 (sentinel-t3), pre-forward (action=blocked_request)" proxy_block_cmd
   say "Blocked before the request reached the model. Nothing was forwarded, so nothing could be exfiltrated."
 else
-  nym "T2 request-side proxy block (captures/contrast/runs/proxy-block.proxy.jsonl, PR #14)"
+  nym "request-side proxy block (demo/captures/beat4-proxy-block.proxy.jsonl; record with demo/record-beat4.sh)"
   record "Beat 4 proxy block" "NOT YET MERGED" "proxy-block capture absent"
 fi
 advance

@@ -37,7 +37,8 @@ scripts/eval.sh up          # bring up the DVAA fleet (or scripts/setup-dvaa.sh 
 
 # 2. Proxy in front of RAGBot 7005, block mode (PR #14/#21, merged)
 #    Live encore (after the clock): node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json
-#    On stage: run-demo.sh Beat 4 shows the RECORDED block-mode verdict (deterministic, no live spin-up).
+#    On stage: run-demo.sh Beat 4 shows the RECORDED block-mode verdict (deterministic, no live spin-up),
+#    recorded with this exact shipped CLI + config against live DVAA by demo/record-beat4.sh.
 
 # 3. Dashboard on the replay captures (real, PR #11)
 scripts/eval.sh dashboard   # starts sentinel/dashboard/server.mjs on 127.0.0.1:9100 (loopback only)
@@ -122,20 +123,26 @@ This is DoD item 1 — **not optional**. `demo/run-demo.sh` Beat 3b drives it.
 
 ```bash
 # Benign request through the proxy is forwarded untouched (PR #14/#21):
-jq -rc 'select(.action=="forwarded") | {action, path:(.request.path)}' captures/contrast/runs/proxy-block.proxy.jsonl | head -1
+jq -rc 'select(.action=="forwarded") | {action, path:(.request.path)}' demo/captures/beat4-proxy-block.proxy.jsonl | head -1
 ```
 
 > "Now the attack."
 
 ```bash
-# The attack is blocked at the request boundary, BEFORE the request is forwarded — recorded block-mode verdict:
-jq -rc 'select((.action//"")|test("block")) | {request_id, action, target, latency_ms}' captures/contrast/runs/proxy-block.proxy.jsonl
+# The attack is blocked at the request boundary, BEFORE the request is forwarded — recorded block-mode verdict
+# (shipped CLI after #41, inspectors [substring, sentinel-t3]; re-record: demo/record-beat4.sh):
+jq -rc 'select(.type=="exchange" and ((.action//"")|test("block"))) | {action, target, status:.response.status, latency_ms, verdicts:[.verdicts[]|select(.flagged==true)|{phase, detector, disposition, reasons}]}' demo/captures/beat4-proxy-block.proxy.jsonl
 ```
 
-Expected: a `"blocked_request"` verdict against `127.0.0.1:7005` with a sub-millisecond `latency_ms`.
+Expected: `"action":"blocked_request"` against `127.0.0.1:7005`, status 403, and exactly one flagged verdict:
+`{"phase":"request","detector":"sentinel-t3","disposition":"block","reasons":["exfil_instruction_inbound","injection_markers","payee_not_confirmed"]}`.
+The T2 substring inspector also ran but did not fire (the shipped config has no `flagSubstrings`), so the credit is
+T3 alone. `run-demo.sh` fails Beat 4 if the capture ever names a different detector or reason set.
 
 *Screen, in order:*
-1. **Prevention is request-side:** the request is blocked **before it is forwarded** to the model (T3, #24).
+1. **Prevention is request-side:** the request is blocked **before it is forwarded** to the model. The verdict is
+   T3's (`detector: sentinel-t3`, #24, wired into the shipped CLI by #41), reason codes `exfil_instruction_inbound`,
+   `injection_markers`, `payee_not_confirmed`.
 2. The incident graph: poisoned RAG doc → sensitive read → `submit_to_index`, with the **taint path glowing red**.
 3. The request is marked **BLOCKED (pre-forward)**, with latency `<<METRIC: this call's detection latency, ms, from T5 readout>>`.
 4. A response-side honeytoken tripwire (e.g. `dvaa-admin-secret` surfacing in a reply) is **alert-only** — it
@@ -143,7 +150,7 @@ Expected: a `"blocked_request"` verdict against `127.0.0.1:7005` with a sub-mill
 5. The alert card shows `DetectName`, Severity, MITRE ATLAS / ATT&CK **T1567 · T1041**, OWASP LLM01 · LLM02 · LLM06,
    Agentic ASI01 · ASI02, **OASB-1**, plus the narrative case card ("Instruction originated in … → blocked by …").
 
-> "Blocked at the request boundary, before the request ever reached the model — so nothing was forwarded and
+> "Blocked at the request boundary by our T3 detector, before the request ever reached the model — so nothing was forwarded and
 > nothing could leave. Response-side honeytoken hits are alerts; the request-side block and the egress guard are
 > what prevent. The alert names the source document, the tool and the sink, mapped to MITRE ATLAS and OWASP."
 
@@ -165,7 +172,7 @@ scripts/eval.sh contrast
 |---|---|---|---|
 | RED | RAGBot 7005 | exfil executed (`dvaa.exfilExecuted=true`) | `aim-ab.demo.json` runA |
 | GREEN | RAGBot-AIM 7014 | denied by AIM (`exfilExecuted=false`) | `aim-ab.demo.json` runB |
-| GREEN | RAGBot 7005 + SentinelProxy | blocked pre-forward (`action=blocked_request`) | `captures/contrast/runs/proxy-block.proxy.jsonl` |
+| GREEN | RAGBot 7005 + SentinelProxy | blocked pre-forward (`action=blocked_request`) | `captures/contrast/runs/proxy-block.proxy.jsonl` (T8 run, stand-in substring inspector); T3 verdict: `demo/captures/beat4-proxy-block.proxy.jsonl` |
 
 **Prevention map (from T3, #24) — know which control actually stops each agent:**
 - **RAGBot 7005:** the poisoned request is blocked **request-side, before it is forwarded**. Prevention.
@@ -223,8 +230,8 @@ pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is
 | `<<T7: … score.json>>` | T7 | **FILLED (PR #13)** | `scripts/eval.sh score` → `.eval/score/results.json` |
 | `<<T6: … 8KB-evasion variant>>` | T6 | **FILLED (PR #10/#15)** | corpus test against DVAA's real `detectAttacks()`; EVA-POS-MIDDLE-001 |
 | `<<T8: SecureBot 7001 contrast>>` | T8 | **FILLED (PR #16)** | `scripts/eval.sh contrast` (verifies the recorded A/B vs ground truth) |
-| `<<T2: start proxy …>>` | T2 | **FILLED (PR #14/#21)** | recorded block-mode verdict: `captures/contrast/runs/proxy-block.proxy.jsonl` |
-| `<<T2/T5: replay … ALLOWED / BLOCKED>>` | T2/T3/T5 | **FILLED (PR #14/#21)** | `forwarded` vs `blocked_request` jq on the proxy verdict log (Beat 4) |
+| `<<T2: start proxy …>>` | T2 | **FILLED (PR #14/#21/#41)** | recorded block-mode verdict: `demo/captures/beat4-proxy-block.proxy.jsonl` (blocking detector `sentinel-t3`) |
+| `<<T2/T5: replay … ALLOWED / BLOCKED>>` | T2/T3/T5 | **FILLED (PR #14/#21/#41)** | `forwarded` vs `blocked_request` jq on the proxy verdict log (Beat 4) |
 | (egress guard, Beat 4b) | T12 | **FILLED (PR #18)** | `spike/egress/evidence-block.jsonl` — deny on honeytoken + allowlist |
 | `<<METRIC: precision / recall / benign FP rate / median latency / N / M>>` | T7 | **available (T3 #24 merged)** | numbers copied verbatim from `.eval/score/results.json`. **Do not invent.** |
 | `<<METRIC: this call's detection latency>>` | T5 | live | live readout on the dashboard, no slide number |
