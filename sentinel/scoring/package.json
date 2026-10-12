@@ -8,6 +8,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "score": "node cli.mjs",
+    "rescore": "node cli.mjs --iterations 15",
     "test": "node --test \"test/*.test.mjs\""
   }
 }

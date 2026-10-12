@@ -1,6 +1,6 @@
 // SentinelProxy T3 — every cap the detector enforces, in one place, plus the fail-loud error types.
 //
-// Firm rule (bounded + fail-loud): every input the detector scans or accumulates has a hard cap. On
+// Team rule (bounded + fail-loud): every input the detector scans or accumulates has a hard cap. On
 // overflow the detector RAISES (these errors) or returns a fail-closed BLOCK verdict carrying
 // {payload_size, cap, action}, and logs it at ERROR. It never truncates silently. DVAA's own
 // `detectionText()` keeps only the first and last 8 KiB of a long input and drops the middle; that

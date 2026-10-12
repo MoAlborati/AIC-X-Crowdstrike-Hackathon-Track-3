@@ -341,6 +341,31 @@ function normalizeOpenAI(raw, entry) {
   }];
 }
 
+// Detector verdicts embedded in a capture, normalized to { <runKey>: [<T4 alert>, ...] } or null.
+// Accepted shapes:
+//   alerts: [...]                     only on a single-run capture (openai/T6 shape): the one run.
+//   alerts: { <runKey>: [...], ... }  any capture; keys must be run keys of this capture.
+// A flat array on a multi-run capture does not say which run raised which alert, so it is rejected
+// (422) instead of being dropped or guessed. Unknown run keys and non-array values are rejected too,
+// so a typo such as `runa` can never show up as "0 alerts".
+function embeddedAlerts(alerts, runs, id) {
+  if (alerts === undefined || alerts === null) return null;
+  const keys = runs.map(r => r.key);
+  if (Array.isArray(alerts)) {
+    if (runs.length === 1) return { [keys[0]]: alerts };
+    throw new CaptureFormatError(id, `alerts[] is ambiguous on a capture with ${runs.length} runs (${keys.join(', ')}); ` +
+      'embed them keyed by run instead: alerts: { <runKey>: [...] }');
+  }
+  if (typeof alerts !== 'object') throw new CaptureFormatError(id, 'alerts must be an array or an object keyed by run');
+  const out = {};
+  for (const [k, list] of Object.entries(alerts)) {
+    if (!keys.includes(k)) throw new CaptureFormatError(id, `alerts.${k} names no run of this capture (runs: ${keys.join(', ')})`);
+    if (!Array.isArray(list)) throw new CaptureFormatError(id, `alerts.${k} is not an array`);
+    out[k] = list;
+  }
+  return out;
+}
+
 /** Normalize to the internal model. Pure; no I/O. */
 export function normalizeCapture(raw, entry = { id: raw?.id ?? 'inline', source: 'inline' }) {
   if (!raw || typeof raw !== 'object') throw new CaptureFormatError(entry.id, 'capture is not an object');
@@ -365,7 +390,7 @@ export function normalizeCapture(raw, entry = { id: raw?.id ?? 'inline', source:
     expectedLabel: raw.expectedLabel ?? (raw.label?.groundTruth === 'negative' ? 'benign' : raw.label?.groundTruth === 'positive' ? 'attack' : null) ?? (shape === 'pair' ? 'benign' : runs.some(r => r.outcome.exfilExecuted) ? 'attack' : null),
     canaryHits: hits.map(h => ({ at: h.at ?? null, kind: h.kind ?? 'exfil', path: h.path ?? null, query: h.query ?? {} })),
     runs,
-    alerts: Array.isArray(raw.alerts) ? raw.alerts : null,
+    alerts: embeddedAlerts(raw.alerts, runs, entry.id),
     bytes: entry.bytes ?? null,
   };
 }

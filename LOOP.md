@@ -1,7 +1,7 @@
 # LOOP — Autonomous Goal-Loop Protocol
 
 How we execute GOAL.md autonomously through agents, shipping PRs you review/respond to.
-Modeled on the firm's convergence process (see `gates/` — encodes the content-engine data-scale rules).
+Follows the team's convergence process (see `gates/` — encodes the team's data-scale reliability rules: bounded/fail-loud, data-rich testing, delete-the-fix proof).
 
 ## Roles
 - **Operator (you, humans):** review PRs, approve/merge, answer blockers in STATE.md. Final authority.
@@ -61,8 +61,9 @@ loop, and the orchestrator **answers chat before other work**, with `chat-urgent
 2. **SE gate:** confirm the ticket's spec + acceptance criteria + bounds are explicit
    (`gates/se-gate.md`). If unclear, ask the operator in STATE.md Blockers; do not guess.
 3. **Build:** Implementer agent creates the branch, implements, writes tests with data-rich fixtures.
-4. **Tester gate:** Tester agent runs `gates/tester-gate.md`. Must be GREEN (real seams, >=200-equiv
-   fixtures where applicable, delete-the-fix proof for any bug fix). RED -> back to Build.
+4. **Tester gate:** Tester agent runs `gates/tester-gate.md`. Must be GREEN: real seams,
+   data-rich fixtures where applicable (>8KB payloads, multi-hundred-row tool outputs), and the
+   delete-the-fix proof for any bug fix. RED -> back to Build.
 5. **Reviewer gate:** Reviewer agent runs `gates/reviewer-gate.md` adversarially. Fix findings.
 6. **Open PR:** push branch, open PR with the template filled (links ticket, DoD item, gate evidence).
    Set STATE.md: ticket -> IN REVIEW, record PR number. **STOP and wait for operator** on that ticket.
@@ -101,10 +102,12 @@ Operator's direction: "limit scope, our goal is to win the hackathon". These ove
   come at the end.
 
 ## Worktrees (required for concurrent tickets)
-- **Every concurrently running ticket MUST use its own `git worktree`** at `/home/gingy/crowdstrike-<ticket>`
-  (e.g. `/home/gingy/crowdstrike-t3`), created with
-  `git worktree add -b <branch> /home/gingy/crowdstrike-<ticket> origin/<base>`. Agents work, commit and push only there.
-- **The main checkout (`/home/gingy/crowdstrike`) is orchestrator-only.** No child agent edits, checks out a branch or
+One worktree per ticket, sibling of the main checkout. Below, `<repo>` is the absolute path of the main
+checkout and `../<repo>-<ticket>` is the ticket's worktree directory next to it.
+- **Every concurrently running ticket MUST use its own `git worktree`** at `../<repo>-<ticket>`
+  (e.g. `../<repo>-t3`), created with
+  `git worktree add -b <branch> ../<repo>-<ticket> origin/<base>`. Agents work, commit and push only there.
+- **The main checkout (`<repo>`) is orchestrator-only.** No child agent edits, checks out a branch or
   commits in it.
 - Why: during T0b/T1, agents shared the main checkout, and one agent's `git checkout` moved HEAD under another, so a commit landed on
   **another agent's branch**. Separate worktrees give each agent its own HEAD and index.
@@ -128,7 +131,7 @@ same checkout (§Worktrees). Dashboard + detector + attack bench are disjoint an
 - Hard stop conditions: **16:00 PDT deadline**; OR all 7 DoD items merged + demo rehearsed green; OR operator says stop; OR a
   blocker in STATE.md is unresolved and no unblocked ticket remains (then: surface, wait).
 
-## Guardrails (firm rules, non-negotiable)
+## Guardrails (team data-scale reliability rules, non-negotiable)
 - **Bounded + fail-loud:** any input the detector assembles/scans must be bounded; on overflow, ALERT/
   raise — never silently truncate. (DVAA's 8KB-scan baseline is the anti-pattern we beat.)
 - **Data-rich verification:** gates require real DVAA agents / data-rich fixtures, not 2-3 row toys.

@@ -1,8 +1,9 @@
 # SentinelProxy — deck outline (10 slides + 1 backup)
 
-> **Status: DRAFT (T9-draft).** Pairs with `demo/SCRIPT.md`, and the slide numbers here match the beat sheet.
+> **Status: T9 — wired to merged components.** Pairs with `demo/SCRIPT.md` (driven by `demo/run-demo.sh`), and
+> the slide numbers here match the beat sheet. Main now has T2–T8 + T11; the 8KB-evasion beat is required (DoD 1).
 > Rules:
-> - Every factual claim is the verbatim "Safe slide wording" from `planning/CITATIONS.md` (branch `t-citations`).
+> - Every factual claim is the verbatim "Safe slide wording" from `planning/CITATIONS.md` (PR #8, merged).
 > - Metric slots `<<METRIC: …>>` are filled only from T7 output. **Never estimate.**
 > - Narrative pattern from `planning/ADJACENT.md` §5: **one** narrative analogy (the bank teller), then the
 >   structure (confused deputy), then 2–3 mechanisms that pass the precondition test (§4), each with its source field.
@@ -60,12 +61,16 @@ SentinelProxy sits.
 - Left pane: the terminal replay of `captures/attack/aim-ab.demo.json` runA.
 - Callouts: `submit_to_index` → canary hit carrying `dvaa-admin-secret` + `SSN 123-45-6789` (fake sandbox values).
 - Badge: `dvaa.exfilExecuted = true`.
-- *(If T6 merged)* Sub-callout: "DVAA's baseline scanner: no detection (signal outside head+tail 8KB)."
+- **8KB-evasion moment (REQUIRED — DoD item 1):** the two mid-document T6 variants
+  (`EVA-POS-MIDDLE-001`, `EVA-BENCH-MIDDLE-001`) hide the injection between DVAA's head/tail 8KB windows
+  (`docLength ≈ 22.8KB`, `injectionAtByte ≈ 11.3K`, `inMiddleGap=true`) → DVAA's baseline scanner: **no detection**.
+  A full scan still carries the signal. SentinelProxy (T3) catches **both** cases the baseline misses (`t3 2/2`).
 
 **Speaker notes**
-Beat 3 (0:40–1:10). This is a deterministic replay of DVAA's own bundled payload (APWN-DE-003), with no live LLM.
-Pause for two seconds after the secret appears. Show the 8KB-evasion sub-callout only if a T6 variant is merged and
-verified. Otherwise remove it from the slide. DVAA is the organizer-provided sandbox, and every secret is fake.
+Beat 3 (0:40–1:00) + Beat 3b (1:00–1:20). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
+LLM. Pause two seconds after the secret appears. The 8KB-evasion beat is DoD item 1 — **always run it**; the proof is
+the two mid-document fixtures plus the T7 "beats baseline" output (`scripts/eval.sh score`). DVAA is the
+organizer-provided sandbox; every secret is fake.
 
 ---
 
@@ -73,17 +78,19 @@ verified. Otherwise remove it from the slide. DVAA is the organizer-provided san
 
 **On slide**
 - Dashboard screenshot or live pane: incident graph, poisoned RAG doc → sensitive read → `submit_to_index`,
-  with the taint path in red and the sink marked **BLOCKED**.
+  with the taint path in red and the request marked **BLOCKED (pre-forward)** — blocked before it is forwarded.
 - Benign row first: `7005 travel-policy question → ALLOWED`.
 - Latency readout: `<<METRIC: this call's detection latency, ms (T5 readout)>>`.
-- Alert card: DetectName · Severity · MITRE ATLAS · ATT&CK "T1567 Exfiltration Over Web Service" ·
-  "LLM01 Prompt Injection · LLM02 Sensitive Information Disclosure · LLM06 Excessive Agency" · ASI01 · ASI02.
+- Alert card: DetectName · Severity · MITRE ATLAS · ATT&CK "T1567 Exfiltration Over Web Service · T1041
+  Exfiltration Over C2 Channel" · "LLM01 Prompt Injection · LLM02 Sensitive Information Disclosure ·
+  LLM06 Excessive Agency" · Agentic ASI01 · ASI02 · **OASB-1**.
 
 **Speaker notes**
-Beat 4 (1:10–1:45). Order matters: benign passes first, then the attack is blocked (ADJACENT §6a, FP economics).
-Then point at the case card: it names the *source* document, the tool and the sink, not just "blocked". The honeytoken
-tripwire is our deterministic insurance and fires on the exact planted secret. Use the tags that T4 actually
-emits in `sentinel/alerts/mapping.js`. Don't add tags by hand.
+Beat 4 (1:20–1:50). Order matters: benign passes first, then the attack is **blocked request-side, before the request
+is forwarded** (ADJACENT §6a, FP economics). Prevention is the request-side block (T3) and the egress guard (T12) — a
+response-side honeytoken tripwire is **alert-only**, deterministic insurance that names the exact planted secret but
+does not by itself prevent. Point at the case card: it names the *source* document, the tool and the sink, not just
+"blocked". Use the tags T4 actually emits in `sentinel/alerts/mapping.js`. Don't add tags by hand.
 
 ---
 
@@ -94,16 +101,20 @@ emits in `sentinel/alerts/mapping.js`. Don't add tags by hand.
 | RED | GREEN | GREEN |
 |---|---|---|
 | **RAGBot 7005** | **RAGBot-AIM 7014** | **RAGBot 7005 + SentinelProxy** |
-| exfil executed | denied: "action 'http:post' is outside the agent's declared capability grant" | blocked at the proxy, before the call |
-| `exfilExecuted=true` | `exfilExecuted=false` | `<<T2/T3 replay verdict>>` |
+| exfil executed | denied: "action 'http:post' is outside the agent's declared capability grant" | blocked pre-forward, before the request is sent |
+| `exfilExecuted=true` | `exfilExecuted=false` | `action=blocked_request` (proxy-block.proxy.jsonl) |
 
-- Footer *(if T8 merged)*: SecureBot 7001 with the same payload gives `<<T8 contrast result>>`.
+- Footer (T8, PR #16, merged): `scripts/eval.sh contrast` verifies the A/B against DVAA ground truth
+  (SecureBot 7001 + AIM 7014 + SentinelProxy). The recorded runs are checked, never rewritten.
+- **Prevention map (from T3, #24):** RAGBot 7005 → blocked **request-side, pre-forward**; LegacyBot 7003 →
+  **reply withheld**; RepoBot 7022 → proxy **alert-only**, and **T12's egress guard is the control that stops it**.
 
 **Speaker notes**
-Beat 5 (1:45–2:05). The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
+Beat 5 (1:50–2:05). The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
 which is secure by design. The point to make: AIM works because someone rebuilt the agent, while SentinelProxy protects
-the *unmodified* 7005 from outside. Both quoted verdicts come straight from `aim-ab.demo.json`. Don't claim we beat
-AIM. We complement it.
+the *unmodified* 7005 from outside. Both quoted verdicts come straight from `aim-ab.demo.json`. Different agents are
+prevented by different controls (see the prevention map) — request-side block, response withhold, or egress guard —
+and response-side tripwires are alert-only. Don't claim we beat AIM. We complement it.
 
 ---
 
@@ -115,7 +126,7 @@ AIM. We complement it.
 |---|---|---|
 | Payments fraud | Confirmation of Payee: check the payee before money moves | **Destination provenance:** a destination that appears only in untrusted tool output → BLOCK `payee_not_confirmed` |
 | Agency law / OAuth | Limited power of attorney: the agent can't exceed what the principal granted | **User-turn mandate:** `{tool, destination, max_amount, expires}` derived only from the user's turn, and content can't widen it |
-| Counterintelligence / firm rule | Dead-man switch: silence means stop | **Fail-closed:** timeout, crash or oversize input → deny egress + ALERT. Full-payload scan, never truncated |
+| Counterintelligence / reliability engineering | Dead-man switch: silence means stop | **Fail-closed:** timeout, crash or oversize input → deny egress + ALERT. Full-payload scan, never truncated |
 
 - Footnote: "Confirmation of Payee passed 2 billion checks (Pay.UK, Mar 2024)."
 

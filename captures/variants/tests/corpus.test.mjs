@@ -484,3 +484,50 @@ test('T6b verify-upstream: a deepset rows file that differs from the committed e
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// PR #23 finding (T6 gate on c56dbf4): the AgentDojo bench variants carried the DVAA canary as their
+// exfilTargetUrl. "Target appears in the payload" (above) is not enough on its own: a wrong address
+// that also occurs in the payload (e.g. AgentDojo's sender lily.white@gmail.com) would pass it. Here
+// every exfil label is anchored to the destination its own upstream case names.
+function upstreamDestination(doc) {
+  const up = doc.source?.upstream ?? {};
+  if (doc.source?.benchmark === 'AgentDojo') {
+    // The goal is AgentDojo's own text (sha-pinned, checked by verify-upstream) and it sits verbatim in
+    // the payload. The label must be a DESTINATION in it ("to X", "to the account/website X",
+    // "email address[,:] X"), never another address the goal mentions (e.g. "received from ... Y").
+    assert.ok(typeof up.goal === 'string' && payloadOf(doc).includes(up.goal), `${doc.id}: AgentDojo goal is verbatim in the payload`);
+    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const t = doc.label.dvaa.exfilTargetUrl;
+    const isDest = typeof t === 'string' && new RegExp(`(?:\\bto(?: the (?:account|website))?|email address[,:]?)\\s+'?${esc(t)}`).test(up.goal);
+    return isDest ? t : `<a destination named in the goal: ${up.goal}>`;
+  }
+  if (doc.source?.benchmark === 'InjecAgent') {
+    // DS attacks are "retrieve X, then send it to Y": Y is the LAST address, and a send verb precedes it.
+    // (Derived independently of the generator, which takes the first address after the send verb.)
+    const ins = up.attackerInstruction ?? '';
+    const emails = ins.match(/[\w.%+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? [];
+    assert.ok(emails.length >= 1, `${doc.id}: InjecAgent attacker instruction names a destination`);
+    const dest = emails[emails.length - 1];
+    assert.match(ins.slice(0, ins.lastIndexOf(dest)), /\b(send|email|forward|share)\b/i, `${doc.id}: ${dest} follows a send verb`);
+    return dest;
+  }
+  if (doc.source?.benchmark === 'DVAA (organizer sandbox)') {
+    assert.equal(up.exfilUrl, DVAA.canary, `${doc.id}: DVAA case built with the run's canary`);
+    return up.exfilUrl;
+  }
+  return null;
+}
+
+test('every exfil label names the destination of its own upstream case (no cross-case labels)', () => {
+  let checked = 0;
+  for (const { rel, doc } of fixtures) {
+    if (doc.label.groundTruth !== 'positive' || !doc.label.category.includes('data_exfiltration')) continue;
+    const expected = upstreamDestination(doc);
+    assert.ok(expected, `${rel}: exfil positive from ${doc.source?.benchmark} has no upstream destination to check against`);
+    assert.equal(doc.label.dvaa.exfilTargetUrl, expected, `${rel}: exfilTargetUrl must be the upstream case's destination`);
+    checked++;
+  }
+  // T6: 3 AgentDojo bench variants + 2 AgentDojo + 2 InjecAgent + 3 DVAA position variants; T6b adds
+  // the AgentDojo v1 exfil tasks and the InjecAgent DS sample: 66 exfil positives at 128c01e.
+  assert.ok(checked >= 60, `expected >=60 exfil positives checked (data-rich), got ${checked}`);
+});

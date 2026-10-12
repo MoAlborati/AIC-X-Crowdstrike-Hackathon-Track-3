@@ -199,11 +199,14 @@ author only placement and labels:
   - deepset label → `prompt_injection` / `benign`.
   - AgentDojo injection tasks that send user data to an attacker sink → exfil, with the sink as
     `exfilTargetUrl`. The table is `AGENTDOJO_EXFIL` in `build-benchmark-fixtures.mjs`, and each sink is
-    checked to appear in the GOAL.
+    checked to appear in the GOAL. `tests/corpus.test.mjs` also checks that it is a *destination* there
+    ("to X", "to the account/website X", "email address[,:] X"), not another address the goal mentions.
   - All other AgentDojo goals (money transfer, password change, phishing link, ...) and every InjecAgent DH
     case → `indirect_prompt_injection`, a new category with the same tags as mapping.js
     `CATEGORY_MAP.indirect_prompt_injection`.
-  - InjecAgent DS → exfil to the email address in the attacker instruction.
+  - InjecAgent DS → exfil to the address the send step names: the first email after the send verb
+    (`send|email|forward|share`), not the first email in the text. Case 379 looks up `john.doe@gmail.com`
+    and emails the result to `amy.watson@gmail.com`.
 - **No baseline filter.** T6's "benign is clean under DVAA's patterns" guard now applies only to
   **authored** benign. Verbatim upstream rows are kept whether or not DVAA's patterns flag them: 10 benign
   rows trip them, which is a real baseline FP. Exfil positives must still carry their sink in the tool
