@@ -1,0 +1,14 @@
+{
+  "name": "@sentinelproxy/pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelProxy T10: proxy verdicts -> T4 alerts -> T5 dashboard captures + sidecars. Zero dependencies.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "convert": "node cli.mjs convert",
+    "tail": "node cli.mjs tail",
+    "live": "node cli.mjs live"
+  }
+}
