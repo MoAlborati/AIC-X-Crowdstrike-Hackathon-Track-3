@@ -166,7 +166,7 @@ test('worst case: every field at max still fits MAX_ALERT_BYTES (size guard neve
 
 test('string beyond the redaction scan cap is withheld whole (not partially scanned) + warning', () => {
   const { warnings, onWarning } = warnSink();
-  const secret = 'AKIAZZZZZZZZZZZZZZZZ';
+  const secret = 'AKIA' + 'Z'.repeat(16); // fake, built by concatenation
   const evidence = 'a'.repeat(MAX_REDACT_SCAN_CHARS) + secret; // secret sits past the scan cap
   const a = buildAlert(makeVerdict('egress_secret_pattern', 5, { evidence }), { onWarning });
   assert.ok(!JSON.stringify(a).includes(secret));
@@ -181,4 +181,43 @@ test('golden: examples/sample-verdict.json renders exactly examples/sample-alert
   const a = buildAlert(read('sample-verdict.json'));
   assert.deepEqual(JSON.parse(JSON.stringify(a)), read('sample-alert.json'));
   assert.deepEqual(validateAlert(a), []);
+});
+
+// ---- Review S2 (PR #3): type-check non-string inputs, cap canary id --------------------------------
+test('S2: non-string optional fields are rejected loudly (no unbounded object passes through)', () => {
+  const obj = { nested: 'x'.repeat(10_000) };
+  const cases = [
+    ['evidence', (v) => { v.evidence = obj; }],
+    ['alertId', (v) => { v.alertId = 42; }],
+    ['entities.agent.port', (v) => { v.entities.agent.port = 'x'.repeat(10_000); }],
+    ['entities.agent.port', (v) => { v.entities.agent.port = 70_000; }],
+    ['entities.agent.id', (v) => { v.entities.agent.id = obj; }],
+    ['entities.toolCall.argsPreview', (v) => { v.entities.toolCall.argsPreview = obj; }],
+    ['entities.sink.destination', (v) => { v.entities.sink.destination = [obj]; }],
+    ['taintPath[0].trust', (v) => { v.taintPath[0].trust = obj; }],
+    ['caseCard.narrative', (v) => { v.caseCard = { narrative: obj }; }],
+    ['canary.id', (v) => { v.canary = { id: 'C'.repeat(BOUNDS.MAX_LABEL_CHARS + 1), value: 'dvaa_canary_x1' }; }],
+    ['canary.id', (v) => { v.canary = { id: 'C]1', value: 'dvaa_canary_x1' }; }],
+    ['canary.value', (v) => { v.canary = { id: 'C1', value: 'v'.repeat(5000) }; }],
+    ['canaries', (v) => { v.canaries = Array.from({ length: 65 }, (_, i) => ({ id: `C${i}`, value: `dvaa_canary_${i}` })); }],
+    ['canaries[0]', (v) => { v.canaries = [{ id: 'C1' }]; }],
+  ];
+  for (const [field, mutate] of cases) {
+    const v = makeVerdict('honeytoken_exfil', 0);
+    mutate(v);
+    assert.throws(() => buildAlert(v), (e) => e instanceof AlertValidationError && e.issues.some((i) => i.startsWith(field)), field);
+  }
+});
+
+test('S2: valid numeric port and max-length canary id are accepted; Canary.Id is redacted + bounded', () => {
+  const { onWarning } = warnSink();
+  const id = 'C'.repeat(BOUNDS.MAX_LABEL_CHARS);
+  const a = buildAlert(makeVerdict('honeytoken_exfil', 0, { canary: { id, value: 'dvaa_canary_x1' } }), { onWarning });
+  assert.equal(a.Entities.Agent.Port, 3000);
+  assert.equal(a.Canary.Id, id);
+  // a secret-shaped id never reaches the alert verbatim
+  const awsId = 'AKIA' + 'R'.repeat(16);
+  const b = buildAlert(makeVerdict('honeytoken_exfil', 0, { canary: { id: awsId, value: 'dvaa_canary_x1' } }), { onWarning });
+  assert.ok(!JSON.stringify(b).includes(awsId));
+  assert.ok(b.Canary.Id.length <= BOUNDS.MAX_LABEL_CHARS);
 });
