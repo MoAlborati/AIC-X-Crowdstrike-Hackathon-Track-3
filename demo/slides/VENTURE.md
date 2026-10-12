@@ -17,11 +17,16 @@ that text makes the agent send private data out with the user's authority. This 
 data, untrusted content, external communication.
 
 **Who uses it and who pays.**
+- **Buyer in one line:** teams running agents they can't rebuild. That means a vendor agent, an open-source agent, or a legacy internal one, where you can't rewrite the prompts or the tool code but you can control its network.
 - **User:** the platform or AppSec engineer who ships an internal or customer-facing agent on an OpenAI-compatible API.
-- **Buyer:** the head of engineering or security at a mid-size software company that is shipping agents and has no
+- **Budget holder:** the head of engineering or security at a mid-size software company that is shipping agents and has no
   enterprise AI detection-and-response (AIDR) budget yet. Their problem is "we can't ship this agent until security signs off on what it can send out".
 
-**How it stands apart** (we are *not* a better classifier):
+**Wedge:** an egress sidecar for agent tool calls. It is one container that becomes the agent's only route out. It needs no code changes and no model changes, and it runs in observe mode first.
+
+**How it stands apart: destination provenance vs prompt-content classifiers.** Classifiers ask "does this text look
+like an attack?", and an attacker can reword it. We ask "did the user authorize this destination, and is it on the
+allowlist?" Rewording doesn't change where the data goes. We are *not* a better classifier:
 
 | | What it is | Where SentinelProxy fits |
 |---|---|---|
@@ -32,10 +37,11 @@ data, untrusted content, external communication.
 Our edge, in four parts: **drop-in sidecar** · **default-deny egress at the tool boundary** · **deterministic rules**
 (same input, same verdict) · **low false-positive posture**.
 
-**Path to launch.**
-1. **Open-source sidecar** (today): reverse proxy plus egress guard, run in observe mode first, then block.
-2. **Managed policy and alert routing**: hosted allowlists and honeytoken registry, with alerts routed to the tools a team already uses.
-3. **SOC integration**: alerts go into analyst triage. This already works offline as a prototype with our Track 1 SOC Brief (`scripts/soc-handoff.sh`).
+**Path to launch** (each step has a concrete exit test):
+1. **Now, prototype:** the reverse proxy and egress guard run against DVAA and our own OpsBot, with a scored corpus and a working demo.
+2. **Next, open-source sidecar:** one compose file in front of any OpenAI-compatible agent. Design partners run it in observe mode to measure false positives on their real traffic. *Exit test:* a partner leaves it in block mode.
+3. **Then, paid managed policy and alert routing:** hosted allowlists and a honeytoken registry, with alerts routed to the tools a team already uses. This is the paid tier, and its price will come from design partners, not a guess.
+4. **Then, SOC integration:** alerts go into analyst triage. This already works offline as a prototype with our Track 1 SOC Brief (`scripts/soc-handoff.sh`).
 
 **Evidence (from `results.json`).** Where data actually leaves, we prevent **57 of 71** exfil attempts with **0 of 164**
 legitimate requests blocked. DVAA's own scanner prevents 64 of 71 but blocks 21 of 164.
@@ -45,10 +51,10 @@ legitimate requests blocked. DVAA's own scanner prevents 64 of 71 but blocks 21 
 ## Speaker notes (about 30 seconds, about 80 words)
 
 "Agents read untrusted text and act with your authority, so one hidden instruction can send customer data out.
-Who pays: a mid-size software team shipping agents on OpenAI-compatible APIs, without an enterprise AIDR budget.
-We're not a better classifier. We're a drop-in sidecar that default-denies where data can go. Where data actually
+Who pays: teams running agents they can't rebuild, without an enterprise AIDR budget.
+Our wedge is an egress sidecar for agent tool calls. Classifiers judge the wording. We judge the destination, and rewording doesn't change it. Where data actually
 leaves, we prevent 57 of 71 attempts with zero of 164 legitimate requests blocked. The baseline stops 64 but blocks 21.
-Path: open-source sidecar, then managed policy, then SOC integration."
+Path: open-source sidecar with design partners, then paid managed policy, then SOC integration."
 
 ## Do not say
 - Any market size, price point, customer name, or "customers are asking". We have none of these.

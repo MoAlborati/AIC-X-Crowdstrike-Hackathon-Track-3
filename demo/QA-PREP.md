@@ -241,6 +241,12 @@ mode for a week, see the alerts, then turn on block. We don't have that customer
 **Proof:** `track3a/` OpsBot, the exact shape of that agent (ticket reader, customer lookup, `http_post`), defended
 by the same unmodified proxy.
 
+**V6. "Why won't CrowdStrike just build this?" (15-second answer)**
+"They might, and that would prove the problem is real. They sell to enterprises with a Falcon budget. We start where
+that budget doesn't exist yet: teams running agents they can't rebuild. Our alerts already use an AIDR-shaped schema, so we're a feeder for
+that platform or an acquisition target, not a rival to it."
+**Proof:** `sentinel/alerts` (AIDR-shaped T4 schema); `planning/CITATIONS.md` (AIDR is GA and integrates NeMo Guardrails, so platforms do partner).
+
 ---
 
 ### If you blank
