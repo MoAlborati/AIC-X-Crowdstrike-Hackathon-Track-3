@@ -277,6 +277,26 @@ test('more than MAX_CAPTURE_FILES captures returns 507; the index never lists on
   }
 });
 
+test('MAX_CAPTURE_FILES is >= 2000 and 1201 captures (past the old 500 cap) all index with 200, none dropped (#112 C#3)', async () => {
+  assert.ok(BOUNDS.MAX_CAPTURE_FILES >= 2000, `cap ${BOUNDS.MAX_CAPTURE_FILES} must leave headroom over the ~358 real captures`);
+  const N = 1201;
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-dash-'));
+  try {
+    await mkdir(path.join(dir, 'many'));
+    const body = JSON.stringify({ request: { messages: [{ role: 'user', content: 'hi' }] }, response: {} });
+    await Promise.all(Array.from({ length: N }, (_, i) => writeFile(path.join(dir, 'many', `c${i}.json`), body)));
+    await withServer([{ dir, source: 'captures' }], async (base) => {
+      const r = await fetch(`${base}/api/captures`);
+      assert.equal(r.status, 200);
+      const ids = (await r.json()).captures.map((c) => c.id);
+      assert.equal(ids.length, N, 'every capture is listed');
+      for (const i of [0, 499, 500, 501, 1200]) assert.ok(ids.some((id) => id.endsWith(`/c${i}`) || id.includes(`c${i}.`) || id.endsWith(`c${i}`)), `capture c${i} listed`);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('unknown ids and path-traversal attempts are 404 (ids are map keys, never file paths)', async () => {
   await withServer(defaultRoots(), async (base) => {
     for (const id of ['nope', '../../etc/passwd', 'attack/../../package', '/etc/hosts', 'attack/aim-ab.demo.json', '..%2F..%2Fsentinel%2Fdashboard%2Fpackage']) {

