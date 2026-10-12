@@ -11,7 +11,7 @@
 // are capped at T4's MAX_CANARIES; more is a 413, never a silent subset.
 
 import { loadCapture } from './capture-loader.mjs';
-import { alertsFor } from './alert-store.mjs';
+import { alertsFor, alertDirs } from './alert-store.mjs';
 import { enforce } from './bounds.mjs';
 import { redactDeep, validateAlert, MAX_CANARIES, MAX_CANARY_VALUE_CHARS, MIN_CANARY_VALUE_CHARS } from '../../alerts/index.js';
 
@@ -64,13 +64,15 @@ export function prepareExport(rawAlert, canaryHits = []) {
 }
 
 /** GET /api/alert-export?id=<capture>&run=<run>&alert=<AlertId> */
-export async function exportAlert(index, id, runKey, alertId) {
+export async function exportAlert(index, id, runKey, alertId, { dev = true } = {}) {
   const entry = index.get(id); // targeted lookup; ids never become file paths
   if (!entry) return { status: 404, body: { error: `unknown capture id ${id}` } };
   const capture = await loadCapture(entry);
   const run = runKey ? capture.runs.find(r => r.key === runKey) : capture.runs[0];
   if (!run) return { status: 404, body: { error: `capture ${id} has no run ${runKey}` } };
-  const src = await alertsFor(capture, run.key);
+  // Same sources the replay shows: placeholder sidecars only with ?dev=1 (server.mjs replayPayload).
+  if (!dev && (entry.source === 'placeholder' || capture.placeholder)) return { status: 404, body: { error: `${id}: placeholder data is hidden without ?dev=1` } };
+  const src = await alertsFor(capture, run.key, alertDirs(process.env).filter(d => dev || !d.placeholder));
   enforce('MAX_ALERTS_PER_CAPTURE', src.alerts.length, `capture ${id}`);
   const raw = src.alerts.find(a => a?.AlertId === alertId);
   if (!raw) return { status: 404, body: { error: `capture ${id}#${run.key} has no alert ${alertId}` } };

@@ -6,6 +6,10 @@ import { headlineView } from './headline-view.js';
 import { parseDeepLink, deepLinkSearch, chooseInitial, stageOptions, cleanNarrative, sinkLabel, excerpt, warningSummary, alertClipboardText } from './stage-view.js';
 
 const $ = (id) => document.getElementById(id);
+// ?dev=1 shows placeholder captures/alerts. Without it the server hides them, so the stage captures never
+// show the PLACEHOLDER banner.
+const DEV = new URLSearchParams(location.search).get('dev') === '1';
+const api = (p) => (DEV ? `${p}${p.includes('?') ? '&' : '?'}dev=1` : p);
 const h = (tag, attrs = {}, ...kids) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -68,7 +72,7 @@ function boundText(b) {
 
 // ---- capture list -----------------------------------------------------------------------------
 async function loadList() {
-  const r = await getJson('/api/captures');
+  const r = await getJson(api('/api/captures'));
   if (!r.ok) {
     banner('error', `Capture index failed (HTTP ${r.status}).`, boundText(r.body) + (r.body.error ?? ''));
     return;
@@ -141,11 +145,11 @@ $('capture').addEventListener('change', async () => {
 });
 $('run').addEventListener('change', () => loadReplay());
 
-const HEADLINE_IDS = { det: ['det-rate', 'det-base'], prev: ['prev-rate', 'prev-base'], fp: ['fp-rate', 'fp-base'], lat: ['t7-lat', 'lat-base'] };
+const HEADLINE_IDS = { det: ['det-rate', 'det-base', 'det-fp'], prev: ['prev-rate', 'prev-base', 'prev-fp'], lat: ['t7-lat', 'lat-base', 'lat-fp'] };
 async function loadScoring() {
-  const r = await getJson('/api/scoring');
+  const r = await getJson(api('/api/scoring'));
   const v = headlineView(r.body);
-  for (const [k, [valId, baseId]] of Object.entries(HEADLINE_IDS)) {
+  for (const [k, [valId, baseId, fpId]] of Object.entries(HEADLINE_IDS)) {
     const t = v.tiles[k];
     // Unit in a smaller span so a latency like "0.067 ms" fits the tile at projector size, unclipped.
     const m = /^(.*\d) (ms)$/.exec(t.value);
@@ -153,6 +157,7 @@ async function loadScoring() {
     if (m) $(valId).append(h('span', { class: 'unit' }, m[2]));
     $(valId).classList.toggle('pending', t.pending);
     $(baseId).textContent = t.base;
+    $(fpId).textContent = t.fp;
     $(`tile-${k}`).querySelector('.big-sub').textContent = t.sub;
   }
   $('tile-det').classList.toggle('legacy', v.legacy);
@@ -167,12 +172,12 @@ async function loadReplay(initialStep = 0) {
   stop();
   clearBanners();
   const { id, run } = currentCapture();
-  history.replaceState(null, '', deepLinkSearch({ capture: id, run, stage: state.stageMode }));
+  history.replaceState(null, '', deepLinkSearch({ capture: id, run, stage: state.stageMode, dev: DEV }));
   if (state.linkWarning) {
     banner('warn', 'Deep link:', state.linkWarning);
     state.linkWarning = null;
   }
-  const r = await getJson(`/api/replay?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}`);
+  const r = await getJson(api(`/api/replay?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}`));
   if (!replayGate.isCurrent(token)) return; // a newer loadReplay superseded this one
   if (!r.ok) {
     state.replay = null;
@@ -193,8 +198,7 @@ async function loadReplay(initialStep = 0) {
   const invalid = rp.alerts.filter(a => a.invalid);
   if (invalid.length) banner('error', `${invalid.length} alert(s) failed T4 schema validation.`, 'Shown in the feed and flagged, not dropped.');
 
-  $('buildms').textContent = `${rp.dashboardBuildMs.toFixed(2)} ms`;
-  $('graph-size').textContent = `${rp.graph.nodes.length.toLocaleString('en-US')} nodes · ${rp.graph.edges.length.toLocaleString('en-US')} edges · ${fmtBytes(rp.capture.bytes)} capture`;
+  $('graph-size').textContent = `· ${rp.graph.nodes.length.toLocaleString('en-US')} nodes · ${rp.graph.edges.length.toLocaleString('en-US')} edges · ${fmtBytes(rp.capture.bytes)} capture`;
   const L = rp.metrics.detectionLatencyMs;
   $('latency').textContent = L.n ? `${L.median} ms` : '—';
   $('latency-note').textContent = L.n ? `median of ${L.n} alert(s) · p95 ${L.p95} ms · max ${L.max} ms (T4 DetectionLatencyMs)` : 'no detector verdicts for this run';
@@ -210,7 +214,7 @@ function setStep(s) {
   const v = viewAt(rp, state.step);
   $('stepinfo').textContent = `step ${v.step + 1} / ${rp.timeline.length}`;
   const cur0 = currentCapture();
-  history.replaceState(null, '', deepLinkSearch({ capture: cur0.id, run: cur0.run, step: v.step === v.last && v.last > 0 ? v.last : v.step, stage: state.stageMode }));
+  history.replaceState(null, '', deepLinkSearch({ capture: cur0.id, run: cur0.run, step: v.step, stage: state.stageMode, dev: DEV }));
   renderTimeline(rp, v);
   renderFeed(rp, v);
   renderGauge(v.trust);
@@ -270,7 +274,7 @@ function alertCard(a) {
     h('header', { class: 'alert-head' },
       h('span', { class: `sev-badge sev-${sc}` }, `${icon} ${a.severityName} ${a.severity ?? '?'}`),
       h('span', { class: 'alert-name' }, a.detectName),
-      h('span', { class: `disp disp-${a.disposition}` }, a.disposition),
+      h('span', { class: `disp disp-${a.stage ?? a.disposition}`, title: a.t4Disposition ? `T4 PatternDispositionDescription: ${a.t4Disposition}` : null }, a.shownDisposition ?? a.disposition),
       h('span', { class: 'alert-lat' }, a.latencyMs != null ? `${a.latencyMs} ms` : '— ms')),
     a.invalid ? h('p', { class: 'invalid-note' }, `Schema problems: ${a.problems.join('; ')}`) : null,
     h('div', { class: 'casecard' },
@@ -344,7 +348,7 @@ async function copyAlert(a, btn) {
   status.textContent = 'Preparing redacted export…';
   let text;
   try {
-    const r = await getJson(`/api/alert-export?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}&alert=${encodeURIComponent(a.id)}`);
+    const r = await getJson(api(`/api/alert-export?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}&alert=${encodeURIComponent(a.id)}`));
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.body.error ?? 'export refused'}`);
     text = alertClipboardText(r.body);
     await navigator.clipboard.writeText(text);

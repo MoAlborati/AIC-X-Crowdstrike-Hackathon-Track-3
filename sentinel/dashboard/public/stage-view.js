@@ -20,9 +20,10 @@ export function parseDeepLink(search) {
 }
 
 /** Query string for the current view, so the address bar is always a shareable deep link. */
-export function deepLinkSearch({ capture, run, step = null, stage = false }) {
+export function deepLinkSearch({ capture, run, step = null, stage = false, dev = false }) {
   const p = new URLSearchParams();
   if (stage) p.set('stage', '1');
+  if (dev) p.set('dev', '1');
   if (capture) p.set('capture', capture);
   if (run) p.set('run', run);
   if (step != null && Number.isFinite(step) && step > 0) p.set('step', String(step + 1));

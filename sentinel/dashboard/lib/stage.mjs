@@ -1,47 +1,81 @@
-// Stage mode (`?stage=1`): the capture dropdown lists only the three runs the on-stage demo walks
-// through, in order, instead of every indexed capture (357+). Each entry names a capture id + run key.
-// An entry may list fallbacks; the first one present in the index wins (targeted Map lookups on the
-// full index, never a scan of a capped list). An entry with no present candidate is returned with an
-// `error`, and the UI shows it as a red banner and a disabled option. It is never silently dropped.
+// What a detector verdict actually achieved, so the dashboard never claims a block it did not make.
+//
+// Prevention boundary (AGENTS.md endgame policy, T8 finding PR #16): DVAA executes tools in-process, so a
+// response-side verdict arrives after the data has already left. Only two kinds of verdict prevent harm:
+//   * request-side, pre-forward verdicts (T3 `direction: "request"`, `prevents: true`, not post-execution)
+//   * egress-boundary denies (T12 sentinel/egress: RuleId `egress.*`, Entities.Agent.Id "egress-boundary",
+//     disposition Blocked). The bytes have not left yet when that deny happens.
+// Everything else is alert-only, whatever T4's PatternDispositionDescription says:
+//   * any alert on a run whose canary listener recorded a hit (the secret reached the attacker; every
+//     alert step comes after the canary step in the replay timeline) -> "post-execution (alert-only)"
+//   * response-side or postExecution verdicts -> "post-execution (alert-only)"
+//   * a verdict whose side is not recorded -> "alert-only". T4 alerts do not carry direction today, so a
+//     T4 "Blocked" without a direction hint is NOT shown as Blocked: unproven prevention is not prevention.
+// Direction hints are read from the raw alert when a producer adds them (Direction / Prevents /
+// PostExecution, top level or in CaseCard, or the sentinel/pipeline narrative prefix). None are invented.
 
-export const STAGE_ENTRIES = Object.freeze([
-  {
-    key: 'vulnerable',
-    label: '1 · Vulnerable RAGBot: data leaves the sandbox',
-    candidates: [{ id: 'attack/aim-ab.demo', run: 'runA' }],
-  },
-  {
-    key: 'aim-twin',
-    label: '2 · AIM twin: capability grant denies the call',
-    candidates: [{ id: 'attack/aim-ab.demo', run: 'runB' }],
-  },
-  {
-    key: 'proxy-blocked',
-    label: '3 · Behind SentinelProxy: blocked before the agent',
-    candidates: [
-      { id: 'stage/proxy-blocked-t3', run: 'run' },
-      // T8 contrast recording (stand-in inspector); used only if the T3 stage recording is absent.
-      { id: 'contrast/runs/proxy-block.demo', run: 'runB' },
-    ],
-  },
-]);
+export const STAGE_LABEL = Object.freeze({
+  prevented_request: 'Blocked · pre-forward',
+  prevented_egress: 'Blocked · egress deny',
+  post_execution: 'Detected · post-execution (alert-only)',
+  alert_only: 'Detected · alert-only',
+});
+
+const pick = (raw, key) => {
+  const lc = key[0].toLowerCase() + key.slice(1);
+  for (const v of [raw?.[key], raw?.[lc], raw?.CaseCard?.[key], raw?.CaseCard?.[lc]]) if (v !== undefined && v !== null) return v;
+  return undefined;
+};
+
+// sentinel/pipeline (convert.mjs DIRECTION_POLICY) records direction as a case-card narrative prefix:
+// "[request-side · blocking] …" (T4 block only when the proxy actually refused: action blocked_request)
+// or "[response-side · alert_only] …".
+const PIPELINE_PREFIX = /^\[(request|response)-side · (blocking|alert_only)\]/;
+
+/** Direction hints a producer recorded on the raw T4 alert. */
+export function stageHints(raw) {
+  const d = pick(raw, 'Direction');
+  const p = pick(raw, 'Prevents');
+  const x = pick(raw, 'PostExecution');
+  const hints = {
+    direction: typeof d === 'string' ? d.toLowerCase() : null,
+    prevents: typeof p === 'boolean' ? p : null,
+    postExecution: typeof x === 'boolean' ? x : null,
+  };
+  const m = typeof raw?.CaseCard?.Narrative === 'string' ? PIPELINE_PREFIX.exec(raw.CaseCard.Narrative) : null;
+  if (m && hints.direction === null) {
+    hints.direction = m[1];
+    if (hints.prevents === null) hints.prevents = m[1] === 'request' && m[2] === 'blocking';
+  }
+  return hints;
+}
 
 /**
- * Resolve stage entries against the capture list (`/api/captures` items, which carry `runs`).
- * @param {Array<{id:string, error?:string, runs?:Array<{key:string}>}>} items
- * @returns {Array<{key, label, id?, run?, error?}>}
+ * @param {object} a  adapted alert (lib/alert-adapter.mjs), with `hints` from stageHints()
+ * @param {{canaryHit: boolean}} ctx  canaryHit = the run's attacker endpoint received the exfil
+ * @returns {{stage: keyof STAGE_LABEL, shownDisposition: string, prevented: boolean}}
  */
-export function resolveStage(items, entries = STAGE_ENTRIES) {
-  const byId = new Map(items.map(c => [c.id, c]));
-  return entries.map(e => {
-    const tried = [];
-    for (const c of e.candidates) {
-      const cap = byId.get(c.id);
-      if (!cap) { tried.push(`${c.id}#${c.run}: not indexed`); continue; }
-      if (cap.error) { tried.push(`${c.id}#${c.run}: ${cap.error}`); continue; }
-      if (!cap.runs?.some(r => r.key === c.run)) { tried.push(`${c.id}#${c.run}: no such run`); continue; }
-      return { key: e.key, label: e.label, id: c.id, run: c.run, fallback: c !== e.candidates[0] };
-    }
-    return { key: e.key, label: e.label, error: `stage capture missing (${tried.join('; ')})` };
+export function classifyStage(a, { canaryHit = false } = {}) {
+  const t4Blocked = a.t4Blocked ?? a.blocked === true;
+  const h = a.hints ?? {};
+  const egressDeny = t4Blocked && /^egress\./.test(a.ruleId ?? '') && a.entities?.agent?.Id === 'egress-boundary';
+  const preForward = t4Blocked && h.direction === 'request' && h.prevents === true && h.postExecution !== true;
+  const postExec = canaryHit || h.direction === 'response' || h.postExecution === true;
+  let stage;
+  if (postExec) stage = 'post_execution';
+  else if (egressDeny) stage = 'prevented_egress';
+  else if (preForward) stage = 'prevented_request';
+  else stage = 'alert_only';
+  return { stage, shownDisposition: STAGE_LABEL[stage], prevented: stage.startsWith('prevented_') };
+}
+
+/** Apply classifyStage to every alert of one run. Returns new objects; `blocked` becomes the honest value. */
+export function stageAlerts(alerts, { canaryHit = false } = {}) {
+  return alerts.map(a => {
+    const s = classifyStage(a, { canaryHit });
+    const narrative = a.caseCard?.narrative && !s.prevented
+      ? a.caseCard.narrative.replace(/→ blocked by rule/g, '→ detected (alert-only, not blocked) by rule')
+      : a.caseCard?.narrative ?? null;
+    return { ...a, ...s, t4Disposition: a.disposition, t4Blocked: a.t4Blocked ?? a.blocked === true, blocked: s.prevented, caseCard: { ...a.caseCard, narrative } };
   });
 }
