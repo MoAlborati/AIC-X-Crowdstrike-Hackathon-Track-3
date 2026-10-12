@@ -1,13 +1,13 @@
 {
   "dvaa_container": "dvaa-t1-dvaa-1",
   "dvaa_image": "dvaa-t1-dvaa",
-  "sentinel_ref": "origin/t2-proxy-skeleton",
-  "sentinel_sha": "e4af5d77f0d1937090113f2f80771929827820f9",
-  "inspector": "standin-substring",
+  "sentinel_ref": "origin/main",
+  "sentinel_sha": "6c4fdc76eaf4dde42181e490e47ea3cc0ef39653",
+  "inspector": "detector:sentinel-t3",
   "inspector_source": "verdict.detector in proxy-block.proxy.jsonl + proxy-observe.proxy.jsonl",
-  "inspector_config": "standin-inspector.config.json",
-  "inspector_config_sha256": "b5235efe81787ad69ea7705fa16bac9f0a2d50fb0f8eb7cfdff7dd8c0555b951",
-  "inspector_config_is_standin": true,
+  "inspector_config": "sentinel.config.json",
+  "inspector_config_sha256": "348b277642747f827cbc90ffbc737695ceab31228e05dd060f4789cb9a482be9",
+  "inspector_config_is_standin": false,
   "proxy_port_in_dvaa_netns": 7099,
-  "captured_at": "2026-10-12T18:56:44Z"
+  "captured_at": "2026-10-12T19:47:56Z"
 }
