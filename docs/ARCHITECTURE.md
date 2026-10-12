@@ -38,7 +38,8 @@ detecting it. Start with the [README](../README.md).
 - **At egress.** The agent decides some actions in-process (for example, a poisoned repo file read by
   RepoBot). The chat proxy can only raise an alert for those. The egress guard denies the outbound call
   itself. Its ground truth is what the attacker server received, not DVAA's own `exfilExecuted` flag.
-- **Response side.** This is alert-only, because DVAA executes tools inside the agent process.
+- **Response side.** This is alert-only for prevention, because DVAA executes tools inside the agent process.
+  In block mode the reply is withheld from the client, but the tool has already run.
 
 ## Bounds
 
