@@ -37,9 +37,10 @@ Operator's direction: "limit scope, our goal is to win the hackathon".
 - **Repo goes public:** judges get access now, and the public release comes later. No secrets or private notes in commits.
 
 ## Worktree rule (mirror of LOOP.md §Worktrees)
-- Each concurrently running ticket **MUST** use its own `git worktree` at `/home/gingy/crowdstrike-<ticket>`.
+One worktree per ticket, sibling of the main checkout (`<repo>` = the main checkout's absolute path).
+- Each concurrently running ticket **MUST** use its own `git worktree` at `../<repo>-<ticket>`.
   Child agents work, commit and push only in their worktree.
-- The main checkout `/home/gingy/crowdstrike` is **orchestrator-only**.
+- The main checkout `<repo>` is **orchestrator-only**.
 - Reason: a commit landed on another agent's branch when agents shared one checkout.
 
 ## Concurrency (mirror of LOOP.md §Parallelism)
