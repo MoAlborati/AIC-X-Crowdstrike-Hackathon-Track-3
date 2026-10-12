@@ -15,7 +15,7 @@ function secretsIn(json, extra = []) {
   return vals.filter((v) => json.includes(v));
 }
 
-test('one-line wiring: request + response phases on the live RAGBot 7005 capture -> flagged block, static reasons', async () => {
+test('one-line wiring: request + response phases on the live RAGBot 7005 capture -> flagged block (request) + withheld reply (response), static reasons', async () => {
   const c = liveCase('ragbot-7005-rag-poisoned');
   const insp = sentinelInspector({ honeytokens: DVAA_HONEYTOKENS, agent: { name: 'RAGBot', port: 7005 }, logger: quietLogger() }); // DVAA: in_process
   const vReq = await insp({ phase: 'request', path: CHAT, headers: {}, body: buf(c.request), requestId: 'r1' });
@@ -25,13 +25,15 @@ test('one-line wiring: request + response phases on the live RAGBot 7005 capture
   assert.equal(vReq.prevents, true);
   assert.ok(vReq.reasons.includes('exfil_instruction_inbound'));
   assert.ok(vReq.reasons.includes('payee_not_confirmed'));
-  // Observe mode forwards anyway; the response phase then reports post-execution evidence (alert, not a block).
+  // Observe mode forwards anyway; the response phase then reports post-execution evidence. The honeytoken
+  // in the tool-call args flags the response so the proxy WITHHOLDS the reply (B1) — never claimed prevention.
   const vRes = await insp({ phase: 'response', path: CHAT, headers: {}, body: buf(c.response), requestId: 'r1', status: 200 });
-  assert.equal(isFlagged(vRes), false, 'response-side cannot prevent an in-process tool call');
+  assert.equal(isFlagged(vRes), true, 'honeytoken in response tool-call args -> reply withheld (B1)');
   assert.equal(vRes.direction, 'response');
   assert.equal(vRes.alert, true);
   assert.equal(vRes.postExecution, true);
-  assert.equal(vRes.disposition, 'allow');
+  assert.equal(vRes.prevents, false, 'the in-process tool already ran');
+  assert.equal(vRes.disposition, 'block');
   assert.ok(vRes.reasons.includes('honeytoken_crossed_egress'));
   assert.ok(vRes.findings.every((f) => f.direction === 'response'), 'each phase reports only its own direction');
   for (const v of [vReq, vRes]) {

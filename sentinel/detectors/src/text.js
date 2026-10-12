@@ -210,6 +210,10 @@ const HEX_ALPHABET = /^(?:[0-9a-fA-F]{2})+$/;
  */
 export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
   const out = [];
+  // Set when a variant AT the depth limit would still decode further (e.g. 4x %-encoding). The caller
+  // reports it (decodeDepthExhausted, T3-SPEC MAX_DECODE_DEPTH): the stop is never silent.
+  out.depthExhausted = false;
+  out.exhaustedEncodings = [];
   const seen = new Set();
   const queue = [{ s: text, d: 0, enc: 'raw' }];
   // Index-based queue (Array#shift is O(n) and made this quadratic on 60k-token inputs — timing test).
@@ -218,41 +222,56 @@ export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
     if (seen.has(s)) continue;
     seen.add(s);
     out.push({ text: s, encoding: enc });
-    if (d >= depth) continue;
-    const tag = (e) => (enc === 'raw' ? e : `${enc}+${e}`);
-    const u = safeUrlDecode(s);
-    if (u !== s) queue.push({ s: u, d: d + 1, enc: tag('url') });
-    // \uXXXX / \xNN escapes (JSON- or JS-escaped text inside raw tool arguments). One linear replace.
-    if (s.indexOf('\\u') !== -1 || s.indexOf('\\x') !== -1) {
-      const e = s.replace(/\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g, (_, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
-      if (e !== s) queue.push({ s: e, d: d + 1, enc: tag('unicode_escape') });
-    }
-    // All decoded runs of one source are batched into ONE variant per encoding (joined by newlines), so
-    // the number of variants stays <= 1 + 3 x depth regardless of how many encoded runs the text holds.
-    const hex = [];
-    const b64 = [];
-    const seenTok = new Set(); // identical runs decode identically: decode each distinct run once
-    for (const { token: whole } of tokens(s)) {
-      if (whole.length < minRun || seenTok.has(whole)) continue;
-      seenTok.add(whole);
-      // `key=<base64>` (query strings, env lines): '=' is base64 padding only at the END of a run, so an
-      // interior '=' separates a key from the encoded value -> decode the value part.
-      const eq = whole.replace(/=+$/, '').lastIndexOf('=');
-      const token = eq === -1 ? whole : whole.slice(eq + 1);
-      if (token.length < minRun) continue;
-      const t = token.replace(/^[.~]+|[.~]+$/g, '');
-      if (t.length >= minRun && t.length % 2 === 0 && HEX_ALPHABET.test(t)) {
-        const dec = Buffer.from(t, 'hex').toString('utf8');
-        if (isMostlyPrintable(dec)) hex.push(dec);
-      } else if (t.length >= minRun && B64_ALPHABET.test(t)) {
-        const dec = Buffer.from(t.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-        if (isMostlyPrintable(dec)) b64.push(dec);
+    const children = decodeOnce(s, enc, minRun);
+    if (d >= depth) {
+      const further = children.filter((c) => !seen.has(c.s));
+      if (further.length) {
+        out.depthExhausted = true;
+        for (const c of further) if (out.exhaustedEncodings.length < 8) out.exhaustedEncodings.push(c.enc);
       }
+      continue;
     }
-    if (hex.length) queue.push({ s: hex.join('\n'), d: d + 1, enc: tag('hex') });
-    if (b64.length) queue.push({ s: b64.join('\n'), d: d + 1, enc: tag('base64') });
+    for (const c of children) queue.push({ s: c.s, d: d + 1, enc: c.enc });
   }
   return out;
+}
+
+/** One decoding step of `s`: at most one URL, one escape, one hex and one base64 child. Linear in |s|. */
+function decodeOnce(s, enc, minRun) {
+  const children = [];
+  const tag = (e) => (enc === 'raw' ? e : `${enc}+${e}`);
+  const u = safeUrlDecode(s);
+  if (u !== s) children.push({ s: u, enc: tag('url') });
+  // \uXXXX / \xNN escapes (JSON- or JS-escaped text inside raw tool arguments). One linear replace.
+  if (s.indexOf('\\u') !== -1 || s.indexOf('\\x') !== -1) {
+    const e = s.replace(/\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g, (_, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
+    if (e !== s) children.push({ s: e, enc: tag('unicode_escape') });
+  }
+  // All decoded runs of one source are batched into ONE variant per encoding (joined by newlines), so
+  // the number of variants stays <= 1 + 4 x depth regardless of how many encoded runs the text holds.
+  const hex = [];
+  const b64 = [];
+  const seenTok = new Set(); // identical runs decode identically: decode each distinct run once
+  for (const { token: whole } of tokens(s)) {
+    if (whole.length < minRun || seenTok.has(whole)) continue;
+    seenTok.add(whole);
+    // `key=<base64>` (query strings, env lines): '=' is base64 padding only at the END of a run, so an
+    // interior '=' separates a key from the encoded value -> decode the value part.
+    const eq = whole.replace(/=+$/, '').lastIndexOf('=');
+    const token = eq === -1 ? whole : whole.slice(eq + 1);
+    if (token.length < minRun) continue;
+    const t = token.replace(/^[.~]+|[.~]+$/g, '');
+    if (t.length >= minRun && t.length % 2 === 0 && HEX_ALPHABET.test(t)) {
+      const dec = Buffer.from(t, 'hex').toString('utf8');
+      if (isMostlyPrintable(dec)) hex.push(dec);
+    } else if (t.length >= minRun && B64_ALPHABET.test(t)) {
+      const dec = Buffer.from(t.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+      if (isMostlyPrintable(dec)) b64.push(dec);
+    }
+  }
+  if (hex.length) children.push({ s: hex.join('\n'), enc: tag('hex') });
+  if (b64.length) children.push({ s: b64.join('\n'), enc: tag('base64') });
+  return children;
 }
 
 function isMostlyPrintable(s) {

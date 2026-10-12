@@ -34,6 +34,15 @@ function hashKey(str) {
   return h;
 }
 
+/**
+ * ASCII-only lower-casing (review S3: matching is case-insensitive). ASCII-only keeps every index
+ * identical to the original text (String#toLowerCase can change length on some non-ASCII code points).
+ */
+const UPPER = /[A-Z]/;
+export function asciiLower(s) {
+  return UPPER.test(s) ? s.replace(/[A-Z]+/g, (m) => m.toLowerCase()) : s;
+}
+
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const rand62 = (n) => Array.from(randomBytes(n), (b) => BASE62[b % 62]).join('');
 const randUpper = (n) => Array.from(randomBytes(n), (b) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[b % 32]).join('');
@@ -148,13 +157,16 @@ export class HoneytokenRegistry {
    * the next 8 chars. Expired canaries still match until swept (a late leak is still a leak).
    * Returns [{entry, index}].
    */
-  scan(text, { all = false } = {}) {
+  scan(input, { all = false } = {}) {
     const hits = [];
-    if (typeof text !== 'string' || text.length < KEY || this.index.size === 0) return hits;
+    if (typeof input !== 'string' || input.length < KEY || this.index.size === 0) return hits;
+    // Case-insensitive: the index is keyed on lower-cased values and the text is lower-cased once
+    // (ASCII-only, so hit indexes are positions in the original text). "DVAA-ADMIN-SECRET" is a hit.
+    const text = asciiLower(input);
     const seen = new Set();
     const check = (list, i) => {
       for (const e of list) {
-        if ((all || !seen.has(e.value)) && text.startsWith(e.value, i)) {
+        if ((all || !seen.has(e.value)) && text.startsWith(e.lvalue, i)) {
           seen.add(e.value);
           hits.push({ entry: e, index: i });
         }
@@ -206,10 +218,11 @@ export class HoneytokenRegistry {
       throw new TypeError(`honeytoken "${e.id}" must be a string of >= ${MIN_TOKEN_CHARS} chars`);
     }
     if (this.entries.has(e.value)) return this.entries.get(e.value);
+    e.lvalue = asciiLower(e.value);
     e.sha256 = createHash('sha256').update(e.value).digest('hex').slice(0, 16);
     this.entries.set(e.value, e);
     this.ids.set(e.id, e);
-    const k = e.value.slice(0, KEY);
+    const k = e.lvalue.slice(0, KEY);
     if (!this.index.has(k)) {
       const nb = { key: k, short: [], long: new Map() };
       this.index.set(k, nb);
@@ -221,7 +234,7 @@ export class HoneytokenRegistry {
     const b = this.index.get(k);
     if (e.value.length < KEY2) b.short.push(e);
     else {
-      const k2 = e.value.slice(0, KEY2);
+      const k2 = e.lvalue.slice(0, KEY2);
       if (!b.long.has(k2)) b.long.set(k2, []);
       b.long.get(k2).push(e);
     }
@@ -229,9 +242,10 @@ export class HoneytokenRegistry {
     return e;
   }
 
-  #remove(v, e) {
-    this.entries.delete(v);
+  #remove(value, e) {
+    this.entries.delete(value);
     this.ids.delete(e.id);
+    const v = e.lvalue;
     const k = v.slice(0, KEY);
     const b = this.index.get(k);
     if (b) {

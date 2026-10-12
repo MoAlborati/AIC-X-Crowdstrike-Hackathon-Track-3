@@ -9,13 +9,18 @@ import { createDetector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../index.js';
 import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
 import { quietLogger } from './helpers.js';
 
+// TWO DIFFERENT NUMBERS (review of PR #27):
+//   TOTAL_BUDGET_MS = 40  PERFORMANCE bound: a whole inspection of a 384 KiB adversarial turn (PERF_INPUT,
+//                         ~16x the ~23 KB demo payloads) must finish in < 40 ms (median of 5). A speed target
+//                         that catches quadratic regressions. It is NOT a reason to block traffic.
+//   timeBudgetMs (runtime) the fail-closed budget, derived from the proxy's real inspectorTimeoutMs (5000 ms ->
+//                         4000 ms) + its abort signal (bounds.js, inspector.js, review B3). Asserted separately
+//                         below on payloads at the full 2 MiB cap.
 const LAYER_BUDGET_MS = 50;
-// T2's inspector timeout is ~50 ms: the WHOLE inspection must finish under it even on a loaded box (the
-// merge gate runs every suite in parallel). Our internal fail-closed budget (timeBudgetMs = 40) sits below
-// it, so an inspection slowed past 40 ms by load becomes a BLOCK verdict, never a proxy timeout.
-const TOTAL_BUDGET_MS = 50;
-const MAX = DEFAULT_BOUNDS.maxPayloadBytes;
-const SCANNER_INPUT = MAX; // each scanner alone is held to 50 ms at the cap (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
+const TOTAL_BUDGET_MS = 40;
+const PERF_INPUT = 384 * 1024;
+const MAX = PERF_INPUT;
+const SCANNER_INPUT = PERF_INPUT; // each scanner alone is held to 50 ms (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
 // The adversarial string appears twice (untrusted tool output + sink args), so each copy is ~45% of the cap.
 const ADVERSARIAL = {
   jwt_prefix: 'eyJ',
@@ -48,7 +53,7 @@ function detectorWithBigRegistry() {
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-test('whole inspection < 50 ms (T2 inspector timeout; internal fail-closed budget 40 ms) and every layer < 50 ms on adversarial inputs at the payload cap (20k canaries)', { timeout: 60000 }, () => {
+test('whole inspection < 40 ms (performance bound) and every layer < 50 ms on adversarial 384 KiB inputs (20k canaries)', { timeout: 60000 }, () => {
   const det = detectorWithBigRegistry();
   const report = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
@@ -65,8 +70,7 @@ test('whole inspection < 50 ms (T2 inspector timeout; internal fail-closed budge
     const totals = [];
     for (let r = 0; r < 5; r++) {
       const d = det.inspect({ sessionId: `adv-${name}-${r}`, request: req, response: res });
-      // JSON escaping can push a few cases (e.g. "\n"-heavy) over the cap: that must FAIL CLOSED, fast.
-      if (d.failClosed) assert.equal(d.error.bound, 'maxPayloadBytes', `${name}: ${JSON.stringify(d.error)}`);
+      assert.equal(d.failClosed, false, `${name}: ${JSON.stringify(d.error)}`);
       totals.push(d.stats.latencyMs);
       for (const l of d.stats.layers) (layerRuns[l.layer] ??= []).push(l.latencyMs);
     }
@@ -75,7 +79,7 @@ test('whole inspection < 50 ms (T2 inspector timeout; internal fail-closed budge
     for (const [layer, ms] of Object.entries(layers)) assert.ok(ms < LAYER_BUDGET_MS, `${name}: layer ${layer} took ${ms} ms`);
     assert.ok(median(totals) < TOTAL_BUDGET_MS, `${name}: total ${median(totals)} ms >= ${TOTAL_BUDGET_MS} ms budget`);
   }
-  console.log(`# adversarial timing @ ${MAX} B cap (median of 3, ms):`);
+  console.log(`# adversarial timing @ ${MAX} B perf input (median of 5, ms):`);
   for (const r of report) console.log(`#   ${r.name.padEnd(15)} total=${r.total} ${Object.entries(r).filter(([k]) => !['name', 'total'].includes(k)).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 });
 
@@ -118,4 +122,20 @@ test('honeytoken index stays O(1) per position with 50k canaries sharing the "sk
     runs.push(performance.now() - t);
   }
   assert.ok(median(runs) < LAYER_BUDGET_MS, `registry.scan took ${median(runs).toFixed(1)} ms`);
+});
+
+test('runtime budget: adversarial turns at the FULL 2 MiB payload cap finish far inside the runtime fail-closed budget (default 4000 ms)', { timeout: 60000 }, () => {
+  const det = detectorWithBigRegistry();
+  const CAP = DEFAULT_BOUNDS.maxPayloadBytes;
+  const worst = [];
+  for (const [name, unit] of Object.entries(ADVERSARIAL)) {
+    const s = unit.repeat(Math.ceil((CAP * 0.4) / unit.length)).slice(0, Math.floor(CAP * 0.4));
+    const req = { messages: [{ role: 'user', content: 'process' }, { role: 'assistant', tool_calls: [{ id: 'h', type: 'function', function: { name: 'web_fetch', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'h', content: s }] };
+    const res = { choices: [{ message: { role: 'assistant', content: 'ok', tool_calls: [{ id: 'c', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'http://x.test/a', body: s }) } }] } }] };
+    const d = det.inspect({ sessionId: `cap-${name}`, request: req, response: res });
+    if (d.failClosed) assert.equal(d.error.bound, 'maxPayloadBytes', `${name}: ${JSON.stringify(d.error)}`);
+    worst.push([name, d.stats.latencyMs]);
+    assert.ok(d.stats.latencyMs < DEFAULT_BOUNDS.timeBudgetMs / 4, `${name}: ${d.stats.latencyMs} ms at the 2 MiB cap`);
+  }
+  console.log(`# adversarial @ ${CAP} B cap (runtime budget ${DEFAULT_BOUNDS.timeBudgetMs} ms): ${worst.map(([n, ms]) => `${n}=${ms}`).join(' ')}`);
 });

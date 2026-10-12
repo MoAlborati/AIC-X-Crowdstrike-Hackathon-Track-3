@@ -50,11 +50,16 @@ test('session store is bounded: full of live sessions -> fail closed; idle sessi
   let t = 0;
   const logger = quietLogger();
   const det = createDetector({ toolExecution: 'client', bounds: { maxSessions: 3, sessionTtlMs: 1000 }, now: () => t, logger });
-  for (const s of ['a', 'b', 'c']) assert.equal(det.inspect({ sessionId: s, request: user('hi'), response: response([]) }).failClosed, false);
-  const full = det.inspect({ sessionId: 'd', request: user('hi'), response: response([]) });
+  // Only exchanges with tool calls allocate a stored session (B2); these record a lookup in the ledger.
+  const rec = () => response([toolCall('c', 'lookup', {})]);
+  for (const s of ['a', 'b', 'c']) assert.equal(det.inspect({ sessionId: s, request: user('hi'), response: rec() }).failClosed, false);
+  const full = det.inspect({ sessionId: 'd', request: user('hi'), response: rec() });
   assert.equal(full.failClosed, true);
   assert.equal(full.error.bound, 'maxSessions');
   assert.ok(full.error instanceof Object && !(full.error instanceof LedgerFullError));
   t += 1001;
-  assert.equal(det.inspect({ sessionId: 'd', request: user('hi'), response: response([]) }).failClosed, false);
+  assert.equal(det.inspect({ sessionId: 'd', request: user('hi'), response: rec() }).failClosed, false);
+  // Plain chat (no tool calls) never needs a stored session, so a full store cannot fail it closed (B2).
+  for (const s of ['e', 'f', 'g', 'h']) det.inspect({ sessionId: s, request: user('hi'), response: rec() });
+  assert.equal(det.inspect({ sessionId: 'z', request: user('hi'), response: response([]) }).failClosed, false);
 });
