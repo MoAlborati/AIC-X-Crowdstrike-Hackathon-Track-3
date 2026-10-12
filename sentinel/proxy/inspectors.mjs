@@ -127,6 +127,18 @@ function base64Cores(buf) {
 }
 
 /**
+ * #164: the same encoded-canary check on T3's chat paths, request AND response. T3 does not base64-decode
+ * canaries, so a base64 canary (or a base64 data URI) inside a chat body was forwarded/returned.
+ * Same needles, so same FP profile: it only fires on an encoded form of a configured canary.
+ */
+export function chatCanaryFormsInspector(canaries, chatPaths) {
+  return nonChatCanaryInspector(canaries, {
+    onlyPaths: chatPaths, phases: ['request', 'response'], anyMethod: true,
+    detector: 'chat-canary-forms', reasonPrefix: 'canary_encoded_chat_route',
+  });
+}
+
+/**
  * #126: request-side canary check for POSTs to routes T3 does not parse (DVAA `POST /chat {message}`,
  * A2A `/a2a/message`, `/`, ...). T3 returns null for those paths, so without this a honeytoken could be
  * carried into them in a cheap encoding the raw substring backstop does not see.
@@ -141,8 +153,10 @@ function base64Cores(buf) {
  * @param {ReadonlyArray<{id: string, value: string}>} canaries
  * @param {{skipPaths?: Iterable<string>}} [opts]
  */
-export function nonChatCanaryInspector(canaries, { skipPaths = [] } = {}) {
+export function nonChatCanaryInspector(canaries, { skipPaths = [], onlyPaths = null, phases = ['request'], anyMethod = false, detector = 'non-chat-canary', reasonPrefix = 'canary_encoded_non_chat_route' } = {}) {
   const skip = new Set(skipPaths);
+  const only = onlyPaths === null ? null : new Set(onlyPaths);
+  const phaseSet = new Set(phases);
   const needles = [];
   for (const c of canaries) {
     const buf = Buffer.from(c.value, 'utf8');
@@ -155,8 +169,10 @@ export function nonChatCanaryInspector(canaries, { skipPaths = [] } = {}) {
     }
   }
   return async function nonChatCanary({ phase, method, path, body }) {
-    if (phase !== 'request' || method !== 'POST' || needles.length === 0) return null;
-    if (skip.has(String(path ?? '').split('?')[0])) return null;
+    if (!phaseSet.has(phase) || needles.length === 0) return null;
+    if (!anyMethod && method !== 'POST') return null;
+    const p = String(path ?? '').split('?')[0];
+    if (skip.has(p) || (only !== null && !only.has(p))) return null;
     const raw = Buffer.isBuffer(body) ? body.toString('utf8') : String(body ?? '');
     if (raw.length === 0) return null;
     // Percent-decoded spellings (with and without '+'): urlVariants() minus the raw spelling itself.
@@ -170,8 +186,8 @@ export function nonChatCanaryInspector(canaries, { skipPaths = [] } = {}) {
     if (hits.length === 0) return null;
     return {
       flagged: true,
-      detector: 'non-chat-canary',
-      reasons: [...new Set(hits.map((h) => `canary_encoded_non_chat_route:${h.form}`))],
+      detector,
+      reasons: [...new Set(hits.map((h) => `${reasonPrefix}:${h.form}`))],
       hits,
     };
   };
