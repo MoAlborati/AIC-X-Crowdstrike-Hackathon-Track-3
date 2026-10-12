@@ -88,7 +88,7 @@ manifest. The dashboard test suite fails if a recording is missing from it.
 
 ```bash
 scripts/setup-dvaa.sh up                     # dvaa-t1 fleet; 7001, 7005, 7014 healthy
-git fetch origin                             # needs origin/t2-proxy-skeleton (or T3)
+git fetch origin                             # needs origin/main (proxy merged in #14)
 captures/contrast/run-contrast.sh            # writes captures/contrast/runs/ and prints the table
 node --test captures/contrast/tests/contrast.test.mjs            # offline, against runs/
 T8_LIVE=1 node --test captures/contrast/tests/contrast.test.mjs  # adds a live re-capture
