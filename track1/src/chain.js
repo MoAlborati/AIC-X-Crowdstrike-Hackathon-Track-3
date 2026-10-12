@@ -13,6 +13,15 @@ export async function runChain(card, { complete, relatedCount = 0 } = {}) {
   }
 
   const review = draft.caught === false ? prompts.cover : prompts.verify;
+  // Fail loud, never silently: a prompt over the cap is never sent. The offline
+  // deterministic briefing stands on its own.
+  if (review.oversize) {
+    return {
+      briefing: draft,
+      model: { status: 'fallback', reason: 'prompt over cap' },
+      prompts,
+    };
+  }
   let raw;
   try {
     raw = await complete(review);

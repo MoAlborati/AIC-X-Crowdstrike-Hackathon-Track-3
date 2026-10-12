@@ -5,13 +5,19 @@ export const TRUSTED_EMAIL_DOMAINS = ['smith.russellmitchell.com'];
 const RANK = { dismiss: 0, monitor: 1, investigate: 2, escalate: 3 };
 
 export function dispositionRank(disposition) {
-  return RANK[disposition] ?? 1;
+  return RANK[disposition] ?? -1;
 }
 
 function trustedDomain(domain) {
   if (!domain) return false;
   return TRUSTED_EMAIL_DOMAINS.some((item) => domain === item || domain.endsWith(`.${item}`));
 }
+
+// Attachments (and references to them in a pasted text blob) that can run code.
+const RISKY_ATTACHMENT = /\.(iso|img|vhdx?|exe|scr|js|vbs|hta|docm|xlsm|pptm|xlam|lnk)\b/;
+const LURE_PHRASE = /enable (content|macros?|editing)/;
+// A rejected-return / "log back in" account lure. Checked before credential phish.
+const ACCOUNT_LURE = /log\s*back\s*in|log in to your|sign in to your|edit my return|identity protection|ip pin|tax return (?:was )?rejected|credit karma/;
 
 function emailFacts(card) {
   const email = card.email;
@@ -24,11 +30,13 @@ function emailFacts(card) {
   const mismatched = linkHosts.some((host) => fromDomain && host !== fromDomain && !host.endsWith(`.${fromDomain}`));
   const blob = card.textLower;
   const credential = /password|passcode|one-time code|sign in|verify your|credentials/.test(blob);
-  const urgent = /immediately|action required|overdue|will be deleted|within \d+ hours|suspend|account (?:will be )?closed/.test(blob);
+  const urgent = /immediately|action required|overdue|will be deleted|within \d+ hours|suspend|account (?:will be )?closed|expires? (?:today|soon)/.test(blob);
   const attachment = String(email.attachment || '').toLowerCase();
-  const riskyAttachment = /\.(iso|img|exe|scr|js|vbs|hta|docm|xlsm|lnk)$/.test(attachment)
-    || /enable content|enable macros/.test(blob);
-  return { fromDomain, linkHosts, mismatched, credential, urgent, riskyAttachment, trusted: trustedDomain(fromDomain) };
+  // A risky attachment can appear in the attachment field or only in a pasted text blob.
+  const riskyExt = RISKY_ATTACHMENT.test(attachment) || RISKY_ATTACHMENT.test(blob);
+  const lure = LURE_PHRASE.test(blob);
+  const accountLure = ACCOUNT_LURE.test(blob);
+  return { fromDomain, linkHosts, mismatched, credential, urgent, riskyExt, lure, accountLure, trusted: trustedDomain(fromDomain) };
 }
 
 function hit(fields) {
@@ -54,19 +62,41 @@ export function matchSignal(card) {
   const mail = emailFacts(card);
 
   if (card.source === 'sentinel') {
-    const high = (card.sentinel?.severity || 0) >= 70 || card.sentinel?.blocked;
-    const agent = card.sentinel?.agent || 'an AI agent';
-    const tool = card.sentinel?.tool || 'a tool';
+    const s = card.sentinel || {};
+    const high = (s.severity || 0) >= 70 || s.blocked;
+    const agent = s.agent || 'an AI agent';
+    const tool = s.tool || 'a tool';
+    // Agent data theft vs. a plain behavior anomaly. A blocked send, a report-only
+    // post-execution alert, a known sink, or exfil/injection wording all mean exfil.
+    const exfil = s.blocked || s.reportOnly || Boolean(s.sink)
+      || /exfil|prompt injection|inject|canary|honeytoken|sensitive|taint|planted secret|submit_to_index|data theft|outside destination|data.*outside/.test(text);
+
+    if (!exfil) {
+      return hit({
+        ruleId: 'sentinel-agent-alert',
+        activity: 'agent_alert',
+        disposition: 'investigate',
+        priority: 'P2',
+        headline: `Tourniquet flagged unusual behavior by AI agent ${agent}.`,
+        why: [
+          s.narrative || 'The agent did something outside its normal pattern.',
+          s.tactic ? `Tactic: ${s.tactic}.` : 'Tagged as an AI-agent detection.',
+        ],
+        whatToDo: 'Open the session log and check which tool calls ran and where their output went.',
+        explain: 'The agent did something outside its normal pattern. The alert alone does not show data leaving. Open the session and confirm whether any tool call sent data outside before you treat this as benign.',
+      });
+    }
+
     const why = [
-      card.sentinel?.narrative || 'The alert describes a tool call that left the agent session.',
-      card.sentinel?.technique ? `Framework tag: ${card.sentinel.technique} (${card.sentinel.techniqueId}).` : 'Tagged as an AI-agent detection.',
-      card.sentinel?.owasp?.length ? `OWASP: ${card.sentinel.owasp.join('; ')}.` : 'Review the MITRE ATLAS technique on the alert.',
+      s.narrative || 'The alert describes a tool call that left the agent session.',
+      s.technique ? `Framework tag: ${s.technique} (${s.techniqueId}).` : 'Tagged as an AI-agent detection.',
+      s.owasp?.length ? `OWASP: ${s.owasp.join('; ')}.` : 'Review the MITRE ATLAS technique on the alert.',
     ];
-    if (card.sentinel?.reportOnly) {
+    if (s.reportOnly) {
       // Post-execution, report-only: nothing was stopped. Never tell the analyst the send was blocked.
       return hit({
         ruleId: 'sentinel-agent-report-only',
-        activity: 'ai_agent_exfil',
+        activity: 'agent_exfil',
         disposition: high ? 'escalate' : 'investigate',
         priority: high ? 'P1' : 'P2',
         headline: `${agent} sent data toward an outside destination. The guardrail detected it after the tool already ran.`,
@@ -77,50 +107,87 @@ export function matchSignal(card) {
     }
     return hit({
       ruleId: 'sentinel-agent',
-      activity: 'ai_agent_exfil',
+      activity: 'agent_exfil',
       disposition: high ? 'escalate' : 'investigate',
       priority: high ? 'P1' : 'P2',
-      headline: `${agent} tried to send data outside the company, and the guardrail ${card.sentinel?.blocked ? 'blocked it' : 'flagged it'}.`,
+      headline: `${agent} tried to send data outside the company, and the guardrail ${s.blocked ? 'blocked it' : 'flagged it'}.`,
       why,
-      whatToDo: card.sentinel?.blocked
+      whatToDo: s.blocked
         ? 'Leave the block in place. Confirm the canary or sensitive fields never left the network, then rotate anything the agent was able to read.'
         : 'The guardrail flagged this call but did not block it. Check whether the canary or sensitive fields reached the destination, then rotate anything the agent was able to read.',
-      explain: `A hidden instruction steered ${agent} into calling ${tool}. The call tried to carry data the agent had just read toward an outside destination. That is the agent version of data theft: untrusted text, private data, and a send button in the same turn. ${card.sentinel?.blocked ? 'The proxy stopped the send.' : 'The proxy flagged the call but did not block it.'} This note describes the path; it does not repeat the payload.`,
+      explain: `A hidden instruction steered ${agent} into calling ${tool}. The call tried to carry data the agent had just read toward an outside destination. That is the agent version of data theft: untrusted text, private data, and a send button in the same turn. ${s.blocked ? 'The proxy stopped the send.' : 'The proxy flagged the call but did not block it.'} This note describes the path; it does not repeat the payload.`,
     });
   }
 
-  if (mail?.riskyAttachment) {
+  // --- Email rules, most specific first. Any email that matches none is routine. ---
+  if (mail && mail.riskyExt && mail.lure) {
     const file = card.email.attachment || 'the attachment';
     return hit({
       ruleId: 'malware-lure',
       activity: 'malware_lure',
-      disposition: 'investigate',
-      priority: 'P2',
+      disposition: 'escalate',
+      priority: 'P1',
       headline: `This email asks someone to open ${file}, which can run a program.`,
       why: [
-        card.email.attachment ? `Attachment: ${card.email.attachment}.` : 'The body asks the reader to enable content or macros.',
+        card.email.attachment ? `Attachment: ${card.email.attachment}.` : 'The message references a disk-image or macro attachment.',
         `Sender: ${card.email.from}.`,
-        'Invoices and documents from a real vendor are usually PDF or a link to a portal, not a disk image or a macro.',
+        'Invoices and documents from a real vendor are usually a PDF or a link to a portal, not a disk image or a macro that asks you to enable content.',
       ],
-      whatToDo: 'Do not open the attachment. Quarantine the message and see whether the same sender reached anyone else.',
-      explain: 'A disk image or a document that asks you to "enable content" can launch a program when it is opened. That is a common way malware arrives, because the file looks like paperwork. Nothing here needs to be executed to understand the risk. Quarantine it and let the malware team detonate a copy in a sandbox if they need to know more.',
+      whatToDo: 'Do not open the attachment. Pull the message from every mailbox that received it, block the sender, and check whether anyone already opened the file.',
+      explain: 'A disk image or a document that asks you to "enable content" can launch a program when it is opened. Paired with a lure, that is a standard way malware arrives, because the file looks like paperwork. Nothing here needs to be executed to understand the risk. Quarantine it and let the malware team detonate a copy in a sandbox if they need to know more.',
+    });
+  }
+
+  if (mail && mail.riskyExt && !mail.lure) {
+    return hit({
+      ruleId: 'risky-attachment',
+      activity: 'risky_attachment',
+      disposition: 'investigate',
+      priority: 'P2',
+      headline: `This email carries ${card.email.attachment || 'a disk-image or macro attachment'}, a file type that can run code.`,
+      why: [
+        card.email.attachment ? `Attachment: ${card.email.attachment}.` : 'The message references a disk-image or macro attachment.',
+        `Sender: ${card.email.from}.`,
+        'There is no explicit lure wording, so this may be legitimate, but it needs a look.',
+      ],
+      whatToDo: 'Check the sender against known partners and detonate the attachment in a sandbox before releasing it.',
+      explain: 'Disk-image and macro-enabled files can run code when opened. Without a lure phrase this may be a legitimate installer, but the file type alone is enough to hold it for a sandbox check.',
+    });
+  }
+
+  if (mail && mail.accountLure) {
+    return hit({
+      ruleId: 'account-lure',
+      activity: 'account_lure',
+      disposition: 'escalate',
+      priority: 'P1',
+      headline: /tax return|ip pin|identity protection/.test(text)
+        ? 'This email says a tax return was rejected and asks the reader to log back in and edit it.'
+        : 'This email asks the reader to log back in from the message itself.',
+      why: [
+        'It creates urgency: a rejected return or a locked account that needs attention now.',
+        'It tells the reader to log back in and use a button or link inside the message.',
+        `Sender: ${card.email.from || 'unknown'}.`,
+      ],
+      whatToDo: 'Do not click Edit My Return or any login button in the message. Open the service from a bookmark or by typing the address, and check the account there. If the notice is not in the account, treat the email as phishing.',
+      explain: 'A rejected-return notice with an Edit My Return button is a common way to steal a login. A genuine notice and a copy look the same in the inbox, so the safe move is to reach the account by a path you already trust, not the button in the mail.',
     });
   }
 
   if (mail && mail.credential && (mail.mismatched || !mail.trusted) && (mail.linkHosts.length || mail.urgent)) {
     return hit({
       ruleId: 'phishing-credential',
-      activity: 'phishing',
-      disposition: 'escalate',
-      priority: 'P1',
-      headline: 'This email asks for a password and the sender is not on the company domain.',
+      activity: 'credential_phish',
+      disposition: 'investigate',
+      priority: 'P2',
+      headline: 'This email asks for a password or account confirmation and the sender is not on the company domain.',
       why: [
         `Sender domain: ${mail.fromDomain || 'unknown'}.`,
         mail.linkHosts.length ? `Link host: ${mail.linkHosts.join(', ')}.` : 'The message pressures the reader to act quickly.',
         mail.trusted ? 'The link does not match the sender domain.' : `Trusted domains are ${TRUSTED_EMAIL_DOMAINS.join(', ')}.`,
       ],
-      whatToDo: 'Quarantine the message. If anyone opened the link or entered a password, reset that account and check sign-in logs. Do not visit the link.',
-      explain: 'The message creates a deadline and then asks for a password on a site the company does not own. That is credential phishing. The goal is the password itself. Reporting it and resetting any account that touched the link is the whole response.',
+      whatToDo: 'Check where any link points and warn recipients. If anyone opened the link or entered a password, reset that account and check sign-in logs. Do not visit the link.',
+      explain: 'The message creates a deadline and then asks for a password or account confirmation, often on a site the company does not own. That is credential phishing. The goal is the password itself. Reporting it and resetting any account that touched the link is the whole response.',
     });
   }
 
@@ -174,10 +241,28 @@ export function matchSignal(card) {
     });
   }
 
-  if (/\/wp-content\/uploads\/[^\s"]+\.php\b/.test(text)) {
+  // Any remaining email matched no threat rule: ordinary mail, dismiss.
+  if (mail) {
+    return hit({
+      ruleId: 'benign-mail',
+      activity: 'routine_email',
+      disposition: 'dismiss',
+      priority: 'P4',
+      headline: `Ordinary email from ${card.email.from || 'a sender'} with no risky attachment or credential request.`,
+      why: [
+        card.email.subject ? `Subject: ${card.email.subject}.` : 'No subject.',
+        'Nothing in the sender, subject, body, or attachment matches a known lure.',
+        mail.trusted ? `Sender is on a trusted domain (${mail.fromDomain}).` : 'No disk-image, macro, credential, payment, or lookalike-link pattern found.',
+      ],
+      whatToDo: 'No action needed.',
+      explain: 'Most mail is mail. The briefing stays quiet so the password lure and the disk-image invoice are the ones that stay on screen.',
+    });
+  }
+
+  if (/\/wp-content\/uploads\/[^\s"]+\.php\b/.test(text) || /web ?shell/.test(text)) {
     return hit({
       ruleId: 'webshell-upload',
-      activity: 'webshell',
+      activity: 'webshell_command',
       disposition: 'escalate',
       priority: 'P1',
       headline: 'Someone requested a PHP file inside the WordPress uploads folder.',
@@ -191,38 +276,44 @@ export function matchSignal(card) {
     });
   }
 
-  if (/successful su for\s+\S+\s+by www-data/.test(text) || (/sudo to root/.test(text) && /wp-content|uploads/.test(text))) {
-    const su = /successful su for/.test(text);
+  if (/successful su for\s+\S+\s+by www-data/.test(text) || /www-data:\S+/.test(text)) {
     return hit({
-      ruleId: su ? 'su-www-data' : 'sudo-from-webroot',
+      ruleId: 'su-www-data',
+      activity: 'web_user_switch',
+      disposition: 'escalate',
+      priority: 'P1',
+      headline: 'The web server account switched to a human user.',
+      why: [
+        'www-data is the account that serves the website. It should not become a person.',
+        'The log records a successful switch, not a denied one.',
+        `Host: ${hostOf(card)}.`,
+      ],
+      whatToDo: 'Treat the host as compromised. Disable the involved accounts, snapshot the machine, and look for the process that started as www-data.',
+      explain: 'The website user opened a login as a named account. That means code running in the site got far enough to change identity. Read with the uploads-folder activity around the same minute, this is privilege escalation: the attacker is no longer stuck as the web server.',
+    });
+  }
+
+  if ((/sudo to root/.test(text) && /wp-content|uploads/.test(text)) || /sudo:.*pwd=\/var\/www\//.test(text) || /privilege escalation|\/etc\/shadow/.test(text)) {
+    return hit({
+      ruleId: 'sudo-from-webroot',
       activity: 'privilege_escalation',
       disposition: 'escalate',
       priority: 'P1',
-      headline: su
-        ? 'The web server account switched to a human user.'
-        : 'A user ran sudo as root from the WordPress uploads directory.',
-      why: su
-        ? [
-          'www-data is the account that serves the website. It should not become a person.',
-          'The log records a successful switch, not a denied one.',
-          `Host: ${hostOf(card)}.`,
-        ]
-        : [
-          'The working directory is the WordPress uploads folder, where a planted PHP file would live.',
-          'The recorded command is "list", which asks sudo which commands root will allow.',
-          'Wazuh level is only 3, because a successful sudo is often normal. The directory makes this one different.',
-        ],
+      headline: 'A user ran sudo as root from the WordPress uploads directory.',
+      why: [
+        'The working directory is the WordPress uploads folder, where a planted PHP file would live.',
+        'The recorded command asks sudo which commands root will allow.',
+        'Wazuh level is only 3, because a successful sudo is often normal. The directory makes this one different.',
+      ],
       whatToDo: 'Treat the host as compromised. Disable the involved accounts, snapshot the machine, and look for the process that started as www-data.',
-      explain: su
-        ? 'The website user opened a login as jhall. That means code running in the site got far enough to change identity. Read with the uploads-folder activity around the same minute, this is privilege escalation: the attacker is no longer stuck as the web server.'
-        : 'After landing in the uploads folder, the account asked what it is allowed to do as root. That is reconnaissance for a bigger step, not routine administration. The response is to contain the host, not to try the same command.',
+      explain: 'After landing in the uploads folder, the account asked what it is allowed to do as root. That is reconnaissance for a bigger step, not routine administration. The response is to contain the host, not to try the same command.',
     });
   }
 
   if (/\bwpscan\b/.test(text)) {
     return hit({
       ruleId: 'wpscan',
-      activity: 'web_scan',
+      activity: 'wordpress_scan',
       disposition: 'investigate',
       priority: 'P2',
       headline: 'WPScan, a WordPress security scanner, requested pages on the intranet.',
@@ -236,10 +327,10 @@ export function matchSignal(card) {
     });
   }
 
-  if (/nmap scripting engine|possible nmap/.test(text)) {
+  if (/nmap scripting engine|possible nmap|\bnmap\b|et scan/.test(text)) {
     return hit({
       ruleId: 'nmap',
-      activity: 'recon_scan',
+      activity: 'service_scan',
       disposition: 'investigate',
       priority: 'P2',
       headline: 'Nmap probed a web host, and the server refused the request.',
@@ -256,7 +347,7 @@ export function matchSignal(card) {
   if (/version\.bind/.test(text)) {
     return hit({
       ruleId: 'version-bind',
-      activity: 'recon_scan',
+      activity: 'service_scan',
       disposition: 'investigate',
       priority: 'P2',
       headline: 'A host asked the DNS server what software version it is running.',
@@ -273,7 +364,7 @@ export function matchSignal(card) {
   if (/did not receive identification string|insecure connection attempt \(scan\)/.test(text)) {
     return hit({
       ruleId: 'ssh-scan',
-      activity: 'recon_scan',
+      activity: 'service_scan',
       disposition: 'investigate',
       priority: 'P2',
       headline: 'Something connected to SSH and left before identifying itself.',
@@ -287,20 +378,20 @@ export function matchSignal(card) {
     });
   }
 
-  if (/\/\.hta\b|\/\.htaccess\b|\/\.htpasswd\b|web_scan/.test(text)) {
+  if (/\/\.hta\b|\/\.htaccess\b|\/\.htpasswd\b|web_scan|multiple web server 400 error codes|\bdirb\b|gobuster/.test(text)) {
     return hit({
       ruleId: 'dir-bust',
-      activity: 'web_scan',
+      activity: 'web_content_scan',
       disposition: 'investigate',
       priority: 'P2',
-      headline: 'A script is guessing hidden web paths, including server-configuration files.',
+      headline: 'A script is guessing web paths, requesting many pages that do not exist.',
       why: [
-        'Requests for /.hta, /.htaccess, or /.htpasswd are what directory brute-forcers try first.',
+        'A burst of 404/400 responses from one source is what directory brute-forcers produce.',
         'The client looks like a very old browser, which is a common default for that kind of tool.',
         `Source: ${card.src || 'see the log'}.`,
       ],
-      whatToDo: 'Rate-limit or block the source. Confirm the web server still denies those files.',
-      explain: 'The tool is reading the site like a word list, hoping a backup or a private folder is exposed. The 403 in this sample means the server said no. Keep it that way.',
+      whatToDo: 'Rate-limit or block the source. Confirm any guessed path still returns 404 or 403.',
+      explain: 'The tool is reading the site like a word list, hoping a backup or a private folder is exposed. The 404s in this sample mean the server said no. Keep it that way.',
     });
   }
 
@@ -338,7 +429,7 @@ export function matchSignal(card) {
     });
   }
 
-  if (/\/dev\/tcp\/|reverse shell/.test(text)) {
+  if (/\/dev\/tcp\/|reverse.?shell/.test(text)) {
     return hit({
       ruleId: 'reverse-shell',
       activity: 'reverse_shell',
@@ -389,7 +480,7 @@ export function matchSignal(card) {
     });
   }
 
-  if (/dnsteal|dns tunnel|dns exfil/.test(text)) {
+  if (/dnsteal|dns tunnel|dns exfil|query\[\w+\]\s+[a-z0-9-]{40,}\./.test(text)) {
     return hit({
       ruleId: 'dns-exfil',
       activity: 'dns_exfil',
@@ -397,12 +488,29 @@ export function matchSignal(card) {
       priority: 'P1',
       headline: 'DNS lookups on this host look like data being smuggled out in the names.',
       why: [
-        'The log names a DNS tunnel or DNS exfiltration tool.',
+        'The log names a DNS tunnel or DNS exfiltration tool, or a very long encoded lookup name.',
         'DNS is allowed on most networks, so stolen data is sometimes hidden in lookup names.',
         `Host: ${hostOf(card)}.`,
       ],
       whatToDo: 'Find the internal host making the lookups, block the destination name at the resolver, and see what data that host could read.',
       explain: 'Normal DNS names are short and readable. A tunnel uses the lookup itself to carry data out. Block the destination and find the process that asked.',
+    });
+  }
+
+  if (/high entropy in dns|entropydetector|value entropy anomaly|in dns domain|dns query ips|query records in dns|dns log events/.test(text)) {
+    return hit({
+      ruleId: 'dns-anomaly',
+      activity: 'dns_anomaly',
+      disposition: 'investigate',
+      priority: 'P2',
+      headline: 'The DNS resolver saw unusual lookups on this host.',
+      why: [
+        card.title ? `${card.title}.` : 'AMiner flagged the DNS traffic as outside its learned pattern.',
+        'This is an anomaly detector, not a signature: it needs a human to judge.',
+        `Host: ${hostOf(card)}.`,
+      ],
+      whatToDo: 'Check which internal host asked, how many similar lookups it made in the hour, and whether the domain is known.',
+      explain: 'AMiner learned what normal DNS traffic looks like and this broke the pattern. It can be harmless (a new site) or the start of DNS-based data theft, so a person decides.',
     });
   }
 
@@ -456,10 +564,27 @@ export function matchSignal(card) {
     });
   }
 
-  if (/authentication failure|invalid user login|auth failed|login failed/.test(text)) {
+  if (/cpu value (?:out of expected range|deviates)|valuerangedetector/.test(text)) {
+    return hit({
+      ruleId: 'cpu-spike',
+      activity: 'host_cpu_spike',
+      disposition: 'investigate',
+      priority: 'P2',
+      headline: `CPU on ${hostOf(card)} jumped outside its normal range.`,
+      why: [
+        'AMiner flagged CPU use outside the range it learned for this host.',
+        'A pegged CPU can be a backup job, or it can be password cracking or crypto mining.',
+        `Host: ${hostOf(card)}.`,
+      ],
+      whatToDo: 'Look at which process is using the CPU and who started it.',
+      explain: 'A CPU that runs far outside its learned range is sometimes a scheduled job and sometimes cracking or mining that someone started on the box. The anomaly alone does not say which, so a person checks the running processes.',
+    });
+  }
+
+  if (/invalid user login|authentication failure|login failed|auth failed/.test(text)) {
     return hit({
       ruleId: 'auth-failure',
-      activity: 'auth_failure',
+      activity: 'failed_login',
       disposition: 'monitor',
       priority: 'P3',
       headline: 'One login failed. That happens to real users, so this stays a watch item.',
@@ -473,10 +598,27 @@ export function matchSignal(card) {
     });
   }
 
+  if (/suricata (?:tls|http|smtp) (?:invalid|unable|no server|gzip)|invalid handshake|generic protocol command decode/.test(text)) {
+    return hit({
+      ruleId: 'protocol-anomaly',
+      activity: 'protocol_anomaly',
+      disposition: 'monitor',
+      priority: 'P3',
+      headline: `The network sensor saw a malformed TLS or HTTP exchange${card.src ? ` from ${card.src}` : ''}.`,
+      why: [
+        card.title ? `${card.title}.` : 'A protocol decoder warning, not an attack signature.',
+        'These decoder warnings fire constantly on normal traffic from odd clients.',
+        `Source: ${card.src || 'see the log'}.`,
+      ],
+      whatToDo: 'No action unless it clusters with real attack signatures from the same host.',
+      explain: 'A malformed handshake on its own is usually an old client or a flaky connection, not an attack. It only matters when it arrives alongside real attack signatures from the same source.',
+    });
+  }
+
   if (/clamav (?:database )?update|freshclam/.test(text)) {
     return hit({
       ruleId: 'clamav-update',
-      activity: 'routine_maintenance',
+      activity: 'av_update',
       disposition: 'dismiss',
       priority: 'P4',
       headline: 'ClamAV is updating its virus definitions. This is scheduled maintenance.',
@@ -507,37 +649,20 @@ export function matchSignal(card) {
     });
   }
 
-  if (/authentication success|imap-login: login:|login session opened/.test(text)) {
+  if (/authentication success|imap-login: login:|login session opened|session opened|session closed|login: user=/.test(text)) {
     return hit({
       ruleId: 'auth-success',
-      activity: 'benign_login',
+      activity: 'routine_login',
       disposition: 'dismiss',
       priority: 'P4',
-      headline: 'A mailbox login succeeded. This is normal mail use.',
+      headline: 'A login succeeded. This is normal use.',
       why: [
-        'The log records a successful IMAP login over TLS.',
+        'The log records a successful login with no preceding failures in this alert.',
         'Successful logins are the bulk of this data set and are not an attack by themselves.',
         `Host: ${hostOf(card)}.`,
       ],
       whatToDo: 'No action.',
-      explain: 'Someone read their mail. Keep it in the record so a later failure storm has a baseline, and do not spend triage time on it.',
-    });
-  }
-
-  if (mail?.trusted && !mail.credential && !mail.riskyAttachment) {
-    return hit({
-      ruleId: 'benign-mail',
-      activity: 'benign_mail',
-      disposition: 'dismiss',
-      priority: 'P4',
-      headline: 'Internal mail, no link asking for credentials and no risky attachment.',
-      why: [
-        `Sender is on a trusted domain (${mail.fromDomain}).`,
-        'Nothing in the body asks for a password or tells the reader to enable content.',
-        'This can go to the archive.',
-      ],
-      whatToDo: 'No action.',
-      explain: 'Most mail is mail. The briefing stays quiet so the password lure and the disk-image invoice are the ones that stay on screen.',
+      explain: 'Someone signed in with the right password over the usual service. Keep it in the record so a later failure storm has a baseline, and do not spend triage time on it.',
     });
   }
 
@@ -579,6 +704,19 @@ export function matchSignal(card) {
   });
 }
 
+// The full set of rule ids matchSignal can return, for tests and tooling.
+export const ruleIds = [
+  'sentinel-agent-alert', 'sentinel-agent-report-only', 'sentinel-agent',
+  'malware-lure', 'risky-attachment', 'account-lure', 'phishing-credential',
+  'html-attachment', 'payment-fraud', 'lookalike-link', 'benign-mail',
+  'webshell-upload', 'su-www-data', 'sudo-from-webroot', 'wpscan', 'nmap',
+  'version-bind', 'ssh-scan', 'dir-bust', 'service-stop', 'password-guessing',
+  'reverse-shell', 'malware-beacon', 'web-attack', 'dns-exfil', 'dns-anomaly',
+  'encoded-command', 'new-account', 'persistence', 'cpu-spike', 'auth-failure',
+  'protocol-anomaly', 'clamav-update', 'policy-noise', 'auth-success',
+  'vendor-severity', 'unclassified',
+];
+
 function clip(value) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
@@ -617,10 +755,24 @@ const QUOTES = {
     { field: 'Guardrail outcome', read: () => 'report-only: the tool already ran' },
     { field: 'Narrative', read: (card) => card.sentinel?.narrative },
   ],
+  'sentinel-agent-alert': [
+    { field: 'Agent', read: (card) => card.sentinel?.agent },
+    { field: 'Narrative', read: (card) => card.sentinel?.narrative },
+    { field: 'Tactic', read: (card) => card.sentinel?.tactic },
+  ],
   'malware-lure': [
     { field: 'Attachment', read: (card) => card.email?.attachment },
     { field: 'Sender', read: (card) => card.email?.from },
     { field: 'Matched wording', pattern: /enable content|enable macros|\.(?:iso|img|exe|scr|js|vbs|hta|docm|xlsm|lnk)\b/i },
+  ],
+  'risky-attachment': [
+    { field: 'Attachment', read: (card) => card.email?.attachment },
+    { field: 'Sender', read: (card) => card.email?.from },
+    { field: 'File type', pattern: /\.(?:iso|img|vhdx?|exe|scr|js|vbs|hta|docm|xlsm|pptm|xlam|lnk)\b/i },
+  ],
+  'account-lure': [
+    { field: 'Sender', read: (card) => card.email?.from },
+    { field: 'Lure wording', pattern: /log\s*back\s*in|edit my return|identity protection|ip pin|tax return|credit karma/i },
   ],
   'phishing-credential': [
     { field: 'Sender', read: (card) => card.email?.from },
@@ -638,16 +790,20 @@ const QUOTES = {
   'lookalike-link': [
     { field: 'Link host', pattern: /https?:\/\/\S+/i },
   ],
+  'benign-mail': [
+    { field: 'Sender', read: (card) => card.email?.from },
+    { field: 'Subject', read: (card) => card.email?.subject },
+  ],
   'webshell-upload': [
     { field: 'Request path', pattern: /\/wp-content\/uploads\/\S+/i },
     { field: 'Source address', read: (card) => card.src },
   ],
   'su-www-data': [
-    { field: 'Identity switch', pattern: /successful su for\s+\S+\s+by www-data/i },
+    { field: 'Identity switch', pattern: /successful su for\s+\S+\s+by www-data|www-data:\S+/i },
     { field: 'Host', read: (card) => card.host },
   ],
   'sudo-from-webroot': [
-    { field: 'Working directory', pattern: /wp-content|uploads/i },
+    { field: 'Working directory', pattern: /wp-content|uploads|\/var\/www/i },
     { field: 'Host', read: (card) => card.host },
   ],
   wpscan: [
@@ -667,7 +823,8 @@ const QUOTES = {
     { field: 'Source address', read: (card) => card.src },
   ],
   'dir-bust': [
-    { field: 'Guessed path', pattern: /\/\.hta\b|\/\.htaccess\b|\/\.htpasswd\b/i },
+    { field: 'Scan signal', pattern: /multiple web server 400 error codes|web_scan|\/\.hta\b|\/\.htaccess\b|\/\.htpasswd\b|dirb|gobuster/i },
+    { field: 'Requested path', pattern: /\b(?:GET|POST)\s+\/\S+/i },
     { field: 'Source address', read: (card) => card.src },
   ],
   'service-stop': [
@@ -675,11 +832,11 @@ const QUOTES = {
     { field: 'Host', read: (card) => card.host },
   ],
   'password-guessing': [
-    { field: 'Failure burst', pattern: /multiple authentication failures|brute force|hashcat|john the ripper/i },
+    { field: 'Failure burst', pattern: /multiple authentication failures|brute force|password crack|hashcat|john the ripper/i },
     { field: 'Host', read: (card) => card.host },
   ],
   'reverse-shell': [
-    { field: 'Shell wording', pattern: /reverse shell|\/dev\/tcp\//i },
+    { field: 'Shell wording', pattern: /reverse.?shell|\/dev\/tcp\//i },
     { field: 'Host', read: (card) => card.host },
   ],
   'malware-beacon': [
@@ -691,7 +848,11 @@ const QUOTES = {
     { field: 'Source address', read: (card) => card.src },
   ],
   'dns-exfil': [
-    { field: 'DNS clue', pattern: /dnsteal|dns tunnel|dns exfil/i },
+    { field: 'DNS clue', pattern: /dnsteal|dns tunnel|dns exfil|query\[\w+\]\s+[a-z0-9-]{40,}\./i },
+    { field: 'Host', read: (card) => card.host },
+  ],
+  'dns-anomaly': [
+    { field: 'Anomaly', pattern: /high entropy in dns|entropydetector|value entropy anomaly|in dns domain/i },
     { field: 'Host', read: (card) => card.host },
   ],
   'encoded-command': [
@@ -706,9 +867,17 @@ const QUOTES = {
     { field: 'Task event', pattern: /crontab|schtasks|scheduled task/i },
     { field: 'Host', read: (card) => card.host },
   ],
+  'cpu-spike': [
+    { field: 'Anomaly', pattern: /cpu value (?:out of expected range|deviates)|valuerangedetector/i },
+    { field: 'Host', read: (card) => card.host },
+  ],
   'auth-failure': [
     { field: 'Login line', pattern: /authentication failure|invalid user login|auth failed|login failed/i },
     { field: 'Host', read: (card) => card.host },
+  ],
+  'protocol-anomaly': [
+    { field: 'Decoder warning', pattern: /suricata (?:tls|http|smtp)[^\n]*|invalid handshake|generic protocol command decode/i },
+    { field: 'Source address', read: (card) => card.src },
   ],
   'clamav-update': [
     { field: 'Maintenance line', pattern: /clamav[^\n.]{0,40}|freshclam[^\n.]{0,40}/i },
@@ -717,12 +886,8 @@ const QUOTES = {
     { field: 'Sensor label', pattern: /not suspicious traffic|package management/i },
   ],
   'auth-success': [
-    { field: 'Login line', pattern: /authentication success|imap-login: login:|login session opened/i },
+    { field: 'Login line', pattern: /authentication success|imap-login: login:|login session opened|session opened/i },
     { field: 'Host', read: (card) => card.host },
-  ],
-  'benign-mail': [
-    { field: 'Sender', read: (card) => card.email?.from },
-    { field: 'Subject', read: (card) => card.email?.subject },
   ],
   'vendor-severity': [
     { field: 'Vendor title', read: (card) => card.title },
