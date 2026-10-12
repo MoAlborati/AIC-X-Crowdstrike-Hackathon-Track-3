@@ -1,4 +1,4 @@
-# SentinelProxy — demo script (372 spoken words, about 2:47 with transitions; hard limit 3:00)
+# SentinelProxy — demo script (376 spoken words, about 2:49 with transitions; hard limit 3:00)
 
 > Beats follow `planning/STRATEGY.md` §7. Every factual claim spoken on stage uses the "Safe slide wording" from
 > `planning/CITATIONS.md`. Don't paraphrase those claims and don't add new ones. **Never fill a metric by hand.**
@@ -84,7 +84,7 @@ Screen layout: **left** = terminal (attacker view), **right** = dashboard (detec
 
 ## Beat sheet
 
-Spoken lines are in quotes. **372 words in total, 2:29 at 150 words per minute**, plus about 1.5 s per
+Spoken lines are in quotes. **376 words in total, 2:30 at 150 words per minute**, plus about 1.5 s per
 beat for Enter presses and tab switches (critic D, #112: the old script was 574 words, about 4:10). The time column
 is cumulative. No ticket numbers, reason codes or framework IDs are read aloud; they stay on the slides and in Q&A.
 
@@ -252,7 +252,7 @@ RepoBot 7022 reads its payload inside the agent, so the egress guard is the cont
 
 ### Beat 6 — How it works (1:53–2:06) · Slide 7
 
-> "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: any destination not on the list is denied, whatever the words say."
+> "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: every unlisted destination we tried was denied, whatever the words said."
 
 The data check for this line runs in Beat 4b (`egress_truth_cmd`): the recorded block run has a deny decided on the
 destination alone (`destination_not_allowlisted`, no canary in it), so the guard is not reading the words.
@@ -262,7 +262,7 @@ destination alone (`destination_not_allowlisted`, no canary in it), so the guard
 honeytoken, provenance and taint layers are tripwires and alerts. The honeytokens are DVAA's own known secrets, so call
 them a "known-secret tripwire".
 
-### Beat 7 — Outcome, "we attacked ourselves", close (2:06–2:47) · Slides 8 → 10
+### Beat 7 — Outcome, "we attacked ourselves", close (2:06–2:49) · Slides 8 → 10
 
 `run-demo.sh` prints the T3 vs DVAA table from the committed `sentinel/scoring/results.json`; the full table is on
 Slide 8 and is **not read aloud**:
@@ -277,14 +277,14 @@ Slide 8 and is **not read aloud**:
 
 > "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
 
-> "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent zero, because none has anywhere to send data. Our known misses are listed in the repo."
+> "We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo."
 
 > "Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you."
 
 **Every number and comparison** in these lines is asserted by `run-demo.sh` Beat 7, one claim at a time, and the beat
 FAILS naming the claim if the data no longer supports it: 189/164, "slightly more" (lead under 5 points), 63 vs 42,
 "one in eight" (DVAA's 21/164 = 12.8%, which rounds to 1/8), "we blocked zero" (0 of 164, detection and prevention), and
-"600 … prevent zero" (`captures/holdout-hf/RESULTS.md`), and the closing "in our watch-only run, the attacker still got the key" (the recorded observe-mode
+"held-out … 3 percent … 51" (`captures/holdout-ipi/RESULTS.md`, #142: T3 12/370, DVAA 190/370), and the closing "in our watch-only run, the attacker still got the key" (the recorded observe-mode
 egress run in `sentinel/egress/evidence-observe.jsonl` flagged the FAKE AWS key and still forwarded it). If you change a line, change it in `run-demo.sh` and here together.
 Our 0 of 164 is on a benign set we also tuned on: say so if asked, and never headline "0% FP".
 
@@ -306,9 +306,9 @@ Word counts are exact (spoken lines only, counted by whitespace). At 150 wpm.
 | 4 Block (green, live) | 1:04–1:24 | 37 | 15 s |
 | 4b Egress guard (green, LIVE) | 1:24–1:41 | 40 | 16 s |
 | 5a Twin (Slide 6 only) | 1:41–1:53 | 26 | 10 s |
-| 6 Guest list | 1:53–2:06 | 29 | 12 s |
-| 7 Outcome + "we attacked ourselves" + close | 2:06–2:47 | 99 | 40 s |
-| **Total** | | **372** | **2:29** of speech; about 2:47 with Enter presses and tab switches |
+| 6 Guest list | 1:53–2:06 | 28 | 11 s |
+| 7 Outcome + "we attacked ourselves" + close | 2:06–2:49 | 104 | 42 s |
+| **Total** | | **376** | **2:30** of speech; about 2:49 with Enter presses and tab switches |
 
 If you shorten a spoken line, drop whole sentences; don't reword (the runner checks the text).
 

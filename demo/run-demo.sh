@@ -248,10 +248,13 @@ headline_cmd() {
   jq -se 'any(.[]; .mode == "observe" and .action == "forward" and (.reasons | index("honeytoken_match")) and (.canary_ids | index("DVAA-AWS-KEY-ID")))' \
     "$REPO/sentinel/egress/evidence-observe.jsonl" >/dev/null \
     || { echo "closing spoken claim no longer true in sentinel/egress/evidence-observe.jsonl: watch-only run flagged and forwarded the key"; bad=1; }
-  # Held-out admission line: "600 held-out ... we prevent zero" comes from captures/holdout-hf/RESULTS.md.
-  grep -q 'Prevention recall' "$REPO/captures/holdout-hf/RESULTS.md" \
-    && grep -q '\*\*0.000\*\* (0/600)' "$REPO/captures/holdout-hf/RESULTS.md" \
-    || { echo "Beat 7 spoken claim no longer true in captures/holdout-hf/RESULTS.md: 600 held-out, prevent zero"; bad=1; }
+  # Held-out admission line: "on a held-out set of injections that do name a destination, our front-door rule stops only
+  # 3 percent; the sandbox's scanner stops 51" comes from captures/holdout-ipi/RESULTS.md (#142): T3 prevention 0.032
+  # (12/370), DVAA 0.514 (190/370).
+  local ipi="$REPO/captures/holdout-ipi/RESULTS.md"
+  grep -Eq '^\| \*\*T3\*\* \(SentinelProxy\) \| [^|]* \| \*\*0\.032\*\* \(12/370\)' "$ipi" 2>/dev/null \
+    && grep -Eq '^\| DVAA baseline \| 0\.514 \(190/370\) \| 0\.514 \(190/370\)' "$ipi" \
+    || { echo "Beat 7 spoken claim no longer true in captures/holdout-ipi/RESULTS.md: front-door 3 percent vs scanner 51"; bad=1; }
   [ "$bad" = 0 ] || { echo "update the Beat 7 say line in run-demo.sh and demo/SCRIPT.md together"; return 1; }
   echo "spoken Beat 7 numbers match results.json"
 }
@@ -773,7 +776,7 @@ advance
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
   say "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
-  say "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent zero, because none has anywhere to send data. Our known misses are listed in the repo."
+  say "We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
   say "Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you."
 else

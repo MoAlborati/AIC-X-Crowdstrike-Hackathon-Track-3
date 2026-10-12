@@ -47,7 +47,7 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
 ## Run of show (3:00 clock; Cmd-K, then Enter, for each beat)
 
 Order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** → 6 → **7**. Beats 1, 2 and 6 are slides only; `run-demo.sh` drives the
-beats in bold. 372 spoken words, about 2:47 with transitions. Every quoted line is word for word from `demo/SCRIPT.md`.
+beats in bold. 376 spoken words, about 2:49 with transitions. Every quoted line is word for word from `demo/SCRIPT.md`.
 Don't read ticket numbers, reason codes or framework IDs aloud; they're on the slides for Q&A.
 
 **0:00 · Beat 1 Hook** · slide 1 → 2 (incidents and the Kurtz quote stay on the slide, unspoken)
@@ -99,12 +99,12 @@ result; Cmd-K, Enter for the recorded evidence (unspoken).
 > "Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't."
 
 **1:53 · Beat 6 Guest list** · slide 7 · cut this first if you're running long
-> "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: any destination not on the list is denied, whatever the words say."
+> "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: every unlisted destination we tried was denied, whatever the words said."
 
 **2:06 · Beat 7 Outcome + close** · Cmd-K, **Enter**, then slides 8 → 10 (the full table is on slide 8; don't read it)
 > "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
 
-> "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent zero, because none has anywhere to send data. Our known misses are listed in the repo."
+> "We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo."
 
 > "Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you."
 

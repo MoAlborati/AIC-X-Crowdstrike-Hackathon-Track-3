@@ -273,4 +273,4 @@ is the backstop for any real send."
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md, and we attacked ourselves:** 0% held-out prevention, spaced-IBAN bypass. Default-deny egress is the control that blocks.
-6. **Scope:** we are designed to stop injection-driven exfiltration and tool misuse (57 of 71 exfil attempts prevented in our corpus); generic jailbreaks are for a classifier such as Prompt Guard.
+6. **Scope:** we are designed to stop injection-driven exfiltration and tool misuse (57 of 71 exfil attempts prevented in our corpus with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164); generic jailbreaks are for a classifier such as Prompt Guard.

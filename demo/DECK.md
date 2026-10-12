@@ -157,8 +157,8 @@ and response-side tripwires are alert-only for prevention (the reply is withheld
 - Footnote: "Confirmation of Payee passed 2 billion checks (Pay.UK, Mar 2024)."
 
 **Speaker notes**
-Beat 6 (1:50–2:03). Spoken (one mechanism only): "Only you decide where data goes. Our egress guard is a guest list,
-not a lie detector: any destination not on the list is denied, whatever the words say." The rows stay on the slide,
+Beat 6 (1:53–2:06). Spoken (one mechanism only): "Only you decide where data goes. Our egress guard is a guest list,
+not a lie detector: every unlisted destination we tried was denied, whatever the words said." The rows stay on the slide,
 unspoken. All three are rated **Yes** on the per-mechanism precondition test (ADJACENT §6a, §10.3a). Their
 preconditions hold in agent-land because destinations, tools and amounts are structured and checked outside the
 model. **Before the demo, confirm each row is implemented in merged T3.** Drop any row that isn't, and don't present
@@ -203,14 +203,14 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
 
-**Scope (say it if asked about generalization):** "SentinelProxy is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
+**Scope (say it if asked about generalization):** "SentinelProxy is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus (DVAA's scanner prevents 64 of 71, but blocks 21 of 164 legitimate requests; we block 0 of 164). Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
 
 ---
 
 ## Slide 9 — We attacked ourselves
 
 **On slide**
-- Two bars: **jailbreak text, held out: 0% prevented (0/600)**, because none of it has anywhere to send data · **where
+- Three bars: **held-out injections that name a destination (LLMail-Inject + BIPIA, #142): we prevent 3.2% (12/370), DVAA 51.4% (190/370)** · **jailbreak text, held out: 0% prevented (0/600)**, none of it has anywhere to send data · **where
   data actually leaves: we prevent 57/71 with 0/164 legit requests blocked; DVAA prevents 64/71 but blocks 21/164**.
 - "Spacing out an account number slips past our blocking rule today." The request-side rule is bypassable by spacing and
   homoglyphs (issue #112; spacing fix in PR #122). Egress default-deny still blocks, because it decides on the host.
@@ -221,8 +221,10 @@ benchmark of a different system on a different corpus isn't like-for-like.
   (`captures/holdout-hf/RESULTS.md`). Main corpus: `sentinel/scoring/RESULTS.md`.
 
 **Speaker notes**
-Beat 7, second half. Spoken: "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent
-zero, because none has anywhere to send data. Our known misses are listed in the repo." Say it before a judge reads it to you. Leave the slide up
+Beat 7, second half. Spoken: "We attacked ourselves too: on a held-out set of injections that do name a destination,
+our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are
+listed in the repo." (`captures/holdout-ipi/RESULTS.md`, #142: T3 prevents 12/370 = 3.2%, DVAA 190/370 = 51.4%.
+The old "600 jailbreaks, prevent zero, none has anywhere to send data" line is retired: it is no longer the whole story.) Say it before a judge reads it to you. Leave the slide up
 during Q&A. If AIDR comes up: we complement it at the tool boundary, we haven't integrated with Falcon's APIs, and the
 only allowed efficacy wording is "Up to 99% efficacy at sub-30ms latency (CrowdStrike, internal benchmark)".
 

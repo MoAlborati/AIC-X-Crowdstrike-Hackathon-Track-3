@@ -8,7 +8,7 @@ Sources: `demo/PRESENTER.md` (T-30 and After), `demo/SCRIPT.md` (the beats, on m
 If anything here disagrees with `run-demo.sh`, the runner wins.
 
 > **Deep links.** #76 (stage mode) and #97 (egress stage capture) are merged. Use the `?stage=1` links in §3, each
-> opened at its last step. The spoken lines follow the script cut (critic D, #112): 372 words, about 2:47.
+> opened at its last step. The spoken lines follow the script cut (critic D, #112): 376 words, about 2:49.
 
 ## 1. Pre-flight (15:45, from PRESENTER T-30)
 
@@ -72,7 +72,7 @@ Dashboard deep links (port 9100, or the port `run-demo.sh` printed):
 | **1:41** | **5a** AIM twin | Cmd-K, **Enter**, then Cmd-Tab straight to **slide 6** | the red / green / green columns | — (Slide 6 only) |
 | 1:53–2:06 | 6 Guest list | slide 7 | field → mechanism → rule | — |
 | **2:06** | **7** Close | Cmd-Tab to Terminal, Cmd-K, **Enter**. Hold on the table for 8 s, then slides 8 → 10. | T3 vs DVAA table, then Summary `demo run clean … dashboard http://127.0.0.1:<port>/` | — |
-| 2:47–3:00 | end | slide 10 held. **Stop recording.** | — | — |
+| 2:49–3:00 | end | slide 10 held. **Stop recording.** | — | — |
 | (separate clip) | 3A OpsBot encore, optional | new recording, same settings: `node track3a/run-demo.mjs` (about 2 s), hold 10 s | the layering table: Undefended LEAKED ×2 … all blocked, benign OK | — |
 
 Save the encore as `~/Desktop/fallback-opsbot.mov`. Record it only if there's time left before 16:30.
