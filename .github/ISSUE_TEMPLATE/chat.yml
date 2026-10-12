@@ -1,0 +1,26 @@
+name: Chat with the orchestrator
+description: Ask the build orchestrator a question or request work. Monitored; replies in about a minute.
+title: "[chat] "
+labels: ["chat"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The orchestrator answers chat **before** other work, usually within about a minute. Ask about status,
+        decisions, or request work. See [CHAT.md](../blob/main/CHAT.md). Keep it public-safe: this repo goes public.
+  - type: textarea
+    id: message
+    attributes:
+      label: Message
+      description: What do you want to know or have done?
+      placeholder: "e.g. What's the status of T3? / Why alert-only on response side? / Please add X to the demo script."
+    validations:
+      required: true
+  - type: checkboxes
+    id: urgent
+    attributes:
+      label: Urgent?
+      description: Tick this, and add the `chat-urgent` label if you can, to be answered first.
+      options:
+        - label: "Urgent: answer this before other chat"
+          required: false

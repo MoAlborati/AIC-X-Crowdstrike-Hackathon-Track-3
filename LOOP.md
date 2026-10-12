@@ -43,6 +43,13 @@ defensive, but the subject matter is prompt injection + exfiltration).
 4. **Max 2 retries per ticket.** After the second failed retry, the orchestrator stops dispatching that
    ticket and surfaces it to the operator in STATE.md **Blockers** (with the handoff path).
 
+## Chat with the orchestrator (priority async intake)
+Humans can reach the orchestrator through GitHub Issues at any time (see `CHAT.md`). `scripts/chat-poll.sh`
+emits a `CHAT_EVENT` for each unanswered message in any open issue. Chat runs **in parallel** with the build
+loop, and the orchestrator **answers chat before other work**, with `chat-urgent` first. Every reply carries
+`<!-- orchestrator-reply -->`. Work requests from chat enter the loop as tickets or child agents, subject to
+§Endgame policies.
+
 ## Remote & branching
 - Remote: `origin` = https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon (we have WRITE).
 - Base branch: `main`. One branch per ticket: `tN-short-slug` (e.g. `t3-detector-core`).

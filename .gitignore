@@ -7,3 +7,4 @@ scratchpad/
 captures/*.raw
 .eval/
 sentinel/egress/.logs/
+.chat/

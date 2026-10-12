@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   CAPTURES, RAGBOT_PORT, DVAA_HOST, BLOCK_MARKER, markerInspector, post, readCapture, requireDvaa, startProxy, makeConfig,
+  dvaaUserTurnRequest,
 } from './helpers.js';
 import { decodeBody, sha256 } from '../sink.js';
 import { REFUSAL_TYPE, REFUSAL_ALERT_FIELDS } from '../server.js';
@@ -104,7 +105,8 @@ describe('observe mode — live DVAA passthrough', () => {
 
   it('replays the T6 8KB-evasion capture: DVAA executes the tool server-side and reports dvaa{}; observe mode passes it through and logs would-block (ReportOnly alert)', async () => {
     const fx = JSON.parse(readFileSync(join(CAPTURES, 'variants/fixtures/evasion/eva-pos-middle-001.json'), 'utf8'));
-    const body = Buffer.from(JSON.stringify(fx.request));
+    const body = Buffer.from(JSON.stringify(dvaaUserTurnRequest(fx)));
+    assert.ok(body.length > 16384, `evasion replay must exceed DVAA's head+tail 8KB windows, got ${body.length}B`);
     const p = await startProxy({ inspector: markerInspector });
     try {
       const res = await post(p.url, body);
@@ -123,6 +125,12 @@ describe('observe mode — live DVAA passthrough', () => {
     } finally {
       await p.close();
     }
+  });
+  it('the channel-faithful T6 fixture (payload in a role:"tool" message) does NOT trigger DVAA: DVAA reads only the latest user turn, which is why the replays above deliver the document as the user turn', async () => {
+    const fx = JSON.parse(readFileSync(join(CAPTURES, 'variants/fixtures/evasion/eva-pos-middle-001.json'), 'utf8'));
+    const res = await post(`http://${DVAA_HOST}:${RAGBOT_PORT}`, Buffer.from(JSON.stringify(fx.request)));
+    assert.equal(res.status, 200);
+    assert.equal(res.json.dvaa, undefined, 'DVAA now acts on tool-role content: dvaaUserTurnRequest() is stale, replay fx.request directly');
   });
 });
 
@@ -173,7 +181,7 @@ describe('block mode — live DVAA', () => {
     const fx = JSON.parse(readFileSync(join(CAPTURES, 'variants/fixtures/evasion/eva-pos-middle-001.json'), 'utf8'));
     const p = await startProxy({ patch: { mode: 'block' }, inspector: markerInspector });
     try {
-      const res = await post(p.url, Buffer.from(JSON.stringify(fx.request)));
+      const res = await post(p.url, Buffer.from(JSON.stringify(dvaaUserTurnRequest(fx))));
       assert.equal(res.status, 403);
       assert.equal(res.json.error.code, 'response_blocked');
       assert.equal(res.json.sentinel.phase, 'response');

@@ -144,6 +144,26 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - Each variant labeled with expected ground truth for T7 scoring.
 - **Gate notes:** tester-gate — fixtures are data-rich and labeled; delivery-gate — variants replayable.
 
+## T6b — Corpus expansion (data-rich scoring)
+- **DoD:** 1, 5 (metrics rest on more than 29 cases)
+- **Deps:** T6, T7
+- **Scope:** `captures/variants/` (+ pin T3's T6 regression test to T6's original 18 IDs, `sentinel/detectors/test/corpus-t6.test.js`)
+- **What:** Grow the labeled corpus to ≥60 attack and ≥60 benign cases, using only **verbatim** cases from
+  the already-pinned benchmarks (no authored attack text):
+  - all AgentDojo v1 suites × 2 attack templates per injection task;
+  - InjecAgent DS + DH enhanced cases;
+  - every deepset `split=test` row;
+  - AgentDojo user tasks with no injection, as benign multi-call ground-truth transcripts with real
+    (data-rich) tool outputs.
+- **Acceptance:**
+  - ≥60 positive and ≥60 negative T6 cases, ≥60 of the negatives on the tool channel.
+  - Every string sha256-pinned. `verify-upstream.mjs` re-checks it against pinned sources; the AgentDojo
+    extract is re-run on the pinned clone and must match byte for byte.
+  - Generators are deterministic (byte-stable tree on re-run).
+  - Channel fidelity: payloads go in `role:"tool"` messages, and framework tags come from mapping.js CATALOG.
+  - T7 harness scores the new cases (`scripts/eval.sh score`), and the `scripts/eval.sh gate <PR#>` merge gate is green.
+- **Gate notes:** reviewer-gate — no selection bias (all deepset rows; rule-based InjecAgent and AgentDojo picks).
+
 ## T7 — Scoring harness
 - **DoD:** 5
 - **Deps:** T3, T6

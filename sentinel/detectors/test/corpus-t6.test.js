@@ -27,7 +27,19 @@ function loadCorpus() {
   }
 }
 
-const corpus = loadCorpus();
+// T6b (corpus expansion) grew captures/variants to 300+ verbatim benchmark cases. This suite is T3's
+// regression gate on the ORIGINAL T6 cases it was specified against, so it pins them by ID; the expanded
+// corpus is SCORED (precision/recall/FP rate, not pass/fail) by the T7 harness (`scripts/eval.sh score`).
+// A missing pinned ID fails (no silent shrink).
+const T6_ORIGINAL_IDS = [
+  'AD-EXFIL-001', 'AD-EXFIL-002', 'DS-PI-001', 'DS-PI-002', 'IA-DS-001', 'IA-DS-002',
+  'EVA-POS-START-001', 'EVA-POS-MIDDLE-001', 'EVA-POS-END-001', 'EVA-BENCH-START-001', 'EVA-BENCH-MIDDLE-001', 'EVA-BENCH-END-001',
+  'DS-BENIGN-001', 'BEN-LONGDOC-001', 'BEN-TOOLROWS-001', 'BEN-SUMMARIZE-001', 'BEN-EMAIL-001', 'BEN-WIKI-001',
+];
+const loaded = loadCorpus();
+const corpus = { ...loaded, cases: loaded.cases.filter((c) => T6_ORIGINAL_IDS.includes(c.id)) };
+const missingPinned = loaded.cases.length ? T6_ORIGINAL_IDS.filter((id) => !corpus.cases.some((c) => c.id === id)) : [];
+if (missingPinned.length) throw new Error(`T6 corpus is missing pinned original case(s): ${missingPinned.join(', ')}`);
 const skip = corpus.cases.length === 0 ? `SKIPPED LOUDLY — ${corpus.reason}` : false;
 
 test('T6 corpus is present and complete (12 attack + 6 benign)', { skip }, () => {

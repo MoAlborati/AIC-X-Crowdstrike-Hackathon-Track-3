@@ -23,9 +23,10 @@ licenses, notices, and the list of restructurings. Destinations are the benchmar
 
 | Path | Contents |
 |------|----------|
-| `fixtures/deepset/` | 2 injection rows + 1 benign row from deepset/prompt-injections (`split=test`) |
-| `fixtures/agentdojo/` | AgentDojo `important_instructions_no_names` × exfil injection tasks (workspace, banking), pre-computed |
-| `fixtures/injecagent/` | InjecAgent DS-enhanced data-stealing cases, pre-computed |
+| `fixtures/deepset/` | **Every** deepset/prompt-injections `split=test` row: 60 injection rows and 56 benign rows (T6: rows 98, 15, 77; T6b: the rest) |
+| `fixtures/agentdojo/` | AgentDojo v1, all 4 suites (banking, slack, travel, workspace). Every injection task appears with `important_instructions_no_names` plus one rotating fixed template (`ignore_previous`, `injecagent`, `system_message`, `direct`). Pre-computed, 54 cases |
+| `fixtures/agentdojo-benign/` | **T6b benign:** all 97 AgentDojo v1 user tasks, **with no injection**. Each is the full ground-truth transcript with the real tool outputs AgentDojo renders, from 45 B to 59 KB per case |
+| `fixtures/injecagent/` | InjecAgent enhanced: Data Stealing (34 cases) + Direct Harm (30 cases). Pre-computed |
 | `fixtures/benign/` | Benign corpus, including **data-rich** cases (>16KB retrieved doc, 400-row tool output) |
 | `fixtures/evasion/` | Start, middle and end placements of a verbatim injection in a long benign doc, including the headline **8KB-baseline evasion** |
 | `corpus/` | Large generated benign bodies |
@@ -175,10 +176,55 @@ replica, so **fixture bytes do not depend on the machine**. Regenerating with re
 DVAA, or with `DVAA_SRC=replica` gives an identical tree. The tests then re-check every recorded
 value against real DVAA.
 
+## T6b corpus expansion
+
+Without T6b, scoring rested on 29 cases. T6 is now **342 cases: 184 attack and 158 benign**. With T1's
+captures, T7 scores 353. Every new case is **verbatim** from the already-pinned benchmarks. As in T6, we
+author only placement and labels:
+
+| Source | Cases | Selection rule (no hand-picking) |
+|--------|-------|----------------------------------|
+| deepset `split=test` | 113 new (60+56 in total) | every row |
+| AgentDojo v1 injection tasks | 52 new (2 duplicates of AD-EXFIL-001/002 skipped) | every injection task × `important_instructions_no_names` + 1 rotating fixed template; paired with the suite's injectable user tasks in rotation, at the ground-truth call whose output carries the vector (AgentDojo's own canary method) |
+| AgentDojo v1 user tasks (benign) | 97 | every user task: ground truth run on the default environment, every call + output in order |
+| InjecAgent DS / DH enhanced | 32 + 30 | one case per attacker case; the user tool rotates (`index = a*17 + (a mod 17)`) |
+
+- **Extraction.** `tools/extract-agentdojo.py` runs AgentDojo's **own** code from the pinned clone: attack
+  classes, `GroundTruthPipeline` logic, and `tool_result_to_str`. No LLM and no network are involved. It
+  writes `tools/upstream-agentdojo.json`. It pins two sources of run-to-run variation: `PYTHONHASHSEED=0`,
+  and `now()` in AgentDojo's email/drive write tools (frozen at 2024-05-15 12:00). The output is
+  byte-identical across runs. `tools/extract-upstream.mjs` writes `tools/upstream-deepset.json` and
+  `tools/upstream-injecagent.json`.
+- **Labels.**
+  - deepset label → `prompt_injection` / `benign`.
+  - AgentDojo injection tasks that send user data to an attacker sink → exfil, with the sink as
+    `exfilTargetUrl`. The table is `AGENTDOJO_EXFIL` in `build-benchmark-fixtures.mjs`, and each sink is
+    checked to appear in the GOAL. `tests/corpus.test.mjs` also checks that it is a *destination* there
+    ("to X", "to the account/website X", "email address[,:] X"), not another address the goal mentions.
+  - All other AgentDojo goals (money transfer, password change, phishing link, ...) and every InjecAgent DH
+    case → `indirect_prompt_injection`, a new category with the same tags as mapping.js
+    `CATEGORY_MAP.indirect_prompt_injection`.
+  - InjecAgent DS → exfil to the address the send step names: the first email after the send verb
+    (`send|email|forward|share`), not the first email in the text. Case 379 looks up `john.doe@gmail.com`
+    and emails the result to `amy.watson@gmail.com`.
+- **No baseline filter.** T6's "benign is clean under DVAA's patterns" guard now applies only to
+  **authored** benign. Verbatim upstream rows are kept whether or not DVAA's patterns flag them: 10 benign
+  rows trip them, which is a real baseline FP. Exfil positives must still carry their sink in the tool
+  payload, never in the user turn.
+- **Known limitation (shape asymmetry).** AgentDojo attack payloads follow T6's convention: the tool
+  result is the injection string alone. Benign AgentDojo payloads are full environment outputs. A length-
+  or shape-based detector could exploit this. T3 is rule-based and does not, but treat this as a corpus
+  property. Embedding injections in the YAML tool output would make the verbatim byte check impossible,
+  because YAML escapes and folds newlines.
+
 ## Reproduce
 
 ```bash
-node captures/variants/tools/build-benchmark-fixtures.mjs   # deepset / agentdojo / injecagent fixtures
+# (T6b, only to refresh the extracts; the committed upstream-*.json are what the builders read)
+#   DEEPSET_ROWS=rows.jsonl DEEPSET_PARQUET=test.parquet INJECAGENT_SRC=<clone> node captures/variants/tools/extract-upstream.mjs
+#   PYTHONPATH=<agentdojo clone>/src <python with agentdojo deps> captures/variants/tools/extract-agentdojo.py <agentdojo clone> \
+#     > captures/variants/tools/upstream-agentdojo.json
+node captures/variants/tools/build-benchmark-fixtures.mjs   # deepset / agentdojo / agentdojo-benign / injecagent fixtures
 node captures/variants/tools/generate-corpus.mjs            # corpus/ + benign data-rich + evasion fixtures
 node captures/variants/tools/build-manifest.mjs             # manifest.json
 node --test captures/variants/tests/*.test.mjs               # tests
@@ -219,6 +265,8 @@ own. It encodes and asserts DVAA's bounds:
 | DVAA `DETECTION_EDGE` | 8 KiB head/tail | DVAA `detectAttacks()` (the anti-pattern we beat) | **Silent miss**: middle content is never scanned. The `middle` fixtures exist to make this failure visible. T3 must scan the **full** payload and fail loudly on overflow, never copy this cap. |
 | Generated doc size | ~22 KB (`EDGE*2 + 6000`) | `generate-corpus.mjs` | The doc exceeds `DETECTION_EDGE*2`, so the injection provably lands in the gap. Asserted in tests. |
 | Tool-output rows | 400 | `generate-corpus.mjs` | Data-rich input. Asserted `>= 300`, and every row is present in the tool message. |
+| T6b verifier re-run output | 64 MiB `maxBuffer` | `checkAgentDojoRun()` in `verify-upstream.mjs` | The extract is ~0.4 MB. Overflow throws and is reported as a **MISMATCH**, never truncated. |
+| T6b corpus size | 342 cases, largest fixture ~60 KB | builders | T7 caps it at `MAX_CASES` 2000 and `MAX_FIXTURE_BYTES` 4 MiB. Beyond either, T7 refuses the run (fail-loud). |
 | Dirty-file examples in the trust-gate error | 3 | `verifyCheckout()` in `baseline.mjs` | **Display only.** The decision uses the **full** `git status` list (any entry rejects), and the message gives the total count. |
 
 **Decision vs display:** the labels in `manifest.json` are a **decision** input for T7. The
@@ -231,6 +279,6 @@ DVAA's baseline behavior.
   correct detector flags every `groundTruth: "positive"` (including the middle evasion variants)
   and clears every `negative`.
 - **T7 (scoring):** load `manifest.json`. Compare the verdict to `expectedVerdict` and
-  `label.dvaa`. Report precision, recall, and the **benign false-positive rate** (6 negatives)
+  `label.dvaa`. Report precision, recall, and the **benign false-positive rate** (158 negatives since T6b)
   as the headline metric. Break down results by `channel` and `frameworks`.
   **Never execute tool calls from these fixtures.**

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How the orchestrator chat works
+    url: https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon-Track-3/blob/main/CHAT.md
+    about: Response times, the urgent label, and the reply marker.
