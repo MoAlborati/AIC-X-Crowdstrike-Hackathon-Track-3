@@ -4,26 +4,40 @@
 > Keep it terse and current. Append to the Decision Log; overwrite the Status block.
 
 ## Status (overwrite each iteration)
-- **Phase:** BUILD — Wave 2 (T1, T4, T6 merged; T2 building; T5 gating on existing branch)
-- **Active tickets:**
-  - T2 proxy skeleton — BUILD (`t2-proxy-skeleton`, worktree `crowdstrike-t2`)
-  - T5 dashboard — TESTER GATE on the existing `origin/t5-dashboard` (pushed by teammate "mo", no PR yet)
-  - T3 — spec / se-gate prep only (no `sentinel/detectors/` code until T2's PR exists)
-  - Review/test passes: T9-draft script+deck reviewer pass; T6 corpus tester-gate pass
-- **Open PRs:** none (`main` @ c56dbf4, "Merge pull request #10")
+- **Phase:** PAUSED — two orchestrators are running the same backlog (this loop, and MoAlborati's loop, which has opened PRs #11–#16)
+- **Active tickets (this loop):** none dispatched. Waiting for the operator to pick one loop.
+- **Open PRs (all MoAlborati → `main`):** #11 T5 dashboard · #12 T4-fix redact · #13 T7 scoring · #14 T2 proxy · #15 T6-fix corpus · #16 T8 contrast.
+  MoAlborati's loop also has a T3 implementer running (worktree `crowdstrike-t3` on its machine, per #13).
+- **This loop's unopened artifacts:**
+  - `t2-proxy-skeleton-opus` @ 800bfd7: an alternative T2 to #14. 40/40 live-DVAA tests pass on 5 runs. Proxy adds 0.21 ms median / 0.38 ms p95 (158 B request)
+    and 1.0 / 2.5 ms (79 KB). SE gate PASS; tester and reviewer gates not run. **No PR opened, so it doesn't compete with #14.**
+  - `t3-spec-prep` @ 6fec8b3: a partial `planning/T3-SPEC.md` (safety-classifier stop, attempt 1/2), with `handoffs/t3-spec.md` on that branch.
+- **Gate verdicts from this loop (not posted to PRs):**
+  - T5 tester (on dadddd5, now superseded by f3c5e5e in #11): **GREEN**. Main finding: `sentinel/dashboard/lib/alert-store.mjs:28`, where a multi-run capture with
+    embedded `alerts` silently shows 0 alerts.
+  - T6 tester (on main c56dbf4): **RED**. Findings: the bench-variant `exfilTargetUrl` label is wrong (`generate-corpus.mjs:109`), and the real-DVAA baseline silently falls back
+    to the replica. #15 addresses most of this, including the fallback (F6) and destinations (F3).
+  - T9-draft reviewer: **NEEDS_WORK**, 14 findings. It runs ~3:20 at 150 wpm. "Blocked before the secret left" is false for a response-side tripwire.
+    The 8KB evasion beat is marked optional, but DoD 1 requires it. OASB-1 and T1041 tags are missing. The commands are stale.
 - **Merged:** T0 #1, T0b #2, T4 #3, T0c #4, T1 #5, catch-up #7, citations #8, T9-draft (script+deck only) #9, T6 #10. #6 closed unmerged.
-- **Last green gate:** T6 (#10)
-- **Demo rehearsal:** not started
+- **Last green gate:** T6 (#10). Demo rehearsal: not started.
 - **Environment:** DVAA fleet up via Docker on 127.0.0.1 (9000, 7001–7023 healthy); host Node v26.
 
 ## Blockers / needs operator
-- [ ] `origin/t5-dashboard` already has a T5 implementation (commits e9be1af, 49a46c2 by "mo", no PR). The loop is gating it
-      in place instead of rebuilding from `main`. Confirm whether "mo" is still pushing to it, so two writers don't collide.
+- [ ] **Two orchestrators are running in parallel** (this loop on `orchestrator-loop`, and MoAlborati's loop). They duplicate work (two T2s; T5 force-pushed
+      mid-gate). Pick one loop to own the backlog, or split tickets explicitly. Until then this loop dispatches nothing new.
+- [ ] **T2:** review #14, or ask for `t2-proxy-skeleton-opus` to be opened as the alternative. T3 builds on whichever one merges.
+- [ ] Post this loop's T5/T6/T9 gate findings as PR review comments? (They are not posted; that needs the operator's OK.)
+- [ ] T3 spec retry (1 of 2 left) only if the spec is still wanted alongside MoAlborati's T3.
 
 ## Backlog pointer
-See BACKLOG.md. Unblocked now: **T2** (deps T1 ✓), **T5** (deps T4 ✓). Blocked: T3 (needs T2), T7 (T3+T6), T8 (T1+T3), T9 run-demo (all).
+See BACKLOG.md. All open tickets are covered by MoAlborati's PRs or in-flight T3. Still uncovered: T9 `run-demo.sh` + rehearsals (needs all), and fixing
+the T9-draft findings above (scope `demo/`).
 
 ## Decision Log (append-only, newest first)
+- 2026-10-12 — Paused this loop. While our five children ran, MoAlborati's parallel loop opened PRs #11–#16 (T2, T4-fix, T5, T6-fix, T7, T8) and started a T3.
+  Our T2 landed on `t2-proxy-skeleton-opus`, because `t2-proxy-skeleton` was already taken and we never force-push. No competing PR was opened. The T3 spec child hit
+  a cyber safety-classifier stop, so its WIP was committed to `t3-spec-prep` with a handoff. The read-only worktrees (t5, t6-test, t9-review) were removed.
 - 2026-10-12 — Orchestrator resume (worktree `crowdstrike-orchestrator`, branch `orchestrator-loop`). Synced with GitHub: #8 citations,
   #9 T9-draft (SCRIPT.md + DECK.md only; metrics placeholders) and #10 T6 corpus are merged, so the metrics table is updated. `handoffs/t1.md` is
   historical (T1 landed via #5) and is not re-dispatched. Found an unannounced T5 implementation on `origin/t5-dashboard`, so it gets a tester-gate
@@ -69,9 +83,9 @@ See BACKLOG.md. Unblocked now: **T2** (deps T1 ✓), **T5** (deps T4 ✓). Block
 | DoD item | Ticket | PR | Gate status | Notes |
 |---|---|---|---|---|
 | 1 Exploit+evasion | T1,T6 | #5, #10 | merged | 3 attack + 6 benign captures; variants incl. 8KB-baseline evasion |
-| 2 Detect+block | T2→T3 | — | T2 building | T3 waits on T2 |
-| 3 AIDR alert | T4 | #3 | merged | `sentinel/alerts` |
-| 4 Incident graph | T5 | — | tester gate | branch `t5-dashboard` exists, no PR |
-| 5 Scoring | T7 | — | blocked (T3) | |
-| 6 Secure contrast | T8 | — | blocked (T3) | |
+| 2 Detect+block | T2→T3 | #14 (open) | in review | alt T2 on `t2-proxy-skeleton-opus`; T3 in flight (MoAlborati) |
+| 3 AIDR alert | T4 | #3, #12 (open fix) | merged | `sentinel/alerts` |
+| 4 Incident graph | T5 | #11 (open) | in review | our tester GREEN on dadddd5 |
+| 5 Scoring | T7 | #13 (open) | in review | headline null until T3 |
+| 6 Secure contrast | T8 | #16 (open) | in review | |
 | 7 Demo script | T9 | #9 (draft) | partial | SCRIPT.md + DECK.md drafted; run-demo.sh + rehearsals pending |
