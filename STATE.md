@@ -10,12 +10,12 @@
   stock bash 3.2, Node 26 (moving to node@24). Mac QA issues #58–#61 are routed.
 - **Submissions (#63):** (1) **Track 3** = Path A (`track3a/` OpsBot, #62) + Path B (SentinelProxy), ONE submission.
   (2) **Track 1** = Shruti's SOC analyst tool (`track1/`, #64/#68), a separate submission; advisor agents review it every ~30 min.
-- **Merged to `main` (40):** #1 #2 #3 #4 #5 #7 #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #18 #19 #20 #21 #22 #24 #25 #26 #28
-  #29 #30 #31 #33 #35 #41 #42 #43 #44 #45 #47 #48 #65 #67 #69. Closed unmerged: #6 (superseded by #7), #27 (folded into T3-fix).
+- **Merged to `main` (41):** #1 #2 #3 #4 #5 #7 #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #18 #19 #20 #21 #22 #24 #25 #26 #28
+  #29 #30 #31 #33 #35 #41 #42 #43 #44 #45 #47 #48 #62 #65 #67 #69. Closed unmerged: #6 (superseded by #7), #27 (folded into T3-fix).
 - **Open PRs:**
   | PR | Ticket | Owner | State |
   |---|---|---|---|
-  | #56 → #62 | T3-fix → Track 3A OpsBot | MoAlborati (loop) → c-awad | **Serial merge queue 3**: #56 first, then #62 |
+  | #56 | T3-fix | MoAlborati (loop) | **Serial merge queue 3** (#62 Track 3A OpsBot already merged; re-gate #56 on fresh main) |
   | #49 → #46 | T5-lens headline → T3-recall | MoAlborati (loop) | **Serial merge queue 2**: #49 first, then #46 |
   | #57 | T12-live egress test isolation | MoAlborati (loop) | Self-merge on green |
   | #50 | T9-fix beat 4 detector credit | MoAlborati (loop) | Self-merge on green |
@@ -29,7 +29,7 @@
 ### Schedule (operator, #39; replaces the 11:58 schedule)
 | Window (PDT) | Work |
 |---|---|
-| now–15:00 | Drain merge queues (#56 → #62, #49 → #46), #57, #50 |
+| now–15:00 | Drain merge queues (#56; #49 → #46), #57, #50 |
 | **15:00** | **Final rescore** (RESULTS.md); pitch framing decided from it (#38) |
 | **15:15** | **CODE FREEZE** |
 | 15:15–15:45 | Delivery gate on `main` AND on Catherine's Mac; tag `v1.0-submission` at 15:45 |
@@ -48,7 +48,7 @@ Current `sentinel/scoring/RESULTS.md` on `main`:
 - T3 catches both cases that evade DVAA's 8 KB scan baseline (2/2, prevented 2/2). DVAA's recall comes with 12.8% benign FP.
 
 ## Backlog pointer
-See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #57, #50; final rescore 15:00; freeze 15:15; delivery gate; submit.
+See BACKLOG.md. Next: queue 3 (#56; #62 merged), queue 2 (#49 → #46), #57, #50; final rescore 15:00; freeze 15:15; delivery gate; submit.
 
 ## Decision Log (append-only, newest first)
 - 2026-10-12 ~13:00 PDT — **Schedule change (#39):** submit by 16:00, present at 18:00. Code freeze moves 14:30 → **15:15**.
@@ -68,7 +68,7 @@ See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #57, #50; fi
 - 2026-10-12 — **Submission (#52):** no submission format found in the DVAA repo. SUBMISSION.md drafted and merged (#69); tag
   `v1.0-submission` planned for 15:45.
 - 2026-10-12 — **Process (endgame):** chat intake via issues (#32/#33); 1-minute orchestrator tick ("orchestrator should
-  always be active and working"); serial merge queues (queue 2: #49 → #46, queue 3: #56 → #62); every `needs-human` issue
+  always be active and working"); serial merge queues (queue 2: #49 → #46, queue 3: #56 → #62; #62 merged first); every `needs-human` issue
   names an owner, a deadline and a default. A mock judge review drove the stage fixes (#49, #50, T5-stage).
 - 2026-10-12 — **CPU-time timing test fix (in flight; first step #42 merged):** the T3 timing test now bounds CPU time (40 ms), not
   wall clock, because wall-clock timing flaked under parallel gate load. #27's cap/dedupe work is folded into T3-fix.
@@ -138,6 +138,6 @@ See BACKLOG.md. Next: queue 3 (#56 → #62), queue 2 (#49 → #46), #57, #50; fi
 | 5 Scoring | T7, T7-real | #13, #28 | MERGED | 63.0% / 41.8% / 0 FP now; 83.1% / 50.3% / 0 FP with #46 |
 | 6 Secure contrast | T8, spike, T12, T12-live | #16, #18, #22, #45; #57 open | MERGED; #57 self-merge | Response-side alert-only; egress enforced at tool boundary |
 | 7 Demo script | T9, T9-fix | #9, #35, #65; #50 open | MERGED; #50 self-merge | Presenter Catherine (Mac); video #66 |
-| Track 3A | OpsBot | #62 open | Queue 3 after #56 | Same submission as Path B (#63) |
+| Track 3A | OpsBot | #62 | MERGED | Same submission as Path B (#63) |
 | Submission | docs | #69 | MERGED | Tag `v1.0-submission` at 15:45 |
 | Infra | T11, chat | #20, #33 | MERGED | One-command eval + merge gate; Mac QA #58–#61 |
