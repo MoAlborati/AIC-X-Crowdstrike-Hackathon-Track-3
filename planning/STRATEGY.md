@@ -4,13 +4,49 @@
 **Format:** 8-hour build, **live demo** judged. Prizes: 1st $800, 2nd $200, 3rd prize box.
 **Date:** 2026-10-12.
 
+## 0. Official brief (verbatim — judging source of truth)
+
+Source: organizers' slides, transcribed verbatim by @c-awad in issue #128 (2026-10-12). It supersedes the "AgentWorks hackathon rules" proxy
+criteria formerly used here and in `RESEARCH.md` §B. Judge-score passes (critic archetype) score against this text.
+
+### Track 3 (official text)
+> **CrowdStrike, Track 3: Secure: Attack & Defend the Agent.** Teams either build an AI agent and demonstrate how they'd defend it against prompt injection, tool misuse, or data exfiltration, or attack a provided model/agent with adversarial inputs and build a detector for the exploit. The most advanced track, and the one that maps most directly to what CrowdStrike is building with AgentWorks. Realistic scope for 8 hours: one clear exploit or defense, demoed live rather than a fully hardened system.
+> 1st $800 · 2nd $200 · 3rd Prize Box
+
+### Ciocca Venture Award (separate award, official text)
+> The Ciocca Venture Award, presented in partnership with SCU's Ciocca Center for Innovation and Entrepreneurship, recognizes the team whose AI-powered cyber defense solution shows the strongest potential to become a real product or venture. Teams are judged on the clarity of the problem they're solving, who would use and pay for their solution, how it stands apart from existing tools, and a credible path from prototype to launch, alongside a working demo.
+> 1st $1000 · 2nd $500 · 3rd Prize Box
+
+### Official judging criteria, as used for scoring
+- **Track 3** (from the brief): (1) fits the brief: build-and-defend against prompt injection / tool misuse / data
+  exfiltration, *or* attack a provided agent + build a detector; (2) one **clear** exploit or defense; (3) **demoed live**;
+  (4) realistic scope, "rather than a fully hardened system"; (5) relevance to what CrowdStrike is building with AgentWorks.
+- **Ciocca** (from the award text): clarity of the problem · who would use and pay · how it stands apart from existing
+  tools · credible path from prototype to launch · alongside a working demo.
+
+### How we map to the brief (honest)
+- **"One clear exploit or defense, demoed live"** maps to one defense: SentinelProxy at the tool boundary.
+  - **Live:** the only live beat is the proxy's benign **HTTP 200** (forwarded untouched), then DVAA's aim-ab request
+    **HTTP 403**, blocked pre-forward.
+  - **Recorded:** default-deny egress at the tool boundary is the control that actually stops data leaving (RepoBot/RAGBot
+    exfil, attacker server received nothing). On stage we say "recorded" for it.
+- **"Attack a provided model/agent … and build a detector"** is Path B (DVAA), our main demo.
+- **"Build an AI agent and demonstrate how they'd defend it against prompt injection, tool misuse, or data
+  exfiltration"** is Path A: OpsBot (`track3a/`), our own agent with all three risks, defended by the same unmodified
+  proxy. It also fits the brief.
+- **"Rather than a fully hardened system"** supports our honest-scope framing (#123). We list our misses in RESULTS.md.
+- **Not in the brief:** DVAA's 22 CTF challenges. The brief does not mention them, so we don't pitch them as a goal.
+- **Ciocca:** no extra build. If the team targets it (#128, default YES), the deck adds one venture slide covering
+  problem, who uses and pays, differentiation vs Falcon AIDR / NeMo Guardrails / Lakera, and path to launch.
+  Open: is a separate submission/form needed, and can one project win both?
+
 ---
 
 ## 1. The decision (locked)
 
 **Path B: attack the provided vulnerable agent (DVAA) + build a detector for the exploit.**
 
-Track 3 offers two paths: (A) build your own agent and defend it, or (B) attack a provided agent and build a detector. **We pick B** because:
+Track 3 offers two paths (see the verbatim brief in §0): (A) build an agent and defend it, or (B) attack a provided agent and build a detector. **We pick B** as the main demo (Path A is covered by the OpsBot add-on in `track3a/`) because:
 1. The target (DVAA — Damn Vulnerable AI Agent) is **handed to us**; we spend all 8h on the detector, which is what's judged.
 2. A **real exploit landing live** is more visceral than "here's how I'd defend."
 3. It maps **1:1 to the product CrowdStrike just shipped** (Falcon AIDR / AgentWorks guardrails) — the biggest scoring lever. See §2.
@@ -84,7 +120,7 @@ Each detection = an **AIDR/Falcon-shaped alert JSON**: `DetectName`, `Severity`/
 
 ## 9. Scoring levers, ranked
 
-1. Demo maps 1:1 onto Falcon AIDR / AgentWorks (speak their words) — "workflow integration" + flatters judges.
+1. Demo maps 1:1 onto Falcon AIDR / AgentWorks (speak their words) — the brief itself says Track 3 "maps most directly to what CrowdStrike is building with AgentWorks". (The old "workflow integration" criterion came from the superseded AgentWorks-rules proxy.)
 2. One crisp exploit → detect → block arc, end-to-end, live.
 3. The visual "aha": red (pwned) vs green (saved), side by side; taint path glowing.
 4. Quantified outcome: **real precision/recall vs ground truth** + latency (mirror "99% @ sub-30ms"); "we catch the 2/2 cases that evade the baseline's 8KB window" — never an unqualified "we beat the baseline": DVAA's baseline has the higher prevention recall, at a 12.8% benign FP rate (see `sentinel/scoring/RESULTS.md`).
