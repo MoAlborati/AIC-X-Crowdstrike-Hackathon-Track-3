@@ -5,12 +5,15 @@
 #   doctor          check Node >=22 (prefers nvm's >=24), Docker, the pinned DVAA checkout; print fixes
 #   up              start the DVAA fleet (docker project dvaa-t1, every port published on 127.0.0.1 only)
 #   down            stop the DVAA fleet
-#   test            run every sentinel/* test suite + the captures/ suites, print a pass/fail table
+#   test            run every *.test.js/*.test.mjs suite under sentinel/ and captures/ (found by glob),
+#                   print a pass/fail table; exit 1 on any failing suite
 #   score           run the T7 scoring harness, print its results table
 #   contrast        verify T8's recorded secure-by-design contrast (EVAL_LIVE=1 also re-captures it)
 #   dashboard       start the T5 dashboard on loopback in the background, print its URL
 #   dashboard-stop  stop the dashboard started by `dashboard`
 #   all             doctor, up, test, score, contrast, dashboard; then a summary table
+#   gate <PR#>      MERGE GATE: merge the PR into origin/main in a temp worktree and run `test` there;
+#                   exit 1 on a conflict or any failing suite. Required before merging any PR.
 #
 # Every step prints PASS, FAIL or NOT YET MERGED. Nothing is skipped silently: a component that is not
 # on this branch yet prints "NOT YET MERGED" with its ticket, and a failing step exits non-zero.
@@ -25,10 +28,13 @@
 #   DVAA_DIR, DVAA_PROJECT, DVAA_PIN   forwarded to scripts/setup-dvaa.sh
 set -uo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="$REPO/.eval"
-SETUP_DVAA="$REPO/scripts/setup-dvaa.sh"
-export DVAA_DIR="${DVAA_DIR:-$REPO/.dvaa/dvaa-target}"
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SELF_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# EVAL_REPO / EVAL_OUT are set by `gate` to evaluate a temporary merge worktree with this script.
+REPO="${EVAL_REPO:-$SELF_REPO}"
+OUT="${EVAL_OUT:-$REPO/.eval}"
+SETUP_DVAA="$SELF_REPO/scripts/setup-dvaa.sh"
+export DVAA_DIR="${DVAA_DIR:-$SELF_REPO/.dvaa/dvaa-target}"
 PROJECT="${DVAA_PROJECT:-dvaa-t1}"
 DVAA_PIN_DEFAULT="$(sed -n 's/^DVAA_PIN="\${DVAA_PIN:-\([0-9a-f]*\)}"$/\1/p' "$SETUP_DVAA")"
 DVAA_PIN="${DVAA_PIN:-$DVAA_PIN_DEFAULT}"
@@ -205,33 +211,44 @@ cmd_down() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# Test suites. Known components are listed with their ticket so a missing one prints NOT YET MERGED.
-# Any other sentinel/<x>/ that has tests is discovered and run too, so new components are never missed.
+# Test suites. Discovery is by glob: every directory under sentinel/ and captures/ that holds a
+# *.test.js or *.test.mjs file is a suite, so a new suite is picked up without editing this script.
+# The ticket list below only labels suites and turns a component that is absent into NOT YET MERGED.
 KNOWN_SUITES=(
-  "T2|sentinel/proxy|sentinel/proxy/test"
-  "T3|sentinel/detectors|sentinel/detectors/test"
-  "T4|sentinel/alerts|sentinel/alerts/test"
-  "T5|sentinel/dashboard|sentinel/dashboard/test"
-  "T7|sentinel/scoring|sentinel/scoring/test"
-  "T6|captures/variants|captures/variants/tests"
-  "T8|captures/contrast|captures/contrast/tests"
+  "T2|sentinel/proxy"
+  "T3|sentinel/detectors"
+  "T4|sentinel/alerts"
+  "T5|sentinel/dashboard"
+  "T7|sentinel/scoring"
+  "T6|captures/variants"
+  "T8|captures/contrast"
 )
-suite_cmd() { # dir testdir -> prints the command to run, cwd = dir
-  local dir="$1" tdir="$2" script
+# Prints "component_dir|test_dir" per suite. The component dir (the cwd the tests expect) is the parent
+# of a test/ or tests/ dir, otherwise the dir itself.
+discover_suites() {
+  local t comp
+  ( cd "$REPO" && find sentinel captures \( -name node_modules -o -name .eval -o -name .dvaa \) -prune -o \
+      -type f \( -name '*.test.js' -o -name '*.test.mjs' \) -print 2>/dev/null ) \
+    | xargs -r -n1 dirname | sort -u | while IFS= read -r t; do
+      case "$(basename "$t")" in test|tests) comp="$(dirname "$t")" ;; *) comp="$t" ;; esac
+      echo "$comp|$t"
+    done
+}
+# The command runs the exact discovered files with node --test (so no file can fall outside a
+# package.json glob), keeping any --test-* flags the package's own test script sets (e.g. concurrency).
+suite_cmd() { # dir testdir
+  local dir="$1" tdir="$2" flags="" files
   if [ -f "$REPO/$dir/package.json" ]; then
-    script="$(node -e 'const p=require(process.argv[1]);process.stdout.write((p.scripts&&p.scripts.test)||"")' "$REPO/$dir/package.json")"
-    if [ -n "$script" ]; then echo "npm test --silent"; return; fi
+    flags="$(node -e 'const p=require(process.argv[1]);const s=(p.scripts&&p.scripts.test)||"";process.stdout.write((s.match(/--test-(concurrency|timeout|isolation)=\S+/g)||[]).join(" "))' "$REPO/$dir/package.json")"
   fi
-  echo "node --test ${tdir#$dir/}/*.test.js ${tdir#$dir/}/*.test.mjs"
+  files="$(cd "$REPO/$dir" && find "${tdir#$dir/}" -maxdepth 1 -type f \( -name '*.test.js' -o -name '*.test.mjs' \) | sort | tr '\n' ' ')"
+  [ "$tdir" = "$dir" ] && files="$(cd "$REPO/$dir" && find . -maxdepth 1 -type f \( -name '*.test.js' -o -name '*.test.mjs' \) | sort | tr '\n' ' ')"
+  echo "node --test $flags $files"
 }
 SUITE_ROWS=(); SUITE_FAILS=(); SUITE_MISSING=(); SUITE_SKIPS=()
 run_suite() { # ticket dir testdir
   local ticket="$1" dir="$2" tdir="$3" name log cmd rc start secs pass fail skip notes
   name="${dir//\//_}"; log="$OUT/test/$name.log"
-  if [ ! -d "$REPO/$tdir" ]; then
-    SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|$tdir not on this branch")
-    SUITE_MISSING+=("$ticket $dir"); return "$RC_NYM"
-  fi
   cmd="$(suite_cmd "$dir" "$tdir")"
   start=$(date +%s)
   ( cd "$REPO/$dir" && shopt -s nullglob && eval "timeout --kill-after=10 $SUITE_TIMEOUT $cmd" ) > "$log" 2>&1
@@ -239,7 +256,7 @@ run_suite() { # ticket dir testdir
   pass="$(grep -Eo '^(# |ℹ )pass [0-9]+' "$log" | tail -n1 | grep -Eo '[0-9]+$')"
   fail="$(grep -Eo '^(# |ℹ )fail [0-9]+' "$log" | tail -n1 | grep -Eo '[0-9]+$')"
   skip="$(grep -Eo '^(# |ℹ )skipped [0-9]+' "$log" | tail -n1 | grep -Eo '[0-9]+$')"
-  notes="log .eval/test/$name.log"
+  notes="log ${log#$SELF_REPO/}"
   # Explicit skip notices printed by the suites themselves (not test names that mention SKIPPED).
   local sk n=0
   while IFS= read -r sk; do SUITE_SKIPS+=("$dir: $sk"); n=$((n + 1)); done < <(
@@ -270,7 +287,7 @@ for k,r in enumerate(rows):
 '
 }
 cmd_test() {
-  hdr "test (every sentinel/* suite + captures suites)"
+  hdr "test (every *.test.js/*.test.mjs suite under sentinel/ and captures/, found by glob)"
   require_node || return 1
   mkdir -p "$OUT/test"
   # Real seams: the pinned DVAA checkout (T6 evasion proof, T7 baseline) and, when the fleet is up,
@@ -283,19 +300,23 @@ cmd_test() {
   else warn "DVAA fleet not up: live-DVAA seams will be skipped (run scripts/eval.sh up first)"; fi
 
   SUITE_ROWS=(); SUITE_FAILS=(); SUITE_MISSING=(); SUITE_SKIPS=()
-  local entry ticket dir tdir rc=0 r nym=0 known=" " d
-  for entry in "${KNOWN_SUITES[@]}"; do
-    IFS='|' read -r ticket dir tdir <<< "$entry"; known+="$dir "
+  local entry ticket dir tdir rc=0 r nym=0
+  local suites=() found=" " t2
+  mapfile -t suites < <(discover_suites)
+  for entry in "${suites[@]}"; do
+    IFS='|' read -r dir tdir <<< "$entry"; found+="$dir "
+    ticket="(new)"
+    for t2 in "${KNOWN_SUITES[@]}"; do [ "${t2#*|}" = "$dir" ] && ticket="${t2%%|*}"; done
     run_suite "$ticket" "$dir" "$tdir"; r=$?
-    [ "$r" = 1 ] && rc=1; [ "$r" = "$RC_NYM" ] && nym=1
+    [ "$r" = 1 ] && rc=1
   done
-  for d in "$REPO"/sentinel/*/; do
-    d="${d%/}"; d="${d#$REPO/}"
-    case "$known" in *" $d "*) continue ;; esac
-    [ -d "$REPO/$d/test" ] || [ -d "$REPO/$d/tests" ] || continue
-    tdir="$d/test"; [ -d "$REPO/$tdir" ] || tdir="$d/tests"
-    run_suite "(new)" "$d" "$tdir"; [ $? = 1 ] && rc=1
+  for entry in "${KNOWN_SUITES[@]}"; do
+    IFS='|' read -r ticket dir <<< "$entry"
+    case "$found" in *" $dir "*) continue ;; esac
+    SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|no *.test.js/*.test.mjs under $dir on this branch")
+    SUITE_MISSING+=("$ticket $dir"); nym=1
   done
+  if [ ${#suites[@]} -eq 0 ]; then bad "no test files found under sentinel/ or captures/"; return 1; fi
   { echo "SUITE|TICKET|RESULT|PASS|FAIL|SKIP|TIME|NOTES"; printf '%s\n' "${SUITE_ROWS[@]}"; } | print_table
   if [ ${#SUITE_SKIPS[@]} -gt 0 ]; then
     echo; warn "${#SUITE_SKIPS[@]} explicit SKIPPED notice(s) from the suites (optional sources not present):"
@@ -407,6 +428,54 @@ cmd_dashboard_stop() {
 }
 
 # ---------------------------------------------------------------------------------------------------
+# Merge gate: PR head merged into the current origin/main, in a throwaway worktree, then `test`.
+# A merge conflict or any failing suite fails the gate. Logs: .eval/gate-pr<N>/.
+GATE_TMP=""
+cmd_gate() {
+  local rc
+  gate_run "$@"; rc=$?
+  if [ -n "$GATE_TMP" ] && [ "${EVAL_KEEP:-0}" != 1 ]; then
+    git -C "$SELF_REPO" worktree remove --force "$GATE_TMP" >/dev/null 2>&1; rm -rf "$GATE_TMP"
+  fi
+  return $rc
+}
+gate_run() {
+  local pr="${1:-}" tmp ref="refs/eval/pr-${1:-x}" base head merged rc
+  hdr "gate PR #${pr:-?} (PR head merged with origin/main, then test)"
+  if ! [[ "$pr" =~ ^[0-9]+$ ]]; then bad "usage: scripts/eval.sh gate <PR number>"; return 2; fi
+  if ! git -C "$SELF_REPO" fetch -q origin main "+pull/$pr/head:$ref"; then
+    bad "could not fetch origin main and pull/$pr/head"; fix "check the PR number and network access to origin"; return 1
+  fi
+  base="$(git -C "$SELF_REPO" rev-parse origin/main)"; head="$(git -C "$SELF_REPO" rev-parse "$ref")"
+  if command -v gh >/dev/null 2>&1; then
+    gh pr view "$pr" --json title,baseRefName,state -q '"  PR #'"$pr"': \(.title)  [base \(.baseRefName), \(.state)]"' 2>/dev/null || true
+  fi
+  echo "  origin/main ${base:0:12}  +  PR head ${head:0:12}"
+  if git -C "$SELF_REPO" merge-base --is-ancestor "$head" "$base"; then
+    warn "PR #$pr head is already contained in origin/main; the gate re-tests main itself"
+  fi
+  # Under the repo (gitignored .eval/), not /tmp: some suites assert their paths are repo-local, not /tmp.
+  mkdir -p "$SELF_REPO/.eval/gate-worktrees"
+  tmp="$(mktemp -d "$SELF_REPO/.eval/gate-worktrees/pr$pr.XXXXXX")"
+  GATE_TMP="$tmp"
+  if ! git -C "$SELF_REPO" worktree add -q --detach "$tmp" "$base"; then bad "could not create the temp worktree $tmp"; return 1; fi
+  if ! git -C "$tmp" -c user.name=eval-gate -c user.email=eval-gate@localhost merge -q --no-ff --no-edit "$head" >/dev/null 2>&1; then
+    bad "PR #$pr does not merge cleanly into origin/main; conflicted files:"
+    git -C "$tmp" diff --name-only --diff-filter=U | sed 's/^/        - /'
+    fix "rebase the PR on main and resolve the conflicts"; return 1
+  fi
+  merged="$(git -C "$tmp" rev-parse HEAD)"
+  echo "  merged tree ${merged:0:12} in $tmp"
+  rm -rf "$OUT/gate-pr$pr"
+  EVAL_REPO="$tmp" EVAL_OUT="$OUT/gate-pr$pr" EVAL_STRICT=0 bash "$SELF" test; rc=$?
+  echo
+  if [ "$rc" = 0 ]; then ok "GATE PASS: PR #$pr merged with main ${base:0:12} passes every suite (logs .eval/gate-pr$pr/)"
+  else bad "GATE FAIL: PR #$pr merged with main ${base:0:12} breaks the suites above. Do not merge. (logs .eval/gate-pr$pr/)"; rc=1; fi
+  [ "${EVAL_KEEP:-0}" = 1 ] && echo "  EVAL_KEEP=1: merge worktree kept at $tmp (remove: git worktree remove --force $tmp)"
+  return $rc
+}
+
+# ---------------------------------------------------------------------------------------------------
 cmd_all() {
   local steps=(doctor up test score contrast dashboard) s r rows=() rc=0 label
   for s in "${steps[@]}"; do
@@ -425,7 +494,7 @@ cmd_all() {
   return $rc
 }
 
-usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,/^set -uo/p' "$SELF" | sed '$d; s/^# \{0,1\}//'; }
 
 case "${1:-help}" in
   doctor) cmd_doctor ;;
@@ -437,6 +506,7 @@ case "${1:-help}" in
   dashboard) cmd_dashboard ;;
   dashboard-stop) cmd_dashboard_stop ;;
   all) cmd_all ;;
+  gate) cmd_gate "${2:-}" ;;
   help|-h|--help) usage ;;
   *) echo "unknown target '$1'" >&2; usage >&2; exit 2 ;;
 esac
