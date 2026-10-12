@@ -70,7 +70,7 @@ export function payloadIndex(fixture) {
 // exception, PENDING_T4_CATALOG below. Unknown category -> throw (no default).
 export const FRAMEWORKS_BY_CATEGORY = Object.freeze({
   prompt_injection: {
-    // Direct PI (the payload IS the user turn). Not yet in mapping.js CATALOG: see PENDING_T4_CATALOG.
+    // Direct PI (the payload IS the user turn). In mapping.js CATALOG since PR #12.
     atlas: ['AML.T0051.000'], // LLM Prompt Injection: Direct
     owaspLlm: ['LLM01'], // Prompt Injection
     owaspAgentic: ['ASI01'], // Agent Goal Hijack
@@ -94,9 +94,7 @@ export const FRAMEWORKS_BY_CATEGORY = Object.freeze({
  * request to T4 (add it to CATALOG.atlasTechniques). The corpus test fails if an entry here appears
  * in CATALOG (remove it from this list then) or if any other ID is missing from CATALOG.
  */
-export const PENDING_T4_CATALOG = Object.freeze({
-  'AML.T0051.000': { kind: 'atlasTechniques', name: 'LLM Prompt Injection: Direct', tactic: 'AML.TA0005' },
-});
+export const PENDING_T4_CATALOG = Object.freeze({});
 
 export function frameworksFor(category) {
   const f = FRAMEWORKS_BY_CATEGORY[category];
