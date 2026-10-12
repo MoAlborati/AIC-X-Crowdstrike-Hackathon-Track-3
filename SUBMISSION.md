@@ -17,9 +17,7 @@
 CrowdStrike x Santa Clara University, **Track 3: "Secure: Attack & Defend the Agent"**. This is one Track 3 submission.
 
 - **Path B (main entry):** we attack and defend an existing vulnerable agent. SentinelProxy runs against **DVAA** (Damn Vulnerable AI Agent, by OpenA2A), the organizers' intentionally vulnerable sandbox.
-<!-- PATH-A:BEGIN -->
 - **Path A (add-on):** we build our own agent, attack it, and defend it. **OpsBot** (`track3a/`) is defended by the same unmodified SentinelProxy components.
-<!-- PATH-A:END -->
 
 ## Problem
 
@@ -46,7 +44,6 @@ DVAA ships its own detector, `detectAttacks()`, but it scans only the first and 
 4. **Pipeline to dashboard** (`sentinel/pipeline` → `sentinel/dashboard`). Proxy and egress verdicts flow into alerts and then into a loopback-only dashboard (`127.0.0.1:9100`). It shows an alert feed, an incident graph, and deterministic replay of the recorded attacks.
 5. **Scoring harness against the DVAA baseline** (`sentinel/scoring`). It scores SentinelProxy and DVAA's own `detectAttacks()` on the same pinned corpus of real DVAA exploit captures, published benchmark attacks, and benign look-alikes. It reports detection, prevention, precision, benign false positives, and latency, and it includes a dedicated set of 8KB-window evasion cases.
 
-<!-- PATH-A:BEGIN -->
 **Path A: OpsBot** (`track3a/`). OpsBot is our own OpenAI-compatible support agent built with the lethal trifecta. It has three tools: `read_ticket` (untrusted input), `lookup_customer` (private data, with fake honeytokens) and `http_post` (egress). We attack it with an indirect injection hidden in a ticket and with a direct injection in the user turn. We defend it with three layers: the unmodified SentinelProxy chat proxy, the egress guard, and OpsBot's own user-turn mandate. `node track3a/run-demo.mjs` regenerates the table below in about 2 seconds on `127.0.0.1`:
 
 | Stack | Indirect injection | Direct injection | Benign (2) |
@@ -58,7 +55,6 @@ DVAA ships its own detector, `detectAttacks()`, but it scans only the first and 
 | Hardened + proxy + egress | blocked | blocked | OK |
 
 No single layer stops both attacks. The chat proxy cannot see an injection that arrives in a tool result, and the mandate trusts its principal. Together the layers stop both attacks, with 0/2 benign false positives.
-<!-- PATH-A:END -->
 
 ## How to run
 
@@ -75,10 +71,8 @@ scripts/eval.sh all             # doctor, up, test, score, contrast, dashboard, 
 demo/run-demo.sh --auto         # the full demo, replayed deterministically from committed captures
 scripts/egress-demo.sh both     # egress guard: RAGBot + RepoBot exfil, first observed, then blocked
 ```
-<!-- PATH-A:BEGIN -->
 
 Path A: `node track3a/run-demo.mjs`, and `node --test track3a/test/*.test.mjs` for its tests.
-<!-- PATH-A:END -->
 
 [`EVAL.md`](EVAL.md) is the full guide: what each step prints, the knobs, troubleshooting, and the merge gate. `EVAL_STRICT=1 scripts/eval.sh all` is the setting for judging the final build.
 
@@ -91,20 +85,20 @@ Path A: `node track3a/run-demo.mjs`, and `node --test track3a/test/*.test.mjs` f
 
 ## Results
 
-Source: `sentinel/scoring/results.json`. The file was generated <<METRIC:meta.generatedAt>> by the harness at detector commit `<<METRIC:meta.t3Commit>>`, against DVAA pinned at `<<METRIC:meta.dvaaCommit>>`. The corpus has <<METRIC:corpus.total>> cases: <<METRIC:corpus.attack>> attack and <<METRIC:corpus.benign>> benign, with digest `<<METRIC:corpus.digest>>`. To reproduce, run `scripts/eval.sh score`.
+Source: `sentinel/scoring/results.json`. The file was generated 2026-10-12T20:10:38Z by the harness at detector commit `2976fed`, against DVAA pinned at `5791826`. The corpus has 353 cases: 189 attack and 164 benign, with digest `sha256:0506bc620c84…`. To reproduce, run `scripts/eval.sh score`.
 
 | Metric | SentinelProxy (T3, enforce mode) | DVAA baseline (`detectAttacks()`, 8KB head/tail) |
 |---|---|---|
-| **Detection recall**: any finding fired, alert-only included | <<METRIC:t3.detection.recall>> | <<METRIC:baseline.detection.recall>> |
-| **Prevention recall**: stopped before the agent acts | <<METRIC:t3.prevention.recall>> | <<METRIC:baseline.prevention.recall>> (request-side hit) |
-| **Precision** (detection) | <<METRIC:t3.detection.precision>> | <<METRIC:baseline.detection.precision>> |
-| **Benign false-positive rate** | **<<METRIC:t3.benignFpRate>>** (<<METRIC:t3.fp>> / <<METRIC:corpus.benign>>) | <<METRIC:baseline.benignFpRate>> (<<METRIC:baseline.fp>> / <<METRIC:corpus.benign>>) |
-| **Detector latency** per case, median / p95 | <<METRIC:t3.latency.median>> / <<METRIC:t3.latency.p95>> | <<METRIC:baseline.latency.median>> / <<METRIC:baseline.latency.p95>> |
-| **8KB evasion**: injection in the middle of a long tool result | **caught <<METRIC:evasion.t3Caught>> of <<METRIC:evasion.eligible>>** | caught <<METRIC:evasion.baselineCaught>> of <<METRIC:evasion.eligible>> |
+| **Detection recall**: any finding fired, alert-only included | 67.7% | 65.6% |
+| **Prevention recall**: stopped before the agent acts | 41.8% | 63.0% (request-side hit) |
+| **Precision** (detection) | 100.0% | 85.5% |
+| **Benign false-positive rate** | **0.0%** (0 / 164) | 12.8% (21 / 164) |
+| **Detector latency** per case, median / p95 | 0.082 ms / 0.416 ms | 0.014 ms / 0.264 ms |
+| **8KB evasion**: injection in the middle of a long tool result | **caught 2 of 2** | caught 0 of 2 |
 
 **Live egress check (T12, `scripts/egress-demo.sh both`).** In observe mode, the RAGBot and RepoBot secrets reach the local attacker canary and are alerted. In block mode the canary receives no hits, and each attempt produces a `deny` / `honeytoken_match` alert. A direct-dial bypass from inside the sandbox also fails. The attacker's canary receipt is the ground truth, not DVAA's self-report.
 
-**Honest framing.** We optimized for **no blocks or alerts on the 164-case benign corpus and fail-closed prevention**, not for raw recall. SentinelProxy's detection recall is <<METRIC:cmp.detection>> the baseline's, but the baseline has the higher prevention recall, at a <<METRIC:baseline.benignFpRate>> benign FP rate. The only structural win we claim outright is catching <<METRIC:evasion.t3Caught>> of <<METRIC:evasion.eligible>> cases that evade the baseline's 8KB window. SentinelProxy's detection recall is <<METRIC:cmp.detection>> the baseline's and its prevention recall is <<METRIC:cmp.prevention>> the baseline's. The baseline gets its recall with <<METRIC:baseline.fp>> benign false positives, while SentinelProxy has <<METRIC:t3.fp>>, both on the <<METRIC:corpus.benign>>-case benign corpus. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46. In a SOC, a guardrail that blocks legitimate work gets switched off. Detection and prevention are reported separately on purpose. DVAA runs its tools in-process, so a finding on the response side fires only after the tool has run. Those findings count as detections (alert and evidence), but never as preventions. Our "prevention" number counts only what is stopped before forwarding or at egress. The positives include injection-only cases that never attempt exfiltration, and our deterministic rules often flag those without blocking them. The baseline misses the 8KB evasion cases by construction. They are a small set, and we present them as a demonstrated structural gap, not as a headline percentage. The latency figure is detector time per case in-process, not end-to-end proxy latency.
+**Honest framing.** We optimized for **no blocks or alerts on the 164-case benign corpus and fail-closed prevention**, not for raw recall. SentinelProxy's detection recall is above the baseline's, but the baseline has the higher prevention recall, at a 12.8% benign FP rate. The only structural win we claim outright is catching 2 of 2 cases that evade the baseline's 8KB window. SentinelProxy's detection recall is above the baseline's and its prevention recall is below the baseline's. The baseline gets its recall with 21 benign false positives, while SentinelProxy has 0, both on the 164-case benign corpus. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46. In a SOC, a guardrail that blocks legitimate work gets switched off. Detection and prevention are reported separately on purpose. DVAA runs its tools in-process, so a finding on the response side fires only after the tool has run. Those findings count as detections (alert and evidence), but never as preventions. Our "prevention" number counts only what is stopped before forwarding or at egress. The positives include injection-only cases that never attempt exfiltration, and our deterministic rules often flag those without blocking them. The baseline misses the 8KB evasion cases by construction. They are a small set, and we present them as a demonstrated structural gap, not as a headline percentage. The latency figure is detector time per case in-process, not end-to-end proxy latency.
 
 ## Limitations
 
@@ -114,9 +108,7 @@ Source: `sentinel/scoring/results.json`. The file was generated <<METRIC:meta.ge
 - **There are known redaction gaps in T4 alert text.** These include a card number that follows a short digit group, and double %-encoded or `\u`-escaped canaries. The egress guard decodes these forms for its *blocking* decision, but alert redaction does not.
 - **Detection is deterministic,** built from honeytokens, taint, provenance and pattern rules, with no ML classifier. Injections that never try to exfiltrate are often detected without being blocked.
 - **Corpus scope:** a single pinned DVAA version, published benchmark strings and our own benign set. The evasion set is small.
-<!-- PATH-A:BEGIN -->
 - **OpsBot (Path A)** uses a deterministic regex planner instead of a real LLM, which keeps replays exact. Its egress guard scans full bodies only for core `http.request`, and `fetch()` traffic tunnels through CONNECT, so only the host is checked.
-<!-- PATH-A:END -->
 
 ## Provenance and licenses
 
@@ -140,7 +132,7 @@ Start with [`README.md`](README.md), then [`EVAL.md`](EVAL.md) and [`docs/ARCHIT
 
 ## Demo video
 
-<<VIDEO_URL>>
+Video: available on request / shown live
 
 ## How we built it
 
