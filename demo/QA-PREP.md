@@ -253,7 +253,10 @@ findings arrive after the tool ran, so they alert but don't prevent. The egress 
 allowlisted host, forwards the `Host` header unchanged and scans gzip bodies raw; it also can't tell arbitrary data sent
 to an allowlisted host from normal traffic, and it never sees DNS. MCP tool descriptions and A2A agent cards are out of scope.
 What holds is default-deny on the destination: any host not on the list is denied whatever the wording."
-**Proof:** SUBMISSION.md "Known limitations" (one line per gap, with the next step); issues #126, #129, #112, #105.
+*If asked about held-out indirect injection:* "On the held-out LLMail-Inject + BIPIA set, we detect 8.1% and prevent 3.2%
+against DVAA's 51.4%, with 0 of 200 clean emails blocked against its 18, and we miss all 20 BIPIA code-exfil snippets. Egress default-deny
+is the backstop for any real send."
+**Proof:** SUBMISSION.md "Known limitations" (one line per gap, with the next step); issues #126, #129, #112, #105; `captures/holdout-ipi/RESULTS.md`.
 
 ---
 
