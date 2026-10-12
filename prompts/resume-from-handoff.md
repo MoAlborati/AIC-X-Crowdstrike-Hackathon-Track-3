@@ -18,6 +18,15 @@ confined to this repo + the authorized local DVAA target.
 switched mid-task, or are stopped by a safety classifier: update `{{HANDOFF_FILE}}` with current progress,
 commit + push any WIP to `{{BRANCH}}`, and end with `STATUS: DEGRADED` (do not loop).
 
+**WORKTREE (required).** Work only in your own git worktree, never in the main checkout
+`/home/gingy/crowdstrike` (orchestrator-only). Create it with:
+`cd /home/gingy/crowdstrike && git fetch origin && git worktree add -b {{BRANCH}} /home/gingy/crowdstrike-{{TICKET}} origin/<base>`
+(use `git worktree add /home/gingy/crowdstrike-{{TICKET}} {{BRANCH}}` if the branch already exists). Use absolute paths
+under `/home/gingy/crowdstrike-{{TICKET}}` for every command. Other agents share the machine, and a shared
+checkout once put a commit on another agent's branch.
+
+**Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish.
+
 ## Resume
 1. Read `{{HANDOFF_FILE}}` — it has: done / in-progress / next steps / branch + last commit / open
    questions. Also read `GOAL.md`, `LOOP.md`, `STATE.md`, `BACKLOG.md`, `AGENTS.md`, and the gate for the
