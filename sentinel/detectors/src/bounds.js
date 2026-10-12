@@ -11,10 +11,11 @@ export const DEFAULT_BOUNDS = Object.freeze({
   // Whole turn (request + response JSON) the detector will scan. The cap bounds TIME, not just bytes:
   // every scanner is linear, and the measured worst case over crafted inputs (test/timing.test.js, 20k
   // canaries registered) is ~63 ms at 1 MiB, ~30 ms at 512 KiB, ~24 ms at 384 KiB on the build box.
-  // The T2 proxy enforces a ~50 ms inspector timeout, so 512 KiB keeps the worst case well under it.
-  // DVAA accepts requests up to 1 MiB (MAX_AGENT_BODY_BYTES); a turn above 512 KiB is refused in full,
-  // never truncated. Beyond it -> fail-closed BLOCK + scan_cap_exceeded alert (or DetectorOverflowError).
-  maxPayloadBytes: 512 * 1024,
+  // The T2 proxy enforces a ~50 ms inspector timeout; 512 KiB measured 40.6 ms under the merge gate's
+  // parallel load, so the cap is 384 KiB (~24 ms worst case solo) to keep real headroom under our 40 ms
+  // budget. DVAA accepts requests up to 1 MiB (MAX_AGENT_BODY_BYTES); a turn above 384 KiB is refused in
+  // full, never truncated. Demo payloads are ~23 KB. Beyond it -> fail-closed BLOCK + scan_cap_exceeded.
+  maxPayloadBytes: 384 * 1024,
   // Messages in one request history. OpenAI clients resend the whole history; 2,000 turns is far
   // beyond any agent session we replay. Beyond it -> fail closed (same path as payload size).
   maxMessages: 2000,

