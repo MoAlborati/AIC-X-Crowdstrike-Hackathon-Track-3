@@ -24,6 +24,8 @@ test('script parses and rejects bad arguments', () => {
   assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0);
   assert.equal(run(['nonsense']).status, 2);
   assert.equal(run(['block', 'bad/label']).status, 2);
+  assert.equal(run(['block', '..']).status, 2, 'run-label .. would rm -rf the parent of ENCORE_OUT');
+  assert.equal(run(['block', '.']).status, 2);
 });
 
 test('bash 3.2 safe: no bash-4-only constructs', () => {

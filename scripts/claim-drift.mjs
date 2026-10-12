@@ -3,7 +3,7 @@
 // match sentinel/scoring/results.json (overseer recommendation #1, issue #110).
 //
 // Usage: node scripts/claim-drift.mjs [--repo DIR] [--results FILE] [doc ...]
-//   default docs: README.md SUBMISSION.md demo/QA-PREP.md demo/DECK.md
+//   default docs: README.md SUBMISSION.md demo/QA-PREP.md demo/DECK.md demo/SCRIPT.md demo/PRESENTER.md
 //   exit 0 = every in-scope percentage matches results.json; 1 = drift (each offending line printed); 2 = usage/IO
 //
 // Rules:
@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const DEFAULT_DOCS = ['README.md', 'SUBMISSION.md', 'demo/QA-PREP.md', 'demo/DECK.md'];
+export const DEFAULT_DOCS = ['README.md', 'SUBMISSION.md', 'demo/QA-PREP.md', 'demo/DECK.md', 'demo/SCRIPT.md', 'demo/PRESENTER.md'];
 const SCOPE_RE = /detect|prevent|recall|block|precision|false[- ]positive|\bFPs?\b/i;
 const HELDOUT_RE = /held[- ]?out|holdout/i;
 const PCT_RE = /(\d+(?:\.\d+)?)\s?%/g;

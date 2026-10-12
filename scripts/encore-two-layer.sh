@@ -27,7 +27,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-block}"
 RUN="${2:-$(date +%Y%m%d-%H%M%S)}"
 case "$MODE" in block|observe) ;; *) echo "usage: $0 [block|observe] [run-label]" >&2; exit 2 ;; esac
-case "$RUN" in *[!A-Za-z0-9._-]*|'') echo "run-label must match [A-Za-z0-9._-]+" >&2; exit 2 ;; esac
+case "$RUN" in *[!A-Za-z0-9._-]*|''|.|..) echo "run-label must match [A-Za-z0-9._-]+ (not . or ..)" >&2; exit 2 ;; esac
 
 PROJECT="${ENCORE_PROJECT:-sentinel-encore}"
 NET="${ENCORE_NET:-10.231.53}"
@@ -49,7 +49,8 @@ cleanup() {
   docker rm -f "$PROXY_NAME" >/dev/null 2>&1 || true
   if [ "${ENCORE_KEEP:-0}" != 1 ]; then "${DC[@]}" down -v --remove-orphans >/dev/null 2>&1 || true; fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM   # abort on Ctrl-C (bash would otherwise resume the next step); EXIT runs cleanup
 
 rm -rf "$OUT"; mkdir -p "$OUT/egress" "$OUT/cap"; chmod 777 "$OUT/egress" "$OUT/cap"
 echo "ENCORE mode=$MODE run=$RUN project=$PROJECT net=$NET.0/24 out=$OUT"

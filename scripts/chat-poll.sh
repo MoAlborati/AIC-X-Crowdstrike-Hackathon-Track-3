@@ -30,8 +30,11 @@
 #   CHAT_NOW, CHAT_NOW_STEP  test clock: epoch of the first poll, and seconds added per poll
 #
 # Bounds: issues and comments are fetched with --paginate, so no thread or message is dropped however many
-# there are (no capped list scan). The closed-issue window is a time bound, not a count bound. A failed API
-# call is reported on stderr, never skipped silently.
+# there are (no capped list scan). Rate limit: an issue's comments are re-fetched only when its updated_at or
+# comment count changed since the last poll (cached in CHAT_STATE_DIR/comments-<n>.txt); otherwise ~48 issues
+# x 120 polls/h would exceed GitHub's 5000/h core limit that gh merges and gates share. Rows without a
+# numeric comment count are never cached. The closed-issue window is a time bound, not a count bound.
+# A failed API call is reported on stderr, never skipped silently.
 # Bash 3.2 compatible (no mapfile, no associative arrays).
 set -uo pipefail
 
@@ -49,7 +52,7 @@ STALE_STATE="$STATE_DIR/stale.txt"
 # Reply marker (documented in CHAT.md): <!-- orchestrator-reply -->
 mkdir -p "$STATE_DIR"
 # Startup: forget what earlier runs printed, so currently unanswered items are emitted again.
-: > "$STATE"; : > "$STALE_STATE"
+: > "$STATE"; : > "$STALE_STATE"; rm -f "$STATE_DIR"/comments-*.txt
 
 # Field separator for jq rows: ASCII unit separator, not tab. Tab is IFS whitespace, so `read` would merge an
 # empty field (an issue with no labels) into the next one and shift every field after it.
@@ -63,16 +66,21 @@ iso_utc() { # epoch -> YYYY-MM-DDTHH:MM:SSZ (GNU date, then BSD date)
 
 # One issue row per line (US-separated): number, state, labels (+chat-urgent if the form box is ticked), created epoch, title.
 # The marker is a jq literal because `gh api --jq` has no --arg; keep it in sync with the marker noted above.
-ISSUE_JQ='.[] | select(.pull_request|not) | "\(.number)\u001f\(.state)\u001f\([.labels[].name] + (if ((.body // "") | test("- \\[[xX]\\] Urgent")) then ["chat-urgent"] else [] end) | join(","))\u001f\(.created_at | fromdateiso8601)\u001f\(.title)"'
+ISSUE_JQ='.[] | select(.pull_request|not) | "\(.number)\u001f\(.state)\u001f\([.labels[].name] + (if ((.body // "") | test("- \\[[xX]\\] Urgent")) then ["chat-urgent"] else [] end) | join(","))\u001f\(.created_at | fromdateiso8601)\u001f\(.updated_at)/\(.comments)\u001f\(.title)"'
 COMMENT_JQ='.[] | "\(.id)\u001f\((.body // "") | contains("<!-- orchestrator-reply -->"))\u001f\(.user.login)\u001f\(.created_at | fromdateiso8601)"'
 
-handle_issue() { # n state labels created title
-  local n="$1" state="$2" labels="$3" created="$4" title="$5"
-  local all last cid marked who key meta prio lastreply prev
-  if ! all=$(gh api --paginate "repos/$REPO/issues/$n/comments?per_page=100" --jq "$COMMENT_JQ"); then
-    err "reading comments of #$n failed"; return
+handle_issue() { # n state labels created ver title
+  local n="$1" state="$2" labels="$3" created="$4" ver="$5" title="$6"
+  local all last cid marked who key meta prio lastreply prev cache="$STATE_DIR/comments-$n.txt"
+  if [ -f "$cache" ] && [ "$(head -n1 "$cache")" = "v=$ver" ] && case "$ver" in */null|'') false ;; esac; then
+    all=$(tail -n +2 "$cache")   # unchanged since last poll (same updated_at + comment count): reuse
+  else
+    if ! all=$(gh api --paginate "repos/$REPO/issues/$n/comments?per_page=100" --jq "$COMMENT_JQ"); then
+      err "reading comments of #$n failed"; return
+    fi
+    all=$(printf '%s\n' "$all" | sed '/^$/d')
+    { printf 'v=%s\n' "$ver"; printf '%s\n' "$all"; } > "$cache"
   fi
-  all=$(printf '%s\n' "$all" | sed '/^$/d')
   last=$(printf '%s\n' "$all" | tail -n1)
   if [ -z "$last" ]; then
     [ "$state" = closed ] && return   # closed with no comments: nothing to answer
@@ -107,7 +115,7 @@ handle_issue() { # n state labels created title
 }
 
 poll() {
-  local issues closed since n state labels created title
+  local issues closed since n state labels created ver title
   if ! issues=$(gh api --paginate "repos/$REPO/issues?state=open&per_page=100&sort=updated" --jq "$ISSUE_JQ"); then
     err "listing open issues for $REPO failed"; issues=""
   fi
@@ -115,9 +123,9 @@ poll() {
   if ! closed=$(gh api --paginate "repos/$REPO/issues?state=closed&since=$since&per_page=100&sort=updated" --jq "$ISSUE_JQ"); then
     err "listing closed issues for $REPO failed"; closed=""
   fi
-  while IFS="$US" read -r n state labels created title; do
+  while IFS="$US" read -r n state labels created ver title; do
     [ -z "$n" ] && continue
-    handle_issue "$n" "$state" "$labels" "$created" "$title"
+    handle_issue "$n" "$state" "$labels" "$created" "$ver" "$title"
   done <<<"$(printf '%s\n%s\n' "$issues" "$closed")"
 }
 
