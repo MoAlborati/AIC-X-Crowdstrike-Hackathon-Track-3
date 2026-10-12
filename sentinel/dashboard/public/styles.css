@@ -273,4 +273,4 @@ html.stage-mode .graph-scroll { max-height: calc(100vh - 230px); }
   .stage-grid > .attacker { grid-template-columns: minmax(0, 1fr); }
 }
 
-.graph-size { font-size: 12px; font-weight: 400; }
+.graph-size { font-size: 14px; font-weight: 400; }
