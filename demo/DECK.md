@@ -64,12 +64,13 @@ SentinelProxy sits.
 - **8KB-evasion moment (REQUIRED — DoD item 1):** the two mid-document T6 variants
   (`EVA-POS-MIDDLE-001`, `EVA-BENCH-MIDDLE-001`) hide the injection between DVAA's head/tail 8KB windows
   (`docLength ≈ 22.8KB`, `injectionAtByte ≈ 11.3K`, `inMiddleGap=true`) → DVAA's baseline scanner: **no detection**.
-  A full scan still carries the signal. SentinelProxy (T3) catches **both** cases the baseline misses (`t3 2/2`).
+  A full scan still carries the signal. **8KB evasion: 2/2 fixtures** caught by SentinelProxy (T3).
 
 **Speaker notes**
 Beat 3 (0:40–1:00) + Beat 3b (1:00–1:20). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
 LLM. Pause two seconds after the secret appears. The 8KB-evasion beat is DoD item 1 — **always run it**; the proof is
-the two mid-document fixtures plus the T7 "beats baseline" output (`scripts/eval.sh score`). DVAA is the
+the two mid-document fixtures plus "8KB evasion: 2/2 fixtures" from `sentinel/scoring/results.json`. Never say a blanket
+"beats the baseline": on the full corpus DVAA's baseline has the higher recall (slide 8). DVAA is the
 organizer-provided sandbox; every secret is fake.
 
 ---
@@ -77,13 +78,15 @@ organizer-provided sandbox; every secret is fake.
 ## Slide 5 — Same attack, through SentinelProxy (GREEN)
 
 **On slide**
-- Dashboard screenshot or live pane: incident graph, poisoned RAG doc → sensitive read → `submit_to_index`,
-  with the taint path in red and the request marked **BLOCKED (pre-forward)** — blocked before it is forwarded.
-- Benign row first: `7005 travel-policy question → ALLOWED`.
-- Latency readout: `<<METRIC: this call's detection latency, ms (T5 readout)>>`.
-- Alert card: DetectName · Severity · MITRE ATLAS · ATT&CK "T1567 Exfiltration Over Web Service · T1041
-  Exfiltration Over C2 Channel" · "LLM01 Prompt Injection · LLM02 Sensitive Information Disclosure ·
-  LLM06 Excessive Agency" · Agentic ASI01 · ASI02 · **OASB-1**.
+- Live, through the real shipped proxy: benign question → **HTTP 200** (forwarded untouched), then DVAA's
+  aim-ab request (poisoned retrieved content supplied in the request, the client-side RAG pattern) → **HTTP 403**,
+  **BLOCKED (pre-forward)** by T3: `detector: sentinel-t3`, reasons `exfil_instruction_inbound` · `injection_markers` ·
+  `payee_not_confirmed`.
+- Request-side alert card (T4, built by the T10 pipeline): `IndirectPromptInjection` · High · rule
+  `inbound.exfil_instruction` · ATLAS AML.T0051.001 · LLM01 · ASI01 · **OASB-1** · Blocked.
+- Egress alert card (Beat 4b, `HoneytokenExfiltrationAttempt`): ATT&CK "T1567 Exfiltration Over Web Service ·
+  T1041 Exfiltration Over C2 Channel" · "LLM01 · LLM02 Sensitive Information Disclosure · LLM06 Excessive Agency" ·
+  ASI01 · ASI02 · OASB-1. Attacker server received nothing (RAGBot 7005 and RepoBot 7022).
 
 **Speaker notes**
 Beat 4 (1:20–1:50). Order matters: benign passes first, then the attack is **blocked request-side, before the request
@@ -144,20 +147,24 @@ DVAA's 8KB head+tail baseline.
 
 **On slide**
 
-| Metric | Value |
-|---|---|
-| Precision | `<<METRIC: precision (T7)>>` |
-| Recall | `<<METRIC: recall (T7)>>` |
-| False-positive rate (benign runs) | `<<METRIC: benign FP rate (T7)>>` |
-| Median latency | `<<METRIC: median latency, ms (T7)>>` |
-| Corpus | `<<METRIC: N attack + M benign cases (T7)>>` |
+| | T3 (SentinelProxy) | DVAA baseline |
+|---|---|---|
+| Detection recall (any finding) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
+| Prevention recall (pre-forward) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
+| 8KB evasion | `<<METRIC>>`/2 fixtures | — |
+| Corpus | `<<METRIC: N attack + M benign cases>>` | |
+| In-detector latency | ~0.5 ms | |
+
+As of `sentinel/scoring/results.json` on origin/main `6c4fdc7`: detection 63.0% / FP 0.0% vs 65.6% / 12.8%;
+prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.38 ms. Copy the slide's
+numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
 
 - Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment."
 
 **Speaker notes**
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
-latency, keep it in backup and don't add it here. **If T7 hasn't merged, this slide says "pending" and the script drops
+latency, it is the one latency figure we quote ("in-detector ~0.5 ms"). **If T7 hasn't merged, this slide says "pending" and the script drops
 the numbers sentence. Never put a guessed number on it.** Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
 

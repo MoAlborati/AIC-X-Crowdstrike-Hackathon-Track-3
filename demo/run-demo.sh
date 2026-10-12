@@ -2,9 +2,12 @@
 # demo/run-demo.sh — deterministic driver for the SentinelProxy demo (ticket T9).
 #
 # Drives the beats of demo/SCRIPT.md on THIS machine, in order, from the committed
-# captures/ fixtures. Nothing here makes a live LLM/API call inside the demo window
-# (GOAL.md ground rule): the exploit, the AIM-twin verdict and the scoring table all
-# replay deterministically from captures/ and the merged components.
+# captures/ fixtures. Nothing here makes a live LLM or external API call inside the demo
+# window (GOAL.md ground rule): the exploit, the AIM-twin verdict, the egress evidence and
+# the metrics replay deterministically from captures/ and sentinel/scoring/results.json.
+# The one live step is Beat 4: the real shipped proxy on an ephemeral loopback port in front
+# of the offline DVAA RAGBot 7005 (canned replies), benign -> 200, attack -> 403. If it can't
+# start, Beat 4 says so (WARN) and shows the recording instead.
 #
 # This is a DEFENSIVE demo for an authorized, sanctioned CrowdStrike x Santa Clara
 # University hackathon (Track 3). DVAA is the organizers' intentionally-vulnerable
@@ -94,64 +97,143 @@ EVAL="$REPO/scripts/eval.sh"                                   # merged: PR #20 
 CAP_ATTACK="$REPO/captures/attack/aim-ab.demo.json"            # merged: T1
 DASH_PORT="${EVAL_DASHBOARD_PORT:-9100}"                       # T5 dashboard (PR #11)
 
-# T6 8KB-evasion fixtures (PR #10/#15) + T7 scoring output (PR #13). The scoring run is produced once
-# and cached, so the evasion beat (Beat 3b) and the scoring beat (Beat 7) read the same results.
+# T6 8KB-evasion fixtures (PR #10/#15) + T7 scoring results. Beat 3b and Beat 7 read the COMMITTED
+# sentinel/scoring/results.json (regenerate with `scripts/eval.sh score`), so the numbers on screen are the
+# ones in the repo, with no live recompute inside the 3-min window.
 EVASION_MID=("$REPO/captures/variants/fixtures/evasion/eva-pos-middle-001.json" \
              "$REPO/captures/variants/fixtures/evasion/eva-bench-middle-001.json")
-RESULTS_JSON="$REPO/.eval/score/results.json"
-RESULTS_MD="$REPO/.eval/score/RESULTS.md"
-SCORE_RAN=0
-ensure_score() {   # run the T7 harness once; both Beat 3b and Beat 7 consume its output
-  [ "$SCORE_RAN" = 1 ] && [ -f "$RESULTS_JSON" ] && return 0
-  bash "$EVAL" score >/dev/null 2>&1; SCORE_RAN=1
-  [ -f "$RESULTS_JSON" ]
-}
+SCORE_JSON="$REPO/sentinel/scoring/results.json"
 evasion_proof_cmd() {   # DVAA's head/tail 8KB scan misses the mid-document injection; a full scan finds it
   jq -rc '{id, docLength:.baseline8kb.docLength, scanEdgeBytes:.baseline8kb.DETECTION_EDGE,
            injectionAtByte:.baseline8kb.injectionOffsetStart, inMiddleGap:.baseline8kb.inMiddleGap,
            evadesDvaaBaseline:.baseline8kb.evadesBaseline, fullScanFindsSignal:.baseline8kb.signalPresentOnFullScan}' \
     "${EVASION_MID[@]}"
 }
-t3_beats_baseline_cmd() {   # T3 catches exactly the mid-document cases DVAA's baseline misses
-  jq -rc '.beatsBaseline | {evasionCasesBaselineMisses:.eligible,
-           t3Caught:.byDetector.t3.beaten, cases:.byDetector.t3.cases}' "$RESULTS_JSON"
+evasion_t3_cmd() {   # "8KB evasion: 2/2 fixtures" (never a blanket "beats baseline")
+  jq -rc '.beatsBaseline | {evasionFixtures:(.eligible|length), t3Caught:.byDetector.t3.beaten,
+           t3Prevented:.byDetector.t3.beatenPrevention, cases:.byDetector.t3.cases}' "$SCORE_JSON" || return 1
+  jq -e '.beatsBaseline | (.eligible|length) == 2 and .byDetector.t3.beaten == 2' "$SCORE_JSON" >/dev/null \
+    || { echo "results.json no longer shows 8KB evasion 2/2: fix the spoken line"; return 1; }
+}
+# Beat 7: two headline rows (detection, prevention), T3 vs DVAA's own baseline, with FP, + the evasion result.
+headline_cmd() {
+  jq -r '
+    def pct: (. * 1000 | round) as $x | "\($x / 10 | floor).\($x % 10)%";
+    .detectors as $d | .headlineLenses as $h | .counts as $c |
+    "corpus: \($c.attack) attack + \($c.benign) benign cases, scored against DVAA ground-truth labels",
+    "",
+    "                         T3 (SentinelProxy)          DVAA baseline",
+    "  detection (any finding)  recall \($h.detection.recall|pct)  FP \($h.detection.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.anyFinding.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate|pct)",
+    "  prevention (pre-forward) recall \($h.prevention.recall|pct)  FP \($h.prevention.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.prevention.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.prevention.falsePositiveRate|pct)",
+    "",
+    "  8KB evasion: \(.beatsBaseline.byDetector.t3.beaten)/\(.beatsBaseline.eligible|length) fixtures (T3)",
+    "  in-detector latency: p95 \($d.t3.latencyMs.p95 * 100 | round / 100) ms over \($d.t3.latencyMs.n) cases (under 0.5 ms)"' "$SCORE_JSON" || return 1
+  jq -e '.detectors.t3.latencyMs.p95 < 0.5' "$SCORE_JSON" >/dev/null || { echo "T3 p95 latency is no longer under 0.5 ms: fix the spoken line"; return 1; }
 }
 
-# Beat 4 — request-side proxy block. On stage we show the RECORDED block-mode proxy log, re-recorded with the
-# SHIPPED CLI after #41 (inspectors [substring, sentinel-t3], shipped config, live DVAA RAGBot 7005, DVAA's own
-# aim-ab request) by demo/record-beat4.sh. Deterministic, no live proxy spin-up inside the 3-min window
-# (GOAL.md ground rule). Live encore after the clock stops:
-#   node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json   (then send a request through it)
-PROXY_BLOCK_JSONL="$REPO/demo/captures/beat4-proxy-block.proxy.jsonl"
-# The detector the spoken line credits. proxy_block_cmd FAILS if the capture's flagged verdict names anything
-# else, so the narration can never drift from the evidence.
+# Beat 4 — request-side proxy block, T3 detector (#24) wired into the shipped proxy CLI (#41).
+#  (a) LIVE: start the shipped CLI in block mode on an ephemeral loopback port in front of RAGBot 7005, send a
+#      benign question (expect 200, forwarded) and DVAA's own aim-ab request body taken verbatim from the
+#      recording (expect 403, refused before forwarding). Falls back to the recording if the proxy or 7005 is down.
+#  (b) RECORDED: the T8 contrast run re-recorded with the shipped CLI (captures/contrast/run-contrast.sh,
+#      run-meta.json inspector "detector:sentinel-t3"), plus the T4 alert the T10 pipeline built from it
+#      (`node sentinel/pipeline/cli.mjs convert captures/contrast/runs/proxy-block.proxy.jsonl`).
+PROXY_BLOCK_JSONL="$REPO/captures/contrast/runs/proxy-block.proxy.jsonl"
+PROXY_BLOCK_T4="$REPO/captures/contrast/runs/proxy-block.t4-alerts.json"
+PROXY_CONFIG="$REPO/sentinel/config/sentinel.config.json"
+LIVE_DIR="$REPO/.eval/beat4-live"
+# What the narration credits. Every Beat 4 check FAILS if the evidence names a different detector or reason set.
 BEAT4_CREDITED_DETECTOR="sentinel-t3"
 BEAT4_CREDITED_REASONS='["exfil_instruction_inbound","injection_markers","payee_not_confirmed"]'
-proxy_block_cmd() {
+BENIGN_BODY='{"messages":[{"role":"user","content":"What does the document indexing service do? One sentence, please."}]}'
+LIVE_PID=""; LIVE_PORT=""
+
+blocked_verdicts() {   # file -> [detectors] and [reasons] of FLAGGED verdicts on BLOCKED exchanges (no alert dupes)
+  jq -sc '[.[] | select(.type=="exchange" and ((.action // "") | test("block"))) | .verdicts[]? | select(.flagged==true)]
+          | {detectors:(map(.detector)|unique), reasons:(map(.reasons[])|unique)}' "$1"
+}
+check_credit() {   # file -> rc 0 iff the blocked verdicts are exactly the credited detector + reasons
+  local got; got="$(blocked_verdicts "$1")"
+  local want="{\"detectors\":[\"$BEAT4_CREDITED_DETECTOR\"],\"reasons\":$BEAT4_CREDITED_REASONS}"
+  if [ "$got" = "$want" ]; then echo "blocking verdict: $got (matches the spoken credit)"
+  else echo "spoken credit $want but the evidence says $got"; return 1; fi
+}
+live_proxy_start() {
+  command -v node >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 3 "http://127.0.0.1:7005/health" >/dev/null 2>&1 || { echo "RAGBot 7005 not reachable"; return 1; }
+  mkdir -p "$LIVE_DIR"; : > "$LIVE_DIR/proxy.jsonl"; : > "$LIVE_DIR/stdout"
+  SENTINEL_MODE=block SENTINEL_LISTEN_PORT=0 SENTINEL_TARGET_PORT=7005 SENTINEL_CAPTURE_PATH="$LIVE_DIR/proxy.jsonl" \
+    node "$REPO/sentinel/proxy/cli.mjs" --config "$PROXY_CONFIG" >"$LIVE_DIR/stdout" 2>"$LIVE_DIR/stderr" &
+  LIVE_PID=$!
+  local i; for i in $(seq 1 50); do
+    LIVE_PORT="$(head -1 "$LIVE_DIR/stdout" 2>/dev/null | jq -r 'select(.event=="listening") | .port' 2>/dev/null)"
+    [ -n "$LIVE_PORT" ] && break; sleep 0.1
+  done
+  [ -n "$LIVE_PORT" ] || { echo "proxy did not report a listening port"; live_proxy_stop; return 1; }
+  echo "SentinelProxy (shipped CLI, block) on 127.0.0.1:$LIVE_PORT -> 7005, inspectors $(head -1 "$LIVE_DIR/stdout" | jq -c .inspectors)"
+}
+live_proxy_stop() {
+  [ -n "$LIVE_PID" ] || return 0
+  kill "$LIVE_PID" 2>/dev/null; wait "$LIVE_PID" 2>/dev/null; LIVE_PID=""
+}
+live_post() {   # body -> prints HTTP status
+  curl -sS -o "$LIVE_DIR/last-body" -w '%{http_code}' --max-time 20 -H 'content-type: application/json' \
+    --data-binary "$1" "http://127.0.0.1:$LIVE_PORT/v1/chat/completions"
+}
+live_benign_cmd() {
+  local code; code="$(live_post "$BENIGN_BODY")"
+  echo "benign question -> HTTP $code"
+  [ "$code" = 200 ] || return 1
+}
+live_attack_cmd() {
+  local body code
+  body="$(jq -rs '[.[] | select(.type=="exchange" and .action=="blocked_request")][0].request.body.data' "$PROXY_BLOCK_JSONL")"
+  [ -n "$body" ] && [ "$body" != null ] || { echo "no recorded aim-ab request body"; return 1; }
+  code="$(live_post "$body")"
+  echo "DVAA aim-ab request (poisoned retrieved content in the request) -> HTTP $code"
+  [ "$code" = 403 ] || return 1
+  live_proxy_stop   # SIGTERM flushes the proxy's capture log before we read it
+  jq -c 'select(.type=="exchange" and .request.path=="/v1/chat/completions") | {action, status:.response.status,
+         verdicts:[.verdicts[]? | select(.flagged==true) | {detector, reasons}]}' "$LIVE_DIR/proxy.jsonl"
+  check_credit "$LIVE_DIR/proxy.jsonl"
+}
+proxy_block_cmd() {   # the recording: blocked exchange only (the duplicate alert line is not shown)
   jq -rc 'select(.type=="exchange" and ((.action // "") | test("block")))
-          | {action, target, status:.response.status, latency_ms,
+          | {action, target, status:.response.status,
              verdicts:[.verdicts[] | select(.flagged==true) | {phase, detector, disposition, reasons}]}' "$PROXY_BLOCK_JSONL" || return 1
-  local got
-  got="$(jq -rc '[select(.type=="exchange" and ((.action // "") | test("block"))) | .verdicts[]? | select(.flagged==true) | .detector] | unique' \
-         "$PROXY_BLOCK_JSONL" | jq -sc 'add // [] | unique')"
-  [ "$got" = "[\"$BEAT4_CREDITED_DETECTOR\"]" ] || { echo "credited $BEAT4_CREDITED_DETECTOR but the capture's blocking detector(s) are $got"; return 1; }
-  local reasons
-  reasons="$(jq -rc 'select(.type=="exchange" and ((.action // "") | test("block"))) | [.verdicts[]? | select(.flagged==true) | .reasons[]] | sort' \
-             "$PROXY_BLOCK_JSONL" | jq -sc 'add // [] | unique')"
-  [ "$reasons" = "$BEAT4_CREDITED_REASONS" ] || { echo "spoken reason codes $BEAT4_CREDITED_REASONS but the capture has $reasons"; return 1; }
-  echo "blocking detector(s) in capture: $got, reasons $reasons (match the spoken credit)"
+  jq -e '.inspector == "detector:sentinel-t3" and .inspector_config_is_standin == false' \
+    "$REPO/captures/contrast/runs/run-meta.json" >/dev/null || { echo "run-meta.json does not record the T3 detector"; return 1; }
+  check_credit "$PROXY_BLOCK_JSONL"
+}
+t4_alert_cmd() {   # the T4 alert the T10 pipeline built from the recorded verdict
+  jq -rc '.runs[][] | {DetectName, RuleId, SeverityName, Atlas:.TechniqueId, OwaspLlm:[.OwaspLlm[].Id],
+          Agentic:[.OwaspAgentic[].Id], Oasb:.Oasb.Benchmark, Disposition:.PatternDispositionDescription}' "$PROXY_BLOCK_T4"
 }
 
-# T12 — egress-guard block (spike PR #18, MERGED). On stage we show the RECORDED egress-guard denials
-# (honeytoken + destination-not-allowlisted → deny). Live encore: spike/egress/run-spike.sh
-EGRESS_BLOCK_JSONL="$REPO/spike/egress/evidence-block.jsonl"
+# T12 — egress guard (sentinel/egress/, PR #45; live demo: scripts/egress-demo.sh). On stage we show the
+# RECORDED block-mode run of scripts/egress-demo.sh: the inspector's deny decisions
+# (sentinel/egress/evidence-block.jsonl) and the GROUND TRUTH, i.e. what the attacker server received
+# (demo/captures/egress-demo-block.txt). DVAA's own exfilExecuted is not ground truth here (it reports
+# true even when the egress guard 403s the call).
+EGRESS_BLOCK_JSONL="$REPO/sentinel/egress/evidence-block.jsonl"
+EGRESS_GROUND_TRUTH="$REPO/demo/captures/egress-demo-block.txt"
 egress_block_cmd() {
-  jq -rc 'select(.action == "deny") | {kind, host, action, reasons}' "$EGRESS_BLOCK_JSONL"
+  jq -rc 'select(.action == "deny") | {host, action, reasons, canaries:.canary_ids}
+          + (if .host == "api.oa2a.org" then {note:"DVAA startup telemetry, blocked by the allowlist"}
+             elif (.canary_ids | index("DVAA-ADMIN-PASSWORD")) then {agent:"RAGBot 7005"}
+             elif (.canary_ids | index("DVAA-AWS-KEY-ID")) then {agent:"RepoBot 7022 (FAKE credentials)"}
+             else {} end)' "$EGRESS_BLOCK_JSONL"
+}
+egress_truth_cmd() {
+  grep -E '^RESULT (block|repobot block):|^--- attacker server|^\(no canary hits\)' "$EGRESS_GROUND_TRUTH" || return 1
+  grep -q '^RESULT block: PREVENTED' "$EGRESS_GROUND_TRUTH" && grep -q '^RESULT repobot block: PREVENTED' "$EGRESS_GROUND_TRUTH" \
+    || { echo "recorded run does not show both RAGBot and RepoBot PREVENTED"; return 1; }
 }
 # =================================================================================
 
 STARTED_DASHBOARD=0; STARTED_DVAA=0
 teardown() {
+  live_proxy_stop
   hdr "Teardown"
   if [ "$STARTED_DASHBOARD" = 1 ] && [ "$DO_TEARDOWN" = 1 ]; then
     run_cmd "dashboard stopped" bash "$EVAL" dashboard-stop
@@ -243,7 +325,7 @@ advance
 # ---- Beat 3 — EXPLOIT, red (RAGBot 7005) --------------------------------------
 hdr "Beat 3 — EXPLOIT (red) · RAGBot 7005"
 say "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
-say "We feed it one poisoned document from DVAA's own attack corpus."
+say "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
 if [ -f "$CAP_ATTACK" ]; then
   run_cmd "exploit: tool call + exfil executed" \
     jq -r '.runA.toolCalls[0].function.name, .runA.dvaa.exfilExecuted' "$CAP_ATTACK"
@@ -259,23 +341,68 @@ advance
 # ---- Beat 3b — 8KB-evasion (DoD item 1, REQUIRED) -----------------------------
 hdr "Beat 3b — 8KB evasion · hide in the middle, DVAA's scanner sees nothing"
 say "DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
-if [ -f "${EVASION_MID[0]}" ]; then
+if [ -f "${EVASION_MID[0]}" ] && [ -f "${EVASION_MID[1]}" ] && [ -f "$SCORE_JSON" ]; then
   run_cmd "evasion: injection sits between the 8KB head/tail windows (DVAA misses; full scan finds)" evasion_proof_cmd
-  if ensure_score; then
-    run_cmd "evasion: SentinelProxy (T3) catches both cases DVAA's baseline misses" t3_beats_baseline_cmd
-    say "SentinelProxy scans the full payload and never truncates, so it catches exactly the cases the 8KB scan misses."
-  else
-    bad "scoring output unavailable; cannot show the T3-beats-baseline proof"; record "Beat 3b evasion (T3)" FAIL "no score"
-  fi
+  run_cmd "evasion: 8KB evasion 2/2 fixtures caught by T3 (sentinel/scoring/results.json)" evasion_t3_cmd
+  say "SentinelProxy scans the full payload and never truncates. 8KB evasion: 2 out of 2 fixtures caught."
 else
-  nym "T6 evasion fixtures (captures/variants/fixtures/evasion/, PR #10/#15)"
-  record "Beat 3b evasion" "NOT YET MERGED" "evasion fixtures absent"
+  nym "T6 evasion fixtures / T7 results (captures/variants/fixtures/evasion/, sentinel/scoring/results.json)"
+  record "Beat 3b evasion" "NOT YET MERGED" "evasion fixtures or results absent"
+fi
+advance
+
+# ---- Beat 4 — request-side BLOCK: shipped proxy + T3 detector (#14/#24/#41) -----
+hdr "Beat 4 — DETECT -> BLOCK (green) · SentinelProxy in front of 7005"
+say "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
+if [ -f "$PROXY_BLOCK_JSONL" ]; then
+  printf '  %s$ live_proxy_start%s\n' "$B" "$Z"
+  mkdir -p "$LIVE_DIR"
+  if live_proxy_start >"$LIVE_DIR/start.log" 2>&1; then   # not in $(...): LIVE_PID/LIVE_PORT must survive
+    sed 's/^/    | /' "$LIVE_DIR/start.log"
+    run_cmd "live: benign question forwarded untouched (HTTP 200)" live_benign_cmd
+    say "Now the attack."
+    run_cmd "live: attack refused before forwarding (HTTP 403), verdict from T3 (sentinel-t3)" live_attack_cmd
+    live_proxy_stop
+  else
+    sed 's/^/    | /' "$LIVE_DIR/start.log"
+    live_proxy_stop
+    warn "live proxy unavailable; showing the recording"
+    record "Beat 4 live proxy" WARN "fell back to the recording"
+    run_cmd "recorded: non-attack requests (health checks) forwarded untouched; the recording has no benign chat turn" \
+      jq -rc 'select(.type=="exchange" and .action=="forwarded") | {action, path:.request.path, status:.response.status}' "$PROXY_BLOCK_JSONL"
+    say "Now the attack."
+  fi
+  say "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side, not the response-side tripwire, which only raises an alert."
+  run_cmd "recorded: same block on the live DVAA run (captures/contrast, detector:sentinel-t3)" proxy_block_cmd
+  if [ -f "$PROXY_BLOCK_T4" ]; then
+    run_cmd "recorded: the T4 alert built from that verdict (T10 pipeline)" t4_alert_cmd
+  else
+    nym "T4 alert from the T10 pipeline (captures/contrast/runs/proxy-block.t4-alerts.json)"
+    record "Beat 4 T4 alert" "NOT YET MERGED" "alert sidecar absent"
+  fi
+  say "Nothing was forwarded, so nothing could be exfiltrated."
+else
+  nym "request-side proxy block (captures/contrast/runs/proxy-block.proxy.jsonl)"
+  record "Beat 4 proxy block" "NOT YET MERGED" "proxy-block capture absent"
+fi
+advance
+
+# ---- Beat 4b — egress guard BLOCK (T12, sentinel/egress/, PR #45) --------------
+hdr "Beat 4b — tool-boundary EGRESS GUARD · fail-closed on exfil"
+say "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy can only raise an alert, the egress guard is what stops the exfil. It denies non-allowlisted destinations and honeytokens, and fails closed."
+if [ -f "$EGRESS_BLOCK_JSONL" ] && [ -f "$EGRESS_GROUND_TRUTH" ]; then
+  run_cmd "egress guard: deny decisions at the tool boundary (sentinel/egress/evidence-block.jsonl)" egress_block_cmd
+  say "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
+  run_cmd "ground truth: attacker server received nothing, RAGBot 7005 and RepoBot 7022 (scripts/egress-demo.sh block)" egress_truth_cmd
+else
+  nym "T12 egress guard (sentinel/egress/evidence-block.jsonl + demo/captures/egress-demo-block.txt)"
+  record "Beat 4b egress guard" "NOT YET MERGED" "egress evidence absent"
 fi
 advance
 
 # ---- Beat 5a — the AIM twin (RAGBot-AIM 7014) ---------------------------------
 hdr "Beat 5a — secure-by-design twin · RAGBot-AIM 7014"
-say "Its twin, RAGBot-AIM 7014 — the same code with its capability guard switched on — is denied."
+say "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
 if [ -f "$CAP_ATTACK" ]; then
   # runB has no exfilExecuted key (AIM denies before execution); default to false for a clean readout.
   run_cmd "AIM twin: exfil executed? + denial reason" \
@@ -286,46 +413,20 @@ else
 fi
 advance
 
-# ---- Beat 4 — request-side proxy BLOCK (T2 proxy + T3 detector, #14/#24/#41) -----
-hdr "Beat 4 — DETECT -> BLOCK (green) · SentinelProxy in front of 7005"
-say "Same agent, same document, but now it goes through SentinelProxy."
-say "The poisoned request is blocked at the request boundary, before it is ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side, not the response-side tripwire, which only raises an alert."
-if [ -f "$PROXY_BLOCK_JSONL" ]; then
-  run_cmd "proxy block: recorded block-mode verdict from T3 (sentinel-t3), pre-forward (action=blocked_request)" proxy_block_cmd
-  say "Blocked before the request reached the model. Nothing was forwarded, so nothing could be exfiltrated."
+# ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
+hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
+if [ -f "$SCORE_JSON" ]; then
+  # The spoken numbers are read from the same file the table prints, so they cannot drift apart.
+  BASE_FP="$(jq -r '.detectors["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate * 1000 | round as $x | "\($x / 10 | floor).\($x % 10)"' "$SCORE_JSON")"
+  T3_FP="$(jq -r '.headlineLenses.detection.falsePositiveRate * 1000 | round as $x | "\($x / 10 | floor).\($x % 10)"' "$SCORE_JSON")"
+  BASE_AHEAD="$(jq -r '.detectors["dvaa-baseline"].modes.enforce.prevention.recall > .headlineLenses.prevention.recall' "$SCORE_JSON")"
+  if [ "$BASE_AHEAD" = true ]; then RECALL_LINE="On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives."
+  else RECALL_LINE="T3 matches or beats the baseline's prevention recall."; fi
+  say "Scored against DVAA's own ground-truth labels. $RECALL_LINE DVAA's baseline flags benign traffic $BASE_FP percent of the time; T3's benign false-positive rate is $T3_FP percent. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
+  run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
 else
-  nym "request-side proxy block (demo/captures/beat4-proxy-block.proxy.jsonl; record with demo/record-beat4.sh)"
-  record "Beat 4 proxy block" "NOT YET MERGED" "proxy-block capture absent"
-fi
-advance
-
-# ---- Beat 4b — egress-guard BLOCK (T12 / t12-egress) --------------------------
-hdr "Beat 4b — tool-boundary EGRESS GUARD · fail-closed on exfil"
-say "When a request-side block is not the control — like RepoBot, where the proxy only raises an alert — the egress guard is what actually stops the exfil: it denies any destination that came only from untrusted content, and fails closed."
-if [ -f "$EGRESS_BLOCK_JSONL" ]; then
-  run_cmd "egress guard: exfil destination denied at the tool boundary (honeytoken + allowlist)" egress_block_cmd
-else
-  nym "T12 egress guard (spike/egress/evidence-block.jsonl, spike PR #18 / branch t12-egress)"
-  record "Beat 4b egress guard" "NOT YET MERGED" "egress evidence absent"
-fi
-advance
-
-# ---- Beat 7 — scoring table (T7 / PR #13) -------------------------------------
-hdr "Beat 7 — scoring table · precision / recall / FP / latency"
-say "Scored against DVAA's own ground-truth labels: precision, recall, false-positive rate, median latency."
-if [ -x "$EVAL" ] && [ -f "$REPO/sentinel/scoring/cli.mjs" ]; then
-  if ensure_score; then
-    # Show the demo-relevant slice of the cached results: headline + detector table + beats-baseline
-    # (the long per-detector false-negative lists are in .eval/score/RESULTS.md).
-    printf '  %s$ scripts/eval.sh score   (cached: .eval/score/RESULTS.md)%s\n' "$B" "$Z"
-    sed -n '/\*\*Headline/,/^## /p' "$RESULTS_MD" | sed '/^## /d; s/^/    | /'
-    ok "scoring: T7 harness table"; record "Beat 7 scoring" PASS "headline live"
-  else
-    bad "T7 scoring harness did not produce results"; record "Beat 7 scoring" FAIL "no results"
-  fi
-else
-  nym "T7 scoring harness (sentinel/scoring/cli.mjs) — PR #13"
-  record "Beat 7 scoring" "NOT YET MERGED" "scoring absent"
+  nym "T7 results (sentinel/scoring/results.json)"
+  record "Beat 7 headline" "NOT YET MERGED" "results absent"
 fi
 
 # teardown runs on EXIT (trap)
