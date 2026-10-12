@@ -2,21 +2,21 @@
   "name": "@sentinelproxy/proxy",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy reverse-proxy guardrail in front of DVAA /v1/chat/completions (T2). Zero dependencies.",
+  "description": "SentinelProxy reverse-proxy guardrail in front of DVAA agents (T2). Zero dependencies.",
   "type": "module",
-  "main": "index.js",
-  "bin": { "sentinel-proxy": "./cli.js" },
+  "main": "server.mjs",
+  "bin": { "sentinel-proxy": "./cli.mjs" },
   "exports": {
-    ".": "./index.js",
-    "./server": "./server.js",
-    "./config": "./config.js",
-    "./inspector": "./inspector.js",
-    "./sink": "./sink.js"
+    ".": "./server.mjs",
+    "./server": "./server.mjs",
+    "./inspectors": "./inspectors.mjs",
+    "./default-inspectors": "./default-inspectors.mjs",
+    "./capture-sink": "./capture-sink.mjs"
   },
   "engines": { "node": ">=24" },
   "scripts": {
-    "start": "node cli.js",
-    "bench": "node bench/latency.js",
-    "test": "node --test \"test/*.test.js\""
+    "start": "node cli.mjs",
+    "bench": "node bench/latency.mjs",
+    "test": "node --test \"test/*.test.mjs\""
   }
 }

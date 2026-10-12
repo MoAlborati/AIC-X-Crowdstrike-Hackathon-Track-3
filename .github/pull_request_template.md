@@ -17,7 +17,7 @@
 
 ## Bounds introduced + failure modes
 <!-- List every cap/limit/window this PR adds. For each: the value, why, and what happens on overflow
-     (must be fail-loud: raise/ALERT — never silent truncation). Firm rule. "None" if none. -->
+     (must be fail-loud: raise/ALERT — never silent truncation). Team data-scale reliability rule. "None" if none. -->
 
 ## How to verify locally
 <!-- Exact commands: bring up DVAA target port(s), run the proxy/detector/tests, replay captures. -->
