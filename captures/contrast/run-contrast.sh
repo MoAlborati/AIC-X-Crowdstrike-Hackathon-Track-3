@@ -36,6 +36,8 @@ PROXY_PORT="${PROXY_PORT:-7099}"
 SENTINEL_CONFIG="${SENTINEL_CONFIG:-$HERE/standin-inspector.config.json}"
 OUT="$(mkdir -p "${1:-$HERE/runs}" && cd "${1:-$HERE/runs}" && pwd)"
 PROXY_NAME="t8-sentinel-proxy-$$"
+# shellcheck source=../../scripts/lib/portable.sh
+. "$REPO/scripts/lib/portable.sh"   # sha256_file: sha256sum on Linux, shasum -a 256 on macOS
 
 die() { echo "run-contrast: ERROR: $*" >&2; exit 1; }
 
@@ -129,7 +131,7 @@ INSPECTOR="$(node --input-type=module -e '
 if [[ "$STANDIN_CFG" == 1 && "$INSPECTOR" != standin-substring ]] || [[ "$STANDIN_CFG" == 0 && "$INSPECTOR" == standin-substring ]]; then
   die "config says stand-in=$STANDIN_CFG but the proxy logged inspector $INSPECTOR"
 fi
-CFG_SHA="$(sha256sum "$SENTINEL_CONFIG" | cut -c1-64)"
+CFG_SHA="$(sha256_file "$SENTINEL_CONFIG")"
 
 cat > "$OUT/run-meta.json" <<EOF
 {

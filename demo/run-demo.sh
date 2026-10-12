@@ -28,11 +28,12 @@
 # Exit code: 0 if every beat that is wired-and-merged passed; 1 if any such beat
 # failed. NOT-YET-MERGED beats are reported but do not fail the run before freeze.
 set -uo pipefail
+# Portable: Linux/WSL and macOS stock bash 3.2 + BSD userland (empty arrays guarded for set -u).
 
 # --------------------------------------------------------------------------- paths
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO"
+cd "$REPO" || exit 1
 
 # --------------------------------------------------------------------------- flags
 AUTO=0; DO_DVAA=1; KEEP_DVAA=0; DO_TEARDOWN=1
@@ -153,10 +154,10 @@ trap teardown EXIT
 
 print_summary() {
   hdr "Summary"
-  { echo "BEAT|RESULT|DETAIL"; printf '%s\n' "${SUMMARY[@]}"; } | \
+  { echo "BEAT|RESULT|DETAIL"; printf '%s\n' ${SUMMARY[@]+"${SUMMARY[@]}"}; } | \
   awk -F'|' '{printf "  %-34s %-16s %s\n", $1, $2, $3}'
   local fails
-  fails=$(printf '%s\n' "${SUMMARY[@]}" | awk -F'|' '$2=="FAIL"' | wc -l | tr -d ' ')
+  fails=$(printf '%s\n' ${SUMMARY[@]+"${SUMMARY[@]}"} | awk -F'|' '$2=="FAIL"' | wc -l | tr -d ' ')
   echo
   if [ "$fails" = 0 ]; then ok "demo run clean — no failing beats"
   else bad "$fails beat(s) FAILED — this is not a clean replay"; fi

@@ -40,10 +40,11 @@ instead of skipping.
 
 | Need | Why | Check |
 |---|---|---|
-| Linux, macOS or WSL2 with bash | the scripts | — |
-| Node ≥ 22 (24 preferred) | every suite is plain `node --test` with zero npm dependencies | `eval.sh` uses `node` on PATH if it is ≥ 24, otherwise the newest nvm install ≥ 24, otherwise any Node ≥ 22 (with a WARN) |
-| Docker with the compose v2 plugin | runs the DVAA fleet (DVAA itself needs Node 24, and the image pins it) | `docker info` |
-| git, curl, python3, timeout | cloning DVAA, health checks, table output | `doctor` |
+| Linux, WSL2 or macOS, bash ≥ 3.2 | the scripts (stock macOS `/bin/bash` 3.2 and BSD userland work; no Homebrew bash or coreutils needed) | `doctor` prints OS, arch and bash version |
+| Node 24 (`.nvmrc`); 22 works with a WARN | every suite is plain `node --test` with zero npm dependencies. The detectors timing budget is calibrated on 24 and fails on Node 26 (#61) | `eval.sh` uses `node` on PATH if it is major 24, otherwise an nvm v24 or keg-only Homebrew `node@24`, otherwise `node` on PATH ≥ 22. `doctor` WARNs on anything but 24 and prints the `nvm use` / `brew install node@24` fix |
+| Docker with the compose v2 plugin: Docker Desktop, or Colima on macOS | runs the DVAA fleet (DVAA itself needs Node 24, and the image pins it) | `doctor` (also detects Docker Desktop vs Colima on macOS, and the image architecture) |
+| git, curl, python3, jq | cloning DVAA, health checks, table output, the demo beats | `doctor` |
+| `timeout` (optional) | per-suite cap; falls back to Homebrew `gtimeout`, then a perl or pure-bash shim (`scripts/lib/portable.sh`) | `doctor` |
 | Network access on first run | clones DVAA at the pinned commit `5791826` (v0.9.3) into `.dvaa/`, builds the image | later runs work offline |
 
 ## What each step shows
@@ -79,14 +80,49 @@ which is the setting for judging the final build.
 
 | Symptom | Fix |
 |---|---|
-| `FAIL Node >= 22 is required` | `nvm install 24` (or install Node 24) and re-run. If you already have nvm's Node 24, the script finds it. |
-| `WARN node v22...` | It works, but `sentinel/alerts` declares `engines >=24`. Run `nvm install 24`. |
+| `FAIL Node >= 22 is required` | `nvm install 24 && nvm use` (or `brew install node@24` on macOS) and re-run. If you already have nvm's Node 24 or Homebrew's `node@24`, the script finds it. |
+| `WARN node v22...` / `WARN node v26...` | `.nvmrc` pins 24. Older: `sentinel/alerts` declares `engines >=24`. Newer: the detectors timing test fails on 26 (#61). Run `nvm install 24 && nvm use`, or `brew install node@24` (eval.sh finds the keg itself). |
 | `FAIL docker daemon not reachable` | WSL: Docker Desktop → Settings → Resources → WSL integration on. Plain Linux: `sudo service docker start`, and add yourself to the `docker` group. |
 | `FAIL scripts/setup-dvaa.sh clone failed` | Needs github.com on the first run. Read `.eval/setup-dvaa-clone.log`. A checkout with local edits is refused on purpose. Run `git -C .dvaa/dvaa-target status` and reset it. |
-| `FAIL unhealthy DVAA ports: ...` | `docker compose -p dvaa-t1 logs --tail 50`. Another process on 7001-7023 or 9000? Check with `ss -ltnp`. Then `scripts/eval.sh down && scripts/eval.sh up`. |
+| `FAIL unhealthy DVAA ports: ...` | `docker compose -p dvaa-t1 logs --tail 50`. Another process on 7001-7023 or 9000? Check with `ss -ltnp` (Linux) or `lsof -nP -iTCP -sTCP:LISTEN` (macOS); `doctor` names the holder when `lsof` exists. Then `scripts/eval.sh down && scripts/eval.sh up`. |
 | `FAIL fleet publishes ports beyond loopback` | Something started DVAA with `-p 7005:7005` (0.0.0.0). Stop it and use `scripts/eval.sh up`. |
 | `WARN fleet built from '...' not verifiably the pin` | The running fleet came from another checkout. To rebuild from the pin: `scripts/eval.sh down && scripts/eval.sh up`. |
 | `FAIL port 9100 is already in use` | `EVAL_DASHBOARD_PORT=9101 scripts/eval.sh dashboard` |
 | A suite FAILs | The failing test names are listed under the table. The full output is in `.eval/test/<suite>.log`. |
 | `SKIPPED upstream AgentDojo / InjecAgent / deepset` | These are optional: they verify T6's recorded upstream cases against fresh clones. Set `AGENTDOJO_SRC`, `INJECAGENT_SRC` and `DEEPSET_ROWS` (see `captures/variants/README.md`). |
 | `score` headline says "awaiting t3" | T3 (`sentinel/detectors`) is not merged, so the table shows only the noop and DVAA-baseline rows. |
+
+## macOS quickstart
+
+Tested against Catherine's Mac QA (#34): macOS 26, Apple Silicon, stock bash 3.2, Homebrew Node, Colima, no
+GNU coreutils. The scripts need **no** Homebrew bash or coreutils.
+
+```bash
+# 1. Tools (skip what you have). git/python3 come with the Command Line Tools.
+xcode-select --install            # only if git/python3 prompt to install
+brew install node@24 jq           # node@24 is keg-only; eval.sh finds it, or: export PATH="$(brew --prefix node@24)/bin:$PATH"
+# Docker: EITHER Docker Desktop (brew install --cask docker; open -a Docker)
+#         OR Colima (brew install colima docker docker-compose; colima start --cpu 4 --memory 6)
+
+# 2. Clone under your home directory (Colima only shares $HOME into its VM)
+cd ~ && git clone https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon.git && cd AIC-X-Crowdstrike-Hackathon
+
+# 3. Check, start, evaluate, demo
+scripts/eval.sh doctor            # every FAIL/WARN prints the exact macOS fix
+scripts/eval.sh up                # first build ~1 min; builds a native arm64 DVAA image
+scripts/eval.sh all
+demo/run-demo.sh --auto --keep-dvaa
+```
+
+What differs on a Mac, and how the scripts handle it:
+
+| Topic | Behavior |
+|---|---|
+| bash 3.2 | No `mapfile`, associative arrays or `${v,,}`; empty arrays are guarded under `set -u` (#58). |
+| No GNU `timeout` | The per-suite cap uses `timeout`, else `gtimeout` (`brew install coreutils`), else a perl shim (perl ships with macOS), else a pure-bash shim. Exit 124 on timeout either way (#59). |
+| Node version | `.nvmrc` = 24. `eval.sh` prefers a major-24 Node (PATH, nvm, or `/opt/homebrew/opt/node@24`) over a newer Homebrew `node` (#61). |
+| Apple Silicon | DVAA is built locally from the pinned source, natively for arm64: its base image `node:24-alpine` (pinned by digest) is a multi-arch index with `linux/arm64`, and its only native npm dependency (`onnxruntime-node`) ships linux/arm64 binaries. The published `opena2a/dvaa:0.9.2` image is multi-arch as well, but we don't use it (the pin is v0.9.3 source). If a native build ever fails, `DVAA_PLATFORM=linux/amd64 scripts/eval.sh up` builds the amd64 image under emulation (slower). `doctor` WARNs if the built image's arch differs from the engine's. |
+| Colima vs Docker Desktop | `doctor` detects which one is running. Colima shares only `$HOME` into its VM, so the repo must live under `~`, and bind mounts from `/tmp` or `$TMPDIR` (`/var/folders/...`) are empty inside containers (#60, egress live tests). Docker Desktop shares `/Users`, `/Volumes`, `/private`, `/tmp` and `/var/folders` by default. |
+| Loopback | Every port is published on `127.0.0.1` only; Docker Desktop and Colima both forward that to the Mac's loopback. No `host.docker.internal` or host networking is used. |
+| Ports | `doctor` checks that 7001-7023 + 9000 (DVAA), 8080/8005 (proxy configs) and 9100 (dashboard) are free, and names the holder with `lsof`. |
+| `sha256sum` | `captures/contrast/run-contrast.sh` falls back to `shasum -a 256`. |
