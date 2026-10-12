@@ -193,8 +193,8 @@ tool already ran, so prevention there is alert-only, but block mode withholds th
 ### Beat 4b — Egress guard, LIVE, green (1:24–1:41) · terminal, then dashboard tab `egress-blocked`
 
 The climax is live (critic A pass 2, #138; Catherine, #131). `run-demo.sh` starts the real two-layer run,
-`scripts/encore-two-layer.sh block` (PR #139), **in the background when Beat 4 starts**. It takes about 20 s even when
-warm, because it recreates its own compose stack. By Beat 4b it has finished, and the runner shows its result:
+`scripts/encore-two-layer.sh block` (PR #139), **in the background when Beat 4 starts**. It takes about 14 s warm on the stage
+Mac (about 20 s on WSL), because it recreates its own compose stack. By Beat 4b it has finished, and the runner shows its result:
 user turn → SentinelProxy (block) → RepoBot 7022 → poisoned `AGENTS.md` → tool egress → egress inspector (block) → canary.
 **Warm it at T-5** (`scripts/encore-two-layer.sh block`, once) so images and layers are cached; cold start is about 22 s.
 

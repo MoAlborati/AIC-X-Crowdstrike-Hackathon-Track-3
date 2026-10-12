@@ -5,7 +5,7 @@
 > **Pitch frame (critic #112, creative #105):** an exfil-focused guardrail for tool-using agents. Not "a slice of
 > Falcon AIDR", and not a jailbreak classifier. We own the losing blended prevention number, then show where data
 > actually leaves and the control that actually blocks: default-deny egress at the tool boundary. "Deterministic
-> sandbox, no LLM" is said in Beat 1. Spoken lines (365 words, about 2:44) live in `demo/SCRIPT.md` and
+> sandbox, no LLM" is said in Beat 1. Spoken lines (376 words, about 2:49) live in `demo/SCRIPT.md` and
 > `run-demo.sh`; no ticket numbers, reason codes or framework IDs are read aloud (critic D, #112). They stay on the slides. Every replay is labelled **recorded**. "100% precision" and "0% FP" are never
 > headlines.
 > Rules:
@@ -203,7 +203,7 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
 
-**Scope (say it if asked about generalization):** "SentinelProxy is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus (DVAA's scanner prevents 64 of 71, but blocks 21 of 164 legitimate requests; we block 0 of 164). Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
+**Scope (say it if asked about generalization):** "SentinelProxy is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus (DVAA's scanner prevents 64 of 71, but blocks 21 of 164 legitimate requests; we block 0 of 164). Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
 
 ---
 
