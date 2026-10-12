@@ -87,7 +87,7 @@ Path A: `node track3a/run-demo.mjs`, and `node --test track3a/test/*.test.mjs` f
 
 ## Results
 
-Source: `sentinel/scoring/results.json`. The file was generated 2026-10-12T20:10:38Z by the harness at detector commit `2976fed`, against DVAA pinned at `5791826`. The corpus has 353 cases: 189 attack and 164 benign, with digest `sha256:0506bc620c84…`. To reproduce, run `scripts/eval.sh score`.
+Source: `sentinel/scoring/results.json`. The file was generated 2026-10-12T22:16:35Z by the harness at detector commit `1146e14`, against DVAA pinned at `5791826`. The corpus has 353 cases: 189 attack and 164 benign, with digest `sha256:0506bc620c84…`. To reproduce, run `scripts/eval.sh score`.
 
 | Metric | Tourniquet (T3, enforce mode) | DVAA baseline (`detectAttacks()`, 8KB head/tail) |
 |---|---|---|
@@ -95,7 +95,7 @@ Source: `sentinel/scoring/results.json`. The file was generated 2026-10-12T20:10
 | **Prevention recall**: stopped before the agent acts | 41.8% | 63.0% (request-side hit) |
 | **Precision** (detection) | 100.0% | 85.5% |
 | **Benign false-positive rate** | **0.0%** (0 / 164) | 12.8% (21 / 164) |
-| **Detector latency** per case, median / p95 | 0.082 ms / 0.416 ms | 0.014 ms / 0.264 ms |
+| **Detector latency** per case, median / p95 | 0.094 ms / 0.495 ms | 0.014 ms / 0.257 ms |
 | **8KB evasion**: injection in the middle of a long tool result | **caught 2 of 2** | caught 0 of 2 |
 
 **Live egress check (T12, `scripts/egress-demo.sh both`).** In observe mode, the RAGBot and RepoBot secrets reach the local attacker canary and are alerted. In block mode the canary receives no hits, and each attempt produces a `deny` / `honeytoken_match` alert. A direct-dial bypass from inside the sandbox also fails. The attacker's canary receipt is the ground truth, not DVAA's self-report.

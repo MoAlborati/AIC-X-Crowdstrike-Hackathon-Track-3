@@ -302,7 +302,7 @@ Slide 8 and is **not read aloud**:
   detection (any finding)  recall 67.7%  FP 0.0%        recall 65.6%  FP 12.8%
   prevention (pre-forward) recall 41.8%  FP 0.0%        recall 63.0%  FP 12.8%
   8KB evasion: 2/2 fixtures (T3)
-  in-detector latency: median 0.082 ms, p95 0.42 ms over 353 cases
+  in-detector latency: median 0.094 ms, p95 0.49 ms over 353 cases
 ```
 
 > "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
