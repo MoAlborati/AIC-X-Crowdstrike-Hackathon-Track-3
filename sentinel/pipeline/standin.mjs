@@ -1,10 +1,10 @@
 // STAND-IN detectors for T10. They are NOT the T3 detector core.
 //
-// They exist so a live proxy session can produce real T4 alerts before `origin/t3-detector-core`
-// exists. Every verdict they return carries `standIn: true`. The pipeline copies that into
+// The default verdict source is the real T3 detector (t3.mjs, sentinel/detectors). These stand-ins are an
+// explicitly flagged FALLBACK only (`cli.mjs live --standin`), for demoing the pipeline when T3 is not
+// wanted. Every verdict they return carries `standIn: true`. The pipeline copies that into
 // `PipelineContext.StandIn` and marks the sidecar `placeholder: true`, so the dashboard shows its
-// PLACEHOLDER banner. Delete this file's use (not the pipeline) once T3 lands. T3-shaped verdicts
-// (`category` + `ruleId`) already pass through the pipeline unchanged.
+// PLACEHOLDER banner.
 //
 // They follow the T2 inspector contract (sentinel/proxy/inspectors.mjs, PR #14):
 //   async inspector({ phase, path, headers, body: Buffer, requestId, status? })
@@ -14,6 +14,10 @@
 //
 // Rules (deliberately few, deterministic, no LLM):
 //   request  standin.request.injection_phrase   override phrase anywhere in the request body
+//   request  standin.request.tool_output_egress_instruction   a tool/function message (retrieved content,
+//                                                       not the principal) tells the agent to act on a URL
+//                                                       whose host is not on the egress allowlist
+//                                                       (structural: does not depend on the wording)
 //   response standin.response.honeytoken_in_tool_args   planted honeytoken in tool-call args
 //                                                       (raw or URL-decoded)
 //   response standin.response.unallowlisted_egress      tool-call arg URL whose host is not on
@@ -58,11 +62,14 @@ export function validateStandinConfig(raw, origin = 'inline') {
   if (Array.isArray(patterns)) for (const p of patterns) {
     try { compiled.push({ source: p, re: new RegExp(p, 'i') }); } catch (err) { problems.push(`injectionPatterns: ${err.message}`); }
   }
+  const requestSide = raw?.requestSide ?? true;
+  if (typeof requestSide !== 'boolean') problems.push('requestSide must be a boolean');
   if (problems.length) throw new Error(`stand-in config ${origin} invalid:\n  - ${problems.join('\n  - ')}`);
   return Object.freeze({
     honeytokens: honeytokens.map((h) => Object.freeze({ id: h.id, value: h.value })),
     egressAllowlist: new Set(allow.map((h) => h.toLowerCase())),
     injectionPatterns: compiled,
+    requestSide,
   });
 }
 
@@ -88,13 +95,49 @@ function capFindings(findings, requestId, caps) {
   }
 }
 
-/** Request-side stand-in. Scans the whole body for configured override phrases. */
+// Action verbs that turn a URL in retrieved content into an instruction. Checked in a bounded window
+// before each URL, so the scan stays linear over the full message.
+const ACTION_RE = /\b(?:visit|send|post|fetch|navigate|open|append|upload|forward|submit|call|curl|request|browse|go\s+to|load)\b/i;
+const ACTION_WINDOW = 240;
+
+/**
+ * Structural request rule: every tool/function message (content the principal did not write) is scanned
+ * in full. An un-allowlisted URL preceded by an action verb is an instruction to move data off-box, the
+ * shape of the DVAA RAG exfil payloads, whatever their wording. One finding per message.
+ */
+function toolOutputEgressFindings(text, config) {
+  let json;
+  try { json = JSON.parse(text); } catch { return []; }
+  const messages = Array.isArray(json?.messages) ? json.messages : [];
+  const out = [];
+  messages.forEach((m, mi) => {
+    if (m?.role !== 'tool' && m?.role !== 'function') return;
+    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+    for (const u of content.matchAll(URL_RE)) {
+      const host = hostOf(u[0]);
+      if (!host || config.egressAllowlist.has(host)) continue;
+      if (!ACTION_RE.test(content.slice(Math.max(0, u.index - ACTION_WINDOW), u.index))) continue;
+      const at = text.indexOf(u[0]);
+      const offset = at === -1 ? u.index : at;
+      out.push({
+        category: 'indirect_prompt_injection',
+        ruleId: 'standin.request.tool_output_egress_instruction',
+        evidence: `request body (${Buffer.byteLength(text)} B): messages[${mi}] (${m.role}) instructs a request to non-allowlisted host ${host} at char ${offset}`,
+        offset,
+      });
+      break;
+    }
+  });
+  return out;
+}
+
+/** Request-side stand-in. Scans the whole body for override phrases and tool-output egress instructions. */
 export function standinRequestInspector(config, { caps = BOUNDS } = {}) {
   return async function standinRequest({ phase, body, requestId }) {
-    if (phase !== 'request' || config.injectionPatterns.length === 0) return null;
+    if (phase !== 'request' || config.requestSide === false) return null;
     const t0 = performance.now();
     const text = body.toString('utf8');
-    const findings = [];
+    const findings = toolOutputEgressFindings(text, config);
     for (const { source, re } of config.injectionPatterns) {
       const m = re.exec(text);
       if (m) findings.push({

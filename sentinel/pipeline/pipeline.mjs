@@ -19,7 +19,7 @@ import { BOUNDS, enforce, defaultLog, resolveCaps } from './bounds.mjs';
 import { alertsForExchange, alertsForProxyAlert, agentOf, parseJsonBody, sessionOf, inspectedBody } from './convert.mjs';
 import { OutputStore } from './store.mjs';
 
-export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, canaries = [], proxyCapturePath = null, onWarning } = {}) {
+export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, canaries = [], proxyCapturePath = null, onWarning, t3 = null } = {}) {
   if (!outDir) throw new Error('createPipeline: outDir is required');
   const caps = capOverrides ? resolveCaps(capOverrides) : BOUNDS;
   const store = new OutputStore({ outDir, caps, log, proxyCapturePath });
@@ -33,6 +33,7 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
   const ctxFor = (session, line, extra = {}) => ({
     session,
     canaries,
+    t3,
     onWarning: warn,
     captureRef: proxyCapturePath ? { path: proxyCapturePath, line } : { path: null, line },
     ...extra,

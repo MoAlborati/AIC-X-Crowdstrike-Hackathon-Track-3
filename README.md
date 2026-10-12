@@ -39,6 +39,10 @@ Each PR links its ticket + DoD item and fills `.github/pull_request_template.md`
 verify locally. Check the gate boxes, confirm bounds are fail-loud (never silent truncation), then
 approve/merge. The orchestrator never merges its own PR without operator approval.
 
+## Evaluate everything locally
+`scripts/eval.sh all` runs doctor, DVAA up, every test suite, scoring, the contrast and the dashboard. See
+**[`EVAL.md`](EVAL.md)** for what each step shows and how to fix failures.
+
 ## Quickstart (placeholder — filled by T1/T2)
 ```bash
 # 1. Bring up DVAA offline (organizer sandbox; no API key needed)

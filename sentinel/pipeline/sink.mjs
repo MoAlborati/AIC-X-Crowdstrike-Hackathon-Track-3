@@ -7,13 +7,24 @@
 // `capture_write_failed` ALERT. The exchange line is already in the proxy JSONL, because the inner
 // sink is written first.
 
+//
+// `takeExtraVerdicts(requestId)` (optional, from createT3Source().takeAlertOnly): T3's alert-only
+// response verdicts (`flagged: false`) are not recorded by the proxy. They are merged into the exchange
+// record here, before both the proxy JSONL and the pipeline see it, so `convert` over that JSONL reproduces
+// the same alerts.
 export class PipelineSink {
-  constructor(inner, pipeline) {
+  constructor(inner, pipeline, { takeExtraVerdicts = null } = {}) {
     this.inner = inner;
     this.pipeline = pipeline;
+    this.takeExtraVerdicts = takeExtraVerdicts;
   }
 
-  async write(record) {
+  async write(rec) {
+    let record = rec;
+    if (this.takeExtraVerdicts && record?.type === 'exchange') {
+      const extra = this.takeExtraVerdicts(record.request_id);
+      if (extra.length) record = { ...record, verdicts: [...(record.verdicts ?? []), ...extra] };
+    }
     await this.inner.write(record);
     await this.pipeline.ingest(record);
     await this.pipeline.flush();

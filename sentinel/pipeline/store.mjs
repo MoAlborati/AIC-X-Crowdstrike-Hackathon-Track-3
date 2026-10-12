@@ -23,7 +23,7 @@ export const RUN_KEY = 'run'; // T5 normalizeOpenAI always names the single run 
 
 export const STANDIN_NOTE =
   'STAND-IN verdicts: produced by sentinel/pipeline/standin.mjs (or the T2 placeholder substring inspector) ' +
-  'because T3 (origin/t3-detector-core) does not exist yet. Real T4 alerts built by buildAlert, but NOT T3 detector output.';
+  'run as the explicit fallback (`cli.mjs live --standin`) instead of the real T3 detector. Real T4 alerts built by buildAlert, but NOT T3 detector output.';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 

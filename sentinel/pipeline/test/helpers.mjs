@@ -1,12 +1,10 @@
 // Test seams. Nothing here mocks the feature:
-//   - the REAL T2 proxy (createProxy, PR #14) proxies to a REAL HTTP upstream (or live DVAA)
-//   - the REAL T5 dashboard code (PR #11) loads what the pipeline wrote
-// While #14/#11 are unmerged, their code is taken from the PR branches with `git archive` into a temp
-// root. Once merged, the in-tree copy is used. A missing branch AND a missing in-tree copy is a hard
-// failure, not a skip: these seams are the point of T10.
+//   - the REAL T2 proxy (sentinel/proxy, merged in #14) proxies to a REAL HTTP upstream (or live DVAA)
+//   - the REAL T5 dashboard code (sentinel/dashboard, merged in #11) loads what the pipeline wrote
+// Both are imported from this repo. They are never fetched from a feature branch. A missing directory is
+// a hard failure, not a skip: these seams are the point of T10.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, symlinkSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
@@ -17,28 +15,15 @@ export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PIPELINE_DIR = path.resolve(HERE, '..');
 export const REPO = path.resolve(PIPELINE_DIR, '..', '..');
 
-const roots = new Map();
-/** Root that holds `sentinel/<dir>` from this repo, or from `ref` via git archive. Cached per process. */
-export function rootWith(dirs, ref) {
-  const key = `${dirs.join(',')}@${ref}`;
-  if (roots.has(key)) return roots.get(key);
-  let root;
-  if (dirs.every((d) => existsSync(path.join(REPO, d)))) {
-    root = REPO;
-  } else {
-    root = mkdtempSync(path.join(tmpdir(), 'sentinel-t10-seam-'));
-    const tar = execFileSync('git', ['-C', REPO, 'archive', ref, ...dirs], { maxBuffer: 256 * 1024 * 1024 });
-    execFileSync('tar', ['-x', '-C', root], { input: tar });
-    // Real T4 for the dashboard's validator + buildAlert imports (relative ../../alerts).
-    mkdirSync(path.join(root, 'sentinel'), { recursive: true });
-    if (!existsSync(path.join(root, 'sentinel', 'alerts'))) symlinkSync(path.join(REPO, 'sentinel', 'alerts'), path.join(root, 'sentinel', 'alerts'));
-  }
-  roots.set(key, root);
-  return root;
+/** This repo, after checking that every `sentinel/<dir>` the seam needs is present in-tree. */
+function inRepo(dirs) {
+  const missing = dirs.filter((d) => !existsSync(path.join(REPO, d)));
+  if (missing.length) throw new Error(`T10 seam: ${missing.join(', ')} missing from ${REPO}; the test needs the in-repo code`);
+  return REPO;
 }
 
-export const proxyRoot = () => rootWith(['sentinel/proxy', 'sentinel/config'], 'origin/t2-proxy-skeleton');
-export const dashboardRoot = () => rootWith(['sentinel/dashboard'], 'origin/t5-dashboard');
+export const proxyRoot = () => inRepo(['sentinel/proxy', 'sentinel/config']);
+export const dashboardRoot = () => inRepo(['sentinel/dashboard']);
 
 export async function importProxy() {
   const root = proxyRoot();
@@ -104,6 +89,17 @@ export const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
 export function evasionRequest() {
   const d = JSON.parse(readFileSync(path.join(REPO, 'captures/variants/fixtures/evasion/eva-pos-middle-001.json'), 'utf8'));
   return d.request.body ?? d.request;
+}
+
+/**
+ * Live RAGBot exfil trigger. Since the T6 corpus refresh, the evasion fixture carries its document as a
+ * `tool` turn, and DVAA RAGBot only acts on user-turn content. So the live response-side tests send the
+ * SAME fixture document (DVAA's own APWN-DE-003 payload, mid-body past 8 KB) as the user turn.
+ */
+export function liveExfilRequest() {
+  const d = JSON.parse(readFileSync(path.join(REPO, 'captures/variants/fixtures/evasion/eva-pos-middle-001.json'), 'utf8'));
+  const doc = d.request.messages[d.baseline8kb.payloadMessageIndex].content;
+  return { messages: [{ role: 'user', content: doc }] };
 }
 
 /** Benign T1 request to RAGBot :7005. */

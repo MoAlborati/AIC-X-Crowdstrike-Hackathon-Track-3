@@ -1,0 +1,10 @@
+{
+  "ticket": "T8",
+  "description": "Capture index for the dashboard loader. Only the DVAA `demo aim-ab --json` recordings below are captures. Everything else under captures/contrast/ (runs/contrast.json, runs/run-meta.json, *.proxy.jsonl, standin-inspector.config.json) is a derived artifact, metadata or config, and the loader never parses it. A new *.demo.json in runs/ must be added here; sentinel/dashboard/test/dashboard.test.mjs fails if one is missing.",
+  "cases": [
+    { "path": "runs/baseline-aim.demo.json", "groundTruth": "positive" },
+    { "path": "runs/proxy-block.demo.json", "groundTruth": "positive" },
+    { "path": "runs/proxy-observe.demo.json", "groundTruth": "positive" },
+    { "path": "runs/securebot.demo.json", "groundTruth": "positive" }
+  ]
+}

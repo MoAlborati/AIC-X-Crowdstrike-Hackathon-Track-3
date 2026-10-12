@@ -11,11 +11,15 @@
 //
 // Three verdict shapes are accepted:
 //   1. T3/T4-shaped     { category, ruleId, disposition?, ... }       one alert, passed through
-//   2. stand-in         { standIn:true, findings:[{category, ruleId, ...}] }   one alert per finding
+//   2. findings list    { findings:[{category, ruleId, ...}], detector, standIn? }   one alert per finding.
+//                       Real T3 (`detector: 'sentinel-t3'`, the default source) or the stand-in fallback
+//                       (`standIn: true`). T3 canaries are {id, sha256}; buildOne rehydrates them with
+//                       T3's toAlertVerdict() right before buildAlert.
 //   3. generic flagged  { flagged:true, detector, reasons, hits? }     one alert. This is the T2
 //                       placeholder substring inspector, so it is labeled stand-in.
 
 import { buildAlert } from '../alerts/index.js';
+import { T3_DETECTOR } from './t3.mjs';
 
 export const PIPELINE_SCHEMA = 'sentinel.pipeline/1.0.0';
 
@@ -176,7 +180,17 @@ function recordedToolCall(resJson, id) {
   return null;
 }
 
-function buildOne({ record, ctx, agent, direction, part, n, reqBytes, idSuffix = '', resJson = null }) {
+function buildOne({ record, ctx, agent, direction, part: rawPart, n, reqBytes, idSuffix = '', resJson = null }) {
+  let part = rawPart;
+  if (part.detector === T3_DETECTOR) {
+    // T3 findings are secret-free; T4 needs the canary value to hash + redact. Rehydrate by id, only here.
+    if (typeof ctx.t3?.toAlertVerdict !== 'function') {
+      throw new Error(`T3 verdict on request ${record.request_id} but the pipeline has no T3 registry to rehydrate its canaries`);
+    }
+    const v = ctx.t3.toAlertVerdict(part);
+    // The proxy target names the agent; T3's inspector is not configured per agent.
+    part = { ...v, entities: { ...(v.entities ?? {}), agent: undefined }, standIn: false, detector: T3_DETECTOR };
+  }
   const policy = DIRECTION_POLICY[direction];
   const { disposition, outcome } = dispositionFor(direction, record);
   const originatedIn = direction === 'request'

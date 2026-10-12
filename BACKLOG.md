@@ -194,8 +194,13 @@ touch (parallelism key — no two in-flight tickets may overlap).
 
 ## T10 — Alert pipeline wiring (proxy verdict → T4 alert → dashboard sink)
 - **DoD:** 3, 4 (gives the T5 dashboard real proxy alerts instead of placeholders)
-- **Deps:** T4 (merged). Built against T2 (PR #14, `t2-proxy-skeleton`) and T5 (PR #11, `t5-dashboard`).
-  It uses clearly labeled **stand-in** verdicts until `origin/t3-detector-core` exists.
+- **Deps:** T2 (#14), T3 (#24), T4, T5 (#11), all merged. Tests import the in-repo `sentinel/proxy`,
+  `sentinel/detectors` and `sentinel/dashboard` directly. They never fetch code from a feature branch.
+- **Verdict source:** the real **T3** detector (`sentinelInspector()`) is the default. Canaries are rehydrated
+  with T3 `toAlertVerdict()` right before T4 `buildAlert()`. T3 response-side `flagged:false, alert:true`
+  verdicts, which the proxy does not record, are parked in a bounded map (`MAX_PENDING_ALERTS`, fail-loud)
+  and merged into the exchange record. They become alert-only alerts. The stand-in inspectors are an
+  explicitly flagged fallback only (`cli.mjs live --standin`).
 - **Scope:** `sentinel/pipeline/`, `BACKLOG.md` (this entry only)
 - **Why:** the integration checks on PR #11, #13 and #14 found a gap. The proxy writes its own JSONL, and
   its `alert` records are not T4 alerts. The dashboard reads per-capture T4 sidecars
@@ -219,8 +224,9 @@ touch (parallelism key — no two in-flight tickets may overlap).
     that pass `validateAlert`. The real T5 loader/adapter/replay and `/api/replay` show them with no
     `invalid` flag.
   - Request-side and response-side alerts carry the direction labels above. A response-side alert is never `Blocked`.
-  - Stand-in verdicts are labeled `StandIn: true`, and their sidecar is `placeholder: true` with a note,
-    so the UI shows the PLACEHOLDER banner. T3-shaped verdicts (`category` + `ruleId`) pass through unlabeled.
+  - Real T3 output on the aim-ab capture reaches the dashboard as valid alerts with no PLACEHOLDER banner.
+  - Fallback stand-in verdicts are labeled `StandIn: true`, and their sidecar is `placeholder: true` with a
+    note, so the UI shows the PLACEHOLDER banner.
   - Tail mode picks up records appended after start-up. Output is deterministic: the same JSONL gives
     byte-identical files.
   - Data-rich inputs: a request >8KB with its signal past the first 8KB, a response with 300 tool calls
@@ -230,6 +236,32 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **Gate notes:** tester-gate — real T2 proxy + real T5 loader/server as seams, live DVAA when up;
   se-gate — bounds table in the PR. Decisions stay in the proxy/detector over full bodies. Pipeline caps
   are display/storage caps only.
+
+## T11 — One-command local evaluation
+- **DoD:** supports 1–7 (makes every DoD item checkable by teammates and judges)
+- **Deps:** none (reports components that have not landed as NOT YET MERGED)
+- **Scope:** `scripts/eval.sh`, `scripts/setup-dvaa.sh` (offline-friendly clone only), `EVAL.md`, `.gitignore`,
+  `README.md` (quickstart pointer), `BACKLOG.md` (this entry)
+- **What:** `scripts/eval.sh {doctor|up|down|test|score|contrast|dashboard|dashboard-stop|all|gate <PR#>}`. On this WSL
+  machine, and for judges once the repo is public, one command checks the toolchain, brings up the pinned DVAA
+  fleet on loopback, runs every `sentinel/*` and `captures/` suite, scores T7, verifies the T8 contrast and
+  starts the T5 dashboard. `EVAL.md` is the quickstart.
+- **Acceptance:**
+  - `doctor` checks Node ≥22 (selects nvm's ≥24 when PATH has 22), Docker + compose and the pinned DVAA
+    checkout via `scripts/setup-dvaa.sh`, and prints a `fix:` for every failure.
+  - `up` starts docker project `dvaa-t1`, health-checks every port and fails if any port is published beyond
+    127.0.0.1.
+  - `test` prints a pass/fail table for every suite and lists every failing test by name and every explicit
+    SKIPPED notice. A suite that runs zero tests, or hits the per-suite timeout, is a FAIL.
+  - `score`, `contrast` and `dashboard` print their results table or URL.
+  - Every step fails loudly. A missing component prints `NOT YET MERGED` and is never skipped silently.
+    `EVAL_STRICT=1` turns NOT YET MERGED into a failure.
+  - Outputs go to `.eval/` (gitignored). Committed results are never rewritten.
+  - **Merge gate** (coordinator request, after #15 and #16 broke each other on `main`): `test` discovers every suite
+    under `sentinel/` and `captures/` by glob and exits non-zero on any failure. `scripts/eval.sh gate <PR#>` merges
+    the PR into `origin/main` in a temp worktree and runs `test` there. It is documented in `EVAL.md` as required
+    before any merge.
+- **Gate notes:** delivery-gate — `all` run on this machine against the real `dvaa-t1` fleet; output in the PR.
 
 ---
 

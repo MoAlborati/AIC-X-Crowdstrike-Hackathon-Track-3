@@ -8,9 +8,10 @@
 //       Live: follow a capture the stock proxy CLI is writing (`node sentinel/proxy/cli.mjs`).
 //       Only verdicts the proxy recorded are converted (by default the T2 substring inspector).
 //   node sentinel/pipeline/cli.mjs live [--config sentinel/config/sentinel.config.json] [--out DIR]
-//                                      [--standin-config FILE] [--clean]
-//       Demo: start the T2 proxy in-process with the STAND-IN inspectors and the pipeline sink.
-//       Before PR #14 merges, set SENTINEL_PROXY_ROOT to a checkout of t2-proxy-skeleton.
+//                                      [--standin [--standin-config FILE]] [--clean]
+//       Demo: start the T2 proxy in-process with the pipeline sink. Verdicts come from the REAL T3
+//       detector (sentinel/detectors via t3.mjs). `--standin` swaps in the stand-in inspectors as an
+//       explicitly flagged fallback (alerts StandIn, sidecar placeholder). Uses the in-repo T2 proxy.
 //
 // Then run the dashboard against the output:
 //   SENTINEL_CAPTURES_DIR=<out>/captures SENTINEL_ALERTS_DIR=<out>/alerts node sentinel/dashboard/server.mjs
@@ -28,6 +29,7 @@ import { readJsonl, followJsonl } from './jsonl.mjs';
 import { PipelineBoundError, defaultLog } from './bounds.mjs';
 import { loadStandinConfig, standinInspectors, STANDIN_CONFIG_PATH } from './standin.mjs';
 import { PipelineSink } from './sink.mjs';
+import { createT3Source, t3Rehydrator, T3_CANARIES } from './t3.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -42,23 +44,26 @@ function fail(err) {
 }
 
 function usage(msg) {
-  const err = new Error(`${msg}\nusage: cli.mjs convert|tail <proxy.jsonl> [--out DIR] [--clean] | live [--config FILE] [--out DIR] [--standin-config FILE] [--clean]`);
+  const err = new Error(`${msg}\nusage: cli.mjs convert|tail <proxy.jsonl> [--out DIR] [--clean] | live [--config FILE] [--out DIR] [--standin [--standin-config FILE]] [--clean]`);
   err.code = 'USAGE';
   return err;
 }
 
 /** Honeytokens are also passed to buildAlert for redaction, even when stand-in rules are not run. */
 function canariesFrom(standinConfigPath) {
-  return loadStandinConfig(standinConfigPath).honeytokens.map((h) => ({ id: h.id, value: h.value }));
+  // Keyed by id: stand-in and T3 name the same fake value differently, and verdicts look canaries up by id.
+  const out = new Map(T3_CANARIES.map((c) => [c.id, { id: c.id, value: c.value }]));
+  for (const h of loadStandinConfig(standinConfigPath).honeytokens) if (!out.has(h.id)) out.set(h.id, { id: h.id, value: h.value });
+  return [...out.values()];
 }
 
-// SENTINEL_PROXY_ROOT: a checkout root that holds sentinel/proxy + sentinel/config, used while PR #14
-// is unmerged (e.g. `git worktree add /tmp/t2 origin/t2-proxy-skeleton`). Default: this repo.
+// SENTINEL_PROXY_ROOT: optional override for the checkout root that holds sentinel/proxy + sentinel/config.
+// Default: this repo (T2 merged in #14).
 async function importProxy(root = process.env.SENTINEL_PROXY_ROOT || REPO) {
   const server = path.join(root, 'sentinel', 'proxy', 'server.mjs');
   const load = path.join(root, 'sentinel', 'config', 'load.mjs');
   if (!existsSync(server) || !existsSync(load)) {
-    const err = usage('live mode needs the T2 proxy (sentinel/proxy/server.mjs + sentinel/config/load.mjs, PR #14). It is not in this checkout. Merge #14, or use `tail` next to the proxy CLI.');
+    const err = usage('live mode needs the T2 proxy (sentinel/proxy/server.mjs + sentinel/config/load.mjs). It is not under the proxy root. Unset SENTINEL_PROXY_ROOT to use this repo, or use `tail` next to the proxy CLI.');
     throw err;
   }
   const [{ createProxy }, { loadConfig, ConfigError }, { JsonlCaptureSink }] = await Promise.all([
@@ -77,6 +82,7 @@ export async function main(argv = process.argv.slice(2)) {
       out: { type: 'string' },
       clean: { type: 'boolean', default: false },
       config: { type: 'string' },
+      standin: { type: 'boolean', default: false },
       'standin-config': { type: 'string' },
       'poll-ms': { type: 'string' },
     },
@@ -88,7 +94,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (cmd === 'convert' || cmd === 'tail') {
     if (!input) throw usage(`${cmd}: missing <proxy.jsonl>`);
     const jsonl = path.resolve(input);
-    const pipeline = createPipeline({ outDir, canaries: canariesFrom(standinPath), proxyCapturePath: path.relative(REPO, jsonl) });
+    const pipeline = createPipeline({ outDir, canaries: canariesFrom(standinPath), t3: t3Rehydrator(), proxyCapturePath: path.relative(REPO, jsonl) });
     await pipeline.init({ clean: values.clean });
     if (cmd === 'convert') {
       const r = await readJsonl(jsonl, (rec, line) => pipeline.ingest(rec, line));
@@ -123,19 +129,23 @@ export async function main(argv = process.argv.slice(2)) {
       if (err instanceof ConfigError) { err.code = 'USAGE'; }
       throw err;
     }
-    const standin = loadStandinConfig(standinPath);
+    if (values['standin-config'] && !values.standin) throw usage('--standin-config needs --standin (the default verdict source is T3)');
+    const t3 = values.standin ? null : createT3Source();
     const pipeline = createPipeline({
       outDir,
-      canaries: standin.honeytokens.map((h) => ({ id: h.id, value: h.value })),
+      canaries: canariesFrom(standinPath),
+      t3: t3 ?? t3Rehydrator(),
       proxyCapturePath: path.relative(REPO, config.capture.path),
     });
     await pipeline.init({ clean: values.clean });
-    const sink = new PipelineSink(new JsonlCaptureSink(config.capture), pipeline);
-    const proxy = createProxy(config, { sink, inspectors: standinInspectors(standin) });
+    const sink = new PipelineSink(new JsonlCaptureSink(config.capture), pipeline, t3 ? { takeExtraVerdicts: t3.takeAlertOnly } : {});
+    const inspectors = t3 ? t3.inspectors : standinInspectors(loadStandinConfig(standinPath));
+    if (!t3) defaultLog({ level: 'WARN', reason: 'standin_fallback', msg: 'STAND-IN inspectors selected with --standin: alerts are labeled StandIn and the dashboard shows PLACEHOLDER' });
+    const proxy = createProxy(config, { sink, inspectors });
     const addr = await proxy.listen();
     emit({
       event: 'listening', host: addr.address, port: addr.port, mode: config.mode, target: config.target,
-      capture: config.capture.path, out: outDir, inspectors: 'STAND-IN (sentinel/pipeline/standin.mjs) until T3 lands',
+      capture: config.capture.path, out: outDir, inspectors: t3 ? 'T3 (sentinel/detectors sentinelInspector)' : 'STAND-IN FALLBACK (sentinel/pipeline/standin.mjs, --standin)',
       dashboard: `SENTINEL_CAPTURES_DIR=${path.join(outDir, 'captures')} SENTINEL_ALERTS_DIR=${path.join(outDir, 'alerts')} node sentinel/dashboard/server.mjs`,
     });
     const shutdown = async () => {

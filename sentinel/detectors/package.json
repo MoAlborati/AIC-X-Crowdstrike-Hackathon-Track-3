@@ -1,0 +1,14 @@
+{
+  "name": "@sentinelproxy/detectors",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelProxy T3 detector core: honeytoken tripwire, taint/provenance, egress heuristics, user-turn mandate, cumulative caps. Pure library, zero dependencies.",
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
+    "capture": "docker run --rm --network none -v \"$PWD/scripts:/capture:ro\" --entrypoint node dvaa-t1-dvaa /capture/capture-dvaa-fixtures.mjs > test/fixtures/dvaa-live-captures.json"
+  }
+}
