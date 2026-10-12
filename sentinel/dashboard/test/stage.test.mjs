@@ -106,6 +106,11 @@ test('"Blocked" for a T3 verdict only with a recorded pre-forward request-side h
   assert.equal(classifyStage(await adapt({ ...raw, Direction: 'request', Prevents: true, PostExecution: true })).stage, 'post_execution');
   assert.equal(classifyStage(await adapt({ ...raw, Direction: 'response', Prevents: true })).stage, 'post_execution');
   assert.equal(classifyStage(await adapt({ ...raw, Direction: 'request', Prevents: false })).stage, 'alert_only');
+  // sentinel/pipeline records direction as a narrative prefix.
+  const withNarr = (n) => ({ ...raw, CaseCard: { ...raw.CaseCard, Narrative: n } });
+  assert.equal(classifyStage(await adapt(withNarr('[request-side · blocking] refused before the agent'))).stage, 'prevented_request');
+  assert.equal(classifyStage(await adapt(withNarr('[response-side · alert_only] tool already ran'))).stage, 'post_execution');
+  assert.equal(classifyStage(await adapt(withNarr('[request-side · blocking] x')), { canaryHit: true }).stage, 'post_execution');
   // Narrative never says "blocked by rule" for an alert-only verdict.
   const [st] = stageAlerts([await adapt(raw)]);
   assert.doesNotMatch(st.caseCard.narrative, /blocked by rule/);

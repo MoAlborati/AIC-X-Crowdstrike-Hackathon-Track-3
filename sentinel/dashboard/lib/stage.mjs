@@ -12,7 +12,7 @@
 //   * a verdict whose side is not recorded -> "alert-only". T4 alerts do not carry direction today, so a
 //     T4 "Blocked" without a direction hint is NOT shown as Blocked: unproven prevention is not prevention.
 // Direction hints are read from the raw alert when a producer adds them (Direction / Prevents /
-// PostExecution, top level or in CaseCard). None are invented.
+// PostExecution, top level or in CaseCard, or the sentinel/pipeline narrative prefix). None are invented.
 
 export const STAGE_LABEL = Object.freeze({
   prevented_request: 'Blocked · pre-forward',
@@ -27,16 +27,27 @@ const pick = (raw, key) => {
   return undefined;
 };
 
+// sentinel/pipeline (convert.mjs DIRECTION_POLICY) records direction as a case-card narrative prefix:
+// "[request-side · blocking] …" (T4 block only when the proxy actually refused: action blocked_request)
+// or "[response-side · alert_only] …".
+const PIPELINE_PREFIX = /^\[(request|response)-side · (blocking|alert_only)\]/;
+
 /** Direction hints a producer recorded on the raw T4 alert. */
 export function stageHints(raw) {
   const d = pick(raw, 'Direction');
   const p = pick(raw, 'Prevents');
   const x = pick(raw, 'PostExecution');
-  return {
+  const hints = {
     direction: typeof d === 'string' ? d.toLowerCase() : null,
     prevents: typeof p === 'boolean' ? p : null,
     postExecution: typeof x === 'boolean' ? x : null,
   };
+  const m = typeof raw?.CaseCard?.Narrative === 'string' ? PIPELINE_PREFIX.exec(raw.CaseCard.Narrative) : null;
+  if (m && hints.direction === null) {
+    hints.direction = m[1];
+    if (hints.prevents === null) hints.prevents = m[1] === 'request' && m[2] === 'blocking';
+  }
+  return hints;
 }
 
 /**
