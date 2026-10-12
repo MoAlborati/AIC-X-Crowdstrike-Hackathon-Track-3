@@ -1,18 +1,25 @@
 #!/usr/bin/env node
 // Proxy-added latency against the REAL DVAA agent (default RAGBot :7005).
-//   node sentinel/proxy/bench/latency.js [--n 300] [--port 7005]
+//   node sentinel/proxy/bench/latency.mjs [--n 300] [--port 7005]
 // Interleaves direct and proxied calls (same keep-alive client settings) so DVAA load drifts hit both
 // equally, then reports median/p95 for direct, proxied, and the paired difference (proxy-added).
-// Also reports the proxy's own in-process overhead (record.timings.proxyOverheadMs = total − upstream).
+// Also reports the proxy's own in-process overhead (record.timings.proxy_overhead_ms = total − upstream).
+// The proxy runs the SHIPPED inspector set (T2 substring + T3), so the numbers include detection time.
 
 import http from 'node:http';
 import { readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createProxy } from '../server.js';
-import { loadConfig } from '../config.js';
-import { readRecords, summarize } from '../test/helpers.js';
+import { createProxy } from '../server.mjs';
+import { loadConfig } from '../../config/load.mjs';
+import { buildDefaultInspectors } from '../default-inspectors.mjs';
+
+function summarize(samples) {
+  const s = [...samples].sort((a, b) => a - b);
+  const q = (p) => s[Math.min(s.length - 1, Math.max(0, Math.ceil(p * s.length) - 1))];
+  return { n: s.length, median: q(0.5), p95: q(0.95), max: s.at(-1) };
+}
 
 const CAPTURES = fileURLToPath(new URL('../../../captures/', import.meta.url));
 
@@ -41,8 +48,10 @@ function timedPost(agent, port, body) {
 
 export async function measure({ n = 300, port = 7005, warmup = 20 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'sentinel-bench-'));
-  const config = loadConfig({ env: {}, argv: ['--listen-port', '0', '--target-port', String(port), '--sink-path', join(dir, 'ex.jsonl')] });
-  const proxy = createProxy(config, { log: () => {} });
+  const shipped = fileURLToPath(new URL('../../config/sentinel.config.json', import.meta.url));
+  const config = loadConfig({ path: shipped, env: {}, argv: ['--listen-port', '0', '--target-port', String(port), '--capture-path', join(dir, 'ex.jsonl')] });
+  const { inspectors } = buildDefaultInspectors(config, { write: () => {} });
+  const proxy = createProxy(config, { inspectors, logAlert: () => {} });
   const { port: proxyPort } = await proxy.listen(0, '127.0.0.1');
   const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
   const out = { target: `127.0.0.1:${port}`, n, node: process.version, results: {} };
@@ -66,7 +75,9 @@ export async function measure({ n = 300, port = 7005, warmup = 20 } = {}) {
       }
       out.results[name] = { bodyBytes: body.length, directMs: summarize(direct), proxiedMs: summarize(proxied), proxyAddedMs: summarize(diff) };
     }
-    const overhead = readRecords(config.sink.path).map((r) => r.timings.proxyOverheadMs);
+    await proxy.sink.flush();
+    const overhead = readFileSync(config.capture.path, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      .filter((r) => r.type === 'exchange').map((r) => r.timings.proxy_overhead_ms);
     out.inProcessOverheadMs = summarize(overhead);
   } finally {
     agent.destroy();

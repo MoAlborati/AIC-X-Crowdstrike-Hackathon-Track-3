@@ -1,0 +1,5 @@
+[
+  { "id": "OPSBOT-BILLING-KEY", "value": "sk-opsbot-FAKE-billing-key-7731-do-not-use" },
+  { "id": "OPSBOT-CUST-SSN", "value": "555-01-7342" },
+  { "id": "OPSBOT-CUST-CARD", "value": "4000-0000-0000-7342" }
+]

@@ -55,7 +55,7 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - Taint rule flags untrusted-read → sensitive-read → external-send in one turn.
   - Full-payload scan catches a payload that hides the signal beyond the first/last 8KB.
   - Oversize input triggers a loud ALERT/raise with `{payload_size, cap, action}` logged — no silent
-    truncation (firm rule: bounded + fail-loud).
+    truncation (data-scale reliability rule: bounded + fail-loud).
   - Detector returns a verdict object consumable by T4.
   - *Adjacent-knowledge mechanisms (see `planning/ADJACENT.md` §6a):*
     - **Destination provenance** (Confirmation of Payee / BEC new-payee rule): recipients, URL hosts and
