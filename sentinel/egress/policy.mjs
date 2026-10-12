@@ -15,6 +15,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { buildAlert } from '../alerts/schema.js';
 import { MAX_CANARIES, MIN_CANARY_VALUE_CHARS } from '../alerts/redact.js';
+// Deep imports into T3's src/: decodedVariants / findSecretShapes / findSsns are not exported from
+// sentinel/detectors/index.js yet. Private coupling, kept deliberately while detectors/ is being edited
+// by another ticket. Follow-up: export them from the detectors index and import from there.
 import { HoneytokenRegistry, DVAA_HONEYTOKENS } from '../detectors/src/honeytokens.js';
 import { decodedVariants, findSecretShapes, findSsns } from '../detectors/src/text.js';
 
@@ -93,10 +96,38 @@ export function loadHoneytokens(list, { max = DEFAULTS.MAX_HONEYTOKENS, minChars
   return Object.freeze(out);
 }
 
-/** Host allowlist: exact hostname match (case-insensitive). No wildcard, no suffix match. */
-export function makeAllowlist(hosts) {
-  return new Set((hosts ?? []).map((h) => String(h).trim().toLowerCase()).filter(Boolean));
+/**
+ * Canonical host for allowlist matching, identical for the http and CONNECT paths: lower-case, IPv6
+ * brackets stripped (WHATWG URL keeps "[::1]" as url.hostname; a CONNECT authority yields "::1").
+ */
+export function normalizeHost(h) {
+  const s = String(h ?? '').trim().toLowerCase();
+  return s.startsWith('[') && s.endsWith(']') ? s.slice(1, -1) : s;
 }
+
+/** Host allowlist: exact hostname match (case-insensitive, IPv6 bracket-insensitive). No wildcard, no suffix match. */
+export function makeAllowlist(hosts) {
+  return new Set((hosts ?? []).map(normalizeHost).filter(Boolean));
+}
+
+/** Is `host` on the allowlist (after normalizeHost)? */
+export const isAllowlisted = (allow, host) => allow.has(normalizeHost(host));
+
+/**
+ * How a host may appear in logs/alerts. Allowlisted hosts are operator config and are shown as-is. Any
+ * other host is attacker-controlled (a subdomain can carry a honeytoken, raw or encoded), so it is only
+ * ever logged as a hash + length.
+ */
+export function hostForLog(allow, host) {
+  if (host == null || host === '') return { host: null, host_sha256: null, host_len: 0, host_allowlisted: false };
+  const n = normalizeHost(host);
+  const ok = allow.has(n);
+  return { host: ok ? n : null, host_sha256: sha16(n), host_len: n.length, host_allowlisted: ok };
+}
+const hostLabel = (allow, host) => {
+  const h = hostForLog(allow, host);
+  return h.host ?? (h.host_sha256 ? `host[sha256=${h.host_sha256},len=${h.host_len}]` : 'unknown');
+};
 
 /**
  * Inspect one outbound request.
@@ -111,12 +142,15 @@ export function inspectEgress(req, cfg) {
   const maxBytes = cfg.maxBytes ?? DEFAULTS.MAX_EGRESS_BYTES;
   const reasons = [];
   const add = (r) => { if (!CODES.has(r)) throw new Error(`non-static reason code ${r}`); if (!reasons.includes(r)) reasons.push(r); };
-  const facts = { urlBytes: Buffer.byteLength(req.url ?? ''), bodyBytes: req.body?.length ?? 0, canaryIds: [], secretKinds: [] };
-  const size = req.size ?? facts.urlBytes + facts.bodyBytes;
+  const facts = {
+    urlBytes: Buffer.byteLength(req.url ?? ''), headerBytes: Buffer.byteLength(req.headers ?? ''),
+    bodyBytes: req.body?.length ?? 0, canaryIds: [], secretKinds: [],
+  };
+  const size = req.size ?? facts.urlBytes + facts.headerBytes + facts.bodyBytes;
   facts.size = size;
   let matchedCanary = null;
 
-  if (!cfg.allow.has(String(req.host ?? '').toLowerCase())) add(REASON_CODES.DESTINATION_NOT_ALLOWLISTED);
+  if (!isAllowlisted(cfg.allow, req.host)) add(REASON_CODES.DESTINATION_NOT_ALLOWLISTED);
 
   if (size > maxBytes) {
     add(REASON_CODES.EGRESS_OVER_CAP); // never scan a partial payload and call it clean
@@ -124,6 +158,7 @@ export function inspectEgress(req, cfg) {
     try {
       if (cfg.faults?.scan === 'error') throw new Error('injected scan fault');
       const texts = [req.url ?? ''];
+      if (req.headers) texts.push(req.headers); // forwarded request headers are an egress channel too
       if (req.body?.length) texts.push(req.body.toString('utf8'));
       for (const text of texts) {
         const { views, overDepth } = decodedViews(text, cfg.maxDecodeRounds);
@@ -149,22 +184,24 @@ export function inspectEgress(req, cfg) {
     }
   }
   const latencyMs = +(performance.now() - t0).toFixed(3);
-  if (latencyMs > (cfg.scanBudgetMs ?? DEFAULTS.SCAN_BUDGET_MS)) add(REASON_CODES.SCAN_TIMEOUT);
+  // !(<=) so a NaN/invalid budget fails CLOSED (scan_timeout) instead of never firing.
+  if (!(latencyMs <= (cfg.scanBudgetMs ?? DEFAULTS.SCAN_BUDGET_MS))) add(REASON_CODES.SCAN_TIMEOUT);
 
   return decide(req, cfg, reasons, facts, matchedCanary, latencyMs);
 }
 
 /** Verdict for a request that failed before it could be scanned (parse error, timeout, client check). */
 export function failClosedVerdict(code, req, cfg) {
-  return decide(req, cfg, [code], { urlBytes: Buffer.byteLength(req.url ?? ''), bodyBytes: 0, size: req.size ?? 0, canaryIds: [], secretKinds: [] }, null, 0);
+  return decide(req, cfg, [code], { urlBytes: Buffer.byteLength(req.url ?? ''), headerBytes: 0, bodyBytes: 0, size: req.size ?? 0, canaryIds: [], secretKinds: [] }, null, 0);
 }
 
 function decide(req, cfg, reasons, facts, matchedCanary, latencyMs) {
   const failClosed = reasons.some((r) => FAIL_CLOSED_CODES.has(r));
-  // secret_pattern_match is evidence only (generic patterns, e.g. Luhn on 13-digit epoch ms, would FP on
-  // allowlisted traffic); it never decides a deny on its own.
+  // secret_pattern_match is evidence only (generic patterns, e.g. Luhn on 13-digit epoch ms or random
+  // base64, would FP on allowlisted traffic): it never decides a deny AND never raises an ALERT on its own.
+  // It is still recorded (reasons + secret_kinds) and carried in the alert when something else flags.
   const policyHit = reasons.includes(REASON_CODES.HONEYTOKEN_MATCH) || reasons.includes(REASON_CODES.DESTINATION_NOT_ALLOWLISTED);
-  const flagged = failClosed || policyHit || reasons.includes(REASON_CODES.SECRET_PATTERN_MATCH);
+  const flagged = failClosed || policyHit;
   const action = failClosed || (policyHit && cfg.mode === 'block') ? 'deny' : 'forward';
   const verdict = {
     flagged,
@@ -183,6 +220,7 @@ function decide(req, cfg, reasons, facts, matchedCanary, latencyMs) {
     kind: req.kind,
     method: req.method,
     urlBytes: facts.urlBytes,
+    headerBytes: facts.headerBytes,
     bodyBytes: facts.bodyBytes,
     size: facts.size,
     urlSha256: req.url ? sha16(req.url) : null,
@@ -205,9 +243,11 @@ function primaryCategory(reasons) {
 /** Build the T4 alert. buildAlert redacts canaries/secrets and bounds every string. */
 function toAlert(req, cfg, v, matchedCanary) {
   const [category, ruleId] = primaryCategory(v.reasons);
-  let dest = req.kind === 'connect' ? `connect://${req.url}` : null;
+  // Never the raw host of a non-allowlisted destination (it can carry a token): see hostForLog.
+  const label = hostLabel(cfg.allow, v.host);
+  let dest = req.kind === 'connect' ? `connect://${label}:${req.port ?? '?'}` : null;
   if (!dest) {
-    try { const u = new URL(req.url); dest = `${u.protocol}//${u.host}${u.pathname}`; } catch { dest = `unparsed:${v.host ?? 'unknown'}`; }
+    try { const u = new URL(req.url); dest = `${u.protocol}//${label}${u.port ? `:${u.port}` : ''}${u.pathname}`; } catch { dest = `unparsed:${label}`; }
   }
   const alert = buildAlert({
     category,
@@ -221,9 +261,9 @@ function toAlert(req, cfg, v, matchedCanary) {
       toolCall: { id: v.requestId, name: `egress.${req.kind}.${req.method ?? 'CONNECT'}` },
       sink: { type: req.kind === 'connect' ? 'connect_tunnel' : 'http_egress', destination: dest },
     },
-    taintPath: [{ kind: 'sink', label: `tool-boundary egress -> ${v.host ?? 'unknown'}`, trust: 'external' }],
+    taintPath: [{ kind: 'sink', label: `tool-boundary egress -> ${label}`, trust: 'external' }],
     layers: v.reasons.map((r) => ({ layer: 'egress', rule: `egress.${r}`, fired: true, latencyMs: v.latencyMs })),
-    evidence: `egress ${req.method ?? 'CONNECT'} ${dest} url_bytes=${v.urlBytes} body_bytes=${v.bodyBytes} size=${v.size} ` +
+    evidence: `egress ${req.method ?? 'CONNECT'} ${dest} url_bytes=${v.urlBytes} header_bytes=${v.headerBytes} body_bytes=${v.bodyBytes} size=${v.size} ` +
       `reasons=[${v.reasons.join(',')}] canaries=[${v.canaryIds.join(',')}] mode=${cfg.mode} action=${v.action}`,
     ...(matchedCanary ? { canary: matchedCanary } : {}),
     canaries: cfg.honeytokens,
