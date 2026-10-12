@@ -13,7 +13,7 @@
 // Network exposure: listens on LISTEN_HOST, which must be loopback or a private (RFC 1918 / ULA) address,
 // and accepts clients only from ALLOW_CLIENT_CIDRS. No port is published to the host.
 //
-// Env: MODE=observe|block  ALLOW_HOSTS=a,b  HONEYTOKENS_FILE=path.json  LOG=/path.jsonl  PORT=8899
+// Env: MODE=observe|block (unset -> block; any other value throws)  ALLOW_HOSTS=a,b  HONEYTOKENS_FILE=path.json  LOG=/path.jsonl  PORT=8899
 //      LISTEN_HOST=127.0.0.1  ALLOW_CLIENT_CIDRS=127.0.0.0/8,10.231.12.0/24  MAX_EGRESS_BYTES=65536
 //      REQUEST_TIMEOUT_MS=5000  UPSTREAM_TIMEOUT_MS=5000  SCAN_BUDGET_MS=250  AGENT_LABEL=dvaa
 
@@ -23,8 +23,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  inspectEgress, failClosedVerdict, loadHoneytokens, makeAllowlist, DEFAULTS, REASON_CODES, DVAA_HONEYTOKENS,
+  inspectEgress, failClosedVerdict, loadHoneytokens, makeAllowlist, hostForLog, DEFAULTS, REASON_CODES, DVAA_HONEYTOKENS,
 } from './policy.mjs';
+import { redactDeep, prepareCanaries } from '../alerts/index.js';
 
 /** DVAA's planted honeytokens (T3 DVAA_HONEYTOKENS) + this deployment's extras (honeytokens.json). */
 export function defaultHoneytokens(extrasFile = path.join(HERE, 'honeytokens.json')) {
@@ -47,6 +48,18 @@ export function parseConnectTarget(authority) {
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/** Proxy-only headers: stripped before forwarding, so they are neither scanned nor counted. */
+const HOP_HEADERS = ['proxy-connection', 'proxy-authorization'];
+/** The header block that is actually forwarded upstream, as "name: value\r\n" lines (raw order/casing). */
+export function forwardedHeaderText(rawHeaders = []) {
+  let out = '';
+  for (let i = 0; i + 1 < rawHeaders.length; i += 2) {
+    if (HOP_HEADERS.includes(String(rawHeaders[i]).toLowerCase())) continue;
+    out += `${rawHeaders[i]}: ${rawHeaders[i + 1]}\r\n`;
+  }
+  return out;
+}
 
 /** Is `ip` loopback or private (RFC 1918, ULA, link-local excluded)? */
 export function isPrivateOrLoopback(ip) {
@@ -71,10 +84,28 @@ function parseCidrs(spec) {
   return list;
 }
 
+/**
+ * MODE: unset/empty -> block (fail closed). Otherwise exactly observe|block (case-insensitive); anything
+ * else (typo, "on", " block") throws at startup instead of silently meaning observe.
+ */
+export function parseMode(raw) {
+  if (raw === undefined || raw === '') return 'block';
+  const m = String(raw).toLowerCase();
+  if (m !== 'observe' && m !== 'block') throw new Error(`MODE must be exactly "observe" or "block", got ${JSON.stringify(String(raw).slice(0, 40))}`);
+  return m;
+}
+
+/** A positive-integer setting; unset/empty -> default. NaN, 0, negative, fractional or junk throws. */
+export function positiveInt(name, raw, dflt) {
+  const n = raw === undefined || raw === null || raw === '' ? dflt : Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive integer (ms), got ${JSON.stringify(String(raw).slice(0, 40))}`);
+  return n;
+}
+
 export function configFromEnv(env = process.env) {
   const htFile = env.HONEYTOKENS_FILE || path.join(HERE, 'honeytokens.json');
   return {
-    mode: env.MODE === 'block' ? 'block' : 'observe',
+    mode: parseMode(env.MODE),
     allowHosts: (env.ALLOW_HOSTS || '').split(','),
     honeytokens: defaultHoneytokens(htFile),
     log: env.LOG || null,
@@ -82,9 +113,9 @@ export function configFromEnv(env = process.env) {
     listenHost: env.LISTEN_HOST || '127.0.0.1',
     allowClientCidrs: env.ALLOW_CLIENT_CIDRS || '127.0.0.0/8',
     maxBytes: Number(env.MAX_EGRESS_BYTES || DEFAULTS.MAX_EGRESS_BYTES),
-    requestTimeoutMs: Number(env.REQUEST_TIMEOUT_MS || 5000),
-    upstreamTimeoutMs: Number(env.UPSTREAM_TIMEOUT_MS || 5000),
-    scanBudgetMs: Number(env.SCAN_BUDGET_MS || DEFAULTS.SCAN_BUDGET_MS),
+    requestTimeoutMs: positiveInt('REQUEST_TIMEOUT_MS', env.REQUEST_TIMEOUT_MS, 5000),
+    upstreamTimeoutMs: positiveInt('UPSTREAM_TIMEOUT_MS', env.UPSTREAM_TIMEOUT_MS, 5000),
+    scanBudgetMs: positiveInt('SCAN_BUDGET_MS', env.SCAN_BUDGET_MS, DEFAULTS.SCAN_BUDGET_MS),
     agentLabel: env.AGENT_LABEL || 'dvaa',
   };
 }
@@ -99,33 +130,45 @@ export function createEgressInspector(opts) {
     throw new Error(`LISTEN_HOST ${opts.listenHost} must be a loopback/private IP literal (never 0.0.0.0 or public)`);
   }
   if (!Number.isInteger(opts.maxBytes) || opts.maxBytes <= 0) throw new Error('MAX_EGRESS_BYTES must be a positive integer');
+  // A NaN budget/timeout would silently disable a fail-closed check (latency > NaN is never true).
+  const requestTimeoutMs = positiveInt('REQUEST_TIMEOUT_MS', opts.requestTimeoutMs, 5000);
+  const upstreamTimeoutMs = positiveInt('UPSTREAM_TIMEOUT_MS', opts.upstreamTimeoutMs, 5000);
+  const scanBudgetMs = positiveInt('SCAN_BUDGET_MS', opts.scanBudgetMs, DEFAULTS.SCAN_BUDGET_MS);
   const clients = parseCidrs(opts.allowClientCidrs);
   const cfg = {
     mode: opts.mode,
     allow: makeAllowlist(opts.allowHosts),
     honeytokens: loadHoneytokens(opts.honeytokens),
     maxBytes: opts.maxBytes,
-    scanBudgetMs: opts.scanBudgetMs ?? DEFAULTS.SCAN_BUDGET_MS,
+    scanBudgetMs,
     agentLabel: opts.agentLabel,
     faults: opts.faults,
   };
   const sink = opts.onRecord ?? null;
+  prepareCanaries(cfg.honeytokens); // fail loud at startup if log redaction cannot cover a honeytoken
 
   // Every decision is recorded BEFORE any byte is forwarded. If the record cannot be written, the request
   // is denied (an unrecorded egress is worse than a refused one).
+  //
+  // Log hygiene (review of #45, blocker 1): a non-allowlisted host is attacker-controlled and can carry a
+  // honeytoken (raw or encoded) in a subdomain, so it is logged ONLY as hash + length (hostForLog). Then
+  // the whole record goes through T4 redactDeep with the honeytokens (same path #41 uses for the proxy),
+  // so no field of a JSONL line, a sink record or the stderr ALERT can carry a honeytoken value.
   function record(v) {
-    const rec = {
+    const raw = {
       at: new Date().toISOString(), kind: v.flagged ? 'ALERT' : 'egress', direction: 'egress',
-      action: v.action, mode: v.mode, reasons: v.reasons, failClosed: v.failClosed, host: v.host,
-      proto: v.kind, method: v.method, url_bytes: v.urlBytes, body_bytes: v.bodyBytes, size: v.size,
+      action: v.action, mode: v.mode, reasons: v.reasons, failClosed: v.failClosed, ...hostForLog(cfg.allow, v.host),
+      proto: v.kind, method: v.method, url_bytes: v.urlBytes, header_bytes: v.headerBytes ?? 0, body_bytes: v.bodyBytes, size: v.size,
       cap: cfg.maxBytes, url_sha256: v.urlSha256, canary_ids: v.canaryIds, secret_kinds: v.secretKinds,
       request_id: v.requestId, latency_ms: v.latencyMs, alert: v.alertDoc,
     };
+    const rec = redactDeep(raw, { canaries: cfg.honeytokens }).value;
     const line = JSON.stringify(rec);
     if (opts.faults?.log === 'fail') throw new Error('injected log fault');
     if (opts.log) fs.appendFileSync(opts.log, line + '\n');
     if (v.flagged) {
-      process.stderr.write(`ALERT sentinel-egress ${v.action.toUpperCase()} reasons=[${v.reasons}] host=${v.host} size=${v.size} cap=${cfg.maxBytes} mode=${v.mode}\n`);
+      const h = rec.host ?? (rec.host_sha256 ? `sha256:${rec.host_sha256}/len=${rec.host_len}` : 'none');
+      process.stderr.write(`ALERT sentinel-egress ${rec.action.toUpperCase()} reasons=[${rec.reasons}] host=${h} size=${rec.size} cap=${cfg.maxBytes} mode=${rec.mode}\n`);
     }
     sink?.(rec);
     return rec;
@@ -149,8 +192,8 @@ export function createEgressInspector(opts) {
     // Raised above the cap so an oversize URL reaches our fail-loud path; anything beyond this is a
     // parser error, which is also fail-closed (clientError below) — never Node's silent 431.
     maxHeaderSize: Math.max(cfg.maxBytes * 2, 16384),
-    requestTimeout: opts.requestTimeoutMs ?? 5000,
-    headersTimeout: opts.requestTimeoutMs ?? 5000,
+    requestTimeout: requestTimeoutMs,
+    headersTimeout: requestTimeoutMs,
   }, (req, res) => {
     let url;
     const host0 = () => { try { return url?.hostname ?? null; } catch { return null; } };
@@ -160,15 +203,18 @@ export function createEgressInspector(opts) {
       const v = safeRecord(failClosedVerdict(REASON_CODES.BAD_PROXY_REQUEST, { kind: 'http', method: req.method, url: '', host: null, size: 0 }, cfg));
       return deny(res, 400, v);
     }
+    // Forwarded request headers are scanned and count toward the cap (review of #45, should-fix 3): an
+    // allowlisted destination must not become an unmonitored channel via X-Exfil: / Cookie: headers.
+    const fwdHeaders = forwardedHeaderText(req.rawHeaders);
     const chunks = [];
-    let size = Buffer.byteLength(req.url);
+    let size = Buffer.byteLength(req.url) + Buffer.byteLength(fwdHeaders);
     let over = size > cfg.maxBytes;
     let done = false;
     const timer = setTimeout(() => {
       if (done) return; done = true;
       const v = safeRecord(failClosedVerdict(REASON_CODES.REQUEST_TIMEOUT, { kind: 'http', method: req.method, url: req.url, host: host0(), size }, cfg));
       deny(res, 408, v); req.destroy();
-    }, opts.requestTimeoutMs ?? 5000);
+    }, requestTimeoutMs);
     req.on('data', (c) => {
       size += c.length;
       if (size > cfg.maxBytes) { over = true; chunks.length = 0; return; } // stop buffering; never forward
@@ -180,15 +226,15 @@ export function createEgressInspector(opts) {
       const body = over ? Buffer.alloc(0) : Buffer.concat(chunks);
       let v;
       try {
-        v = inspectEgress({ kind: 'http', method: req.method, url: req.url, host: url.hostname, body, size }, cfg);
+        v = inspectEgress({ kind: 'http', method: req.method, url: req.url, host: url.hostname, headers: fwdHeaders, body, size }, cfg);
       } catch {
         v = failClosedVerdict(REASON_CODES.SCAN_ERROR, { kind: 'http', method: req.method, url: req.url, host: url.hostname, size }, cfg);
       }
       v = safeRecord(v);
       if (v.action === 'deny') return deny(res, v.reasons.includes(REASON_CODES.EGRESS_OVER_CAP) ? 413 : 403, v);
       const headers = { ...req.headers };
-      delete headers['proxy-connection']; delete headers['proxy-authorization'];
-      const up = http.request(url, { method: req.method, headers, timeout: opts.upstreamTimeoutMs ?? 5000 }, (upRes) => {
+      for (const h of HOP_HEADERS) delete headers[h];
+      const up = http.request(url, { method: req.method, headers, timeout: upstreamTimeoutMs }, (upRes) => {
         res.writeHead(upRes.statusCode, upRes.headers); upRes.pipe(res);
       });
       up.on('timeout', () => up.destroy(new Error('upstream timeout')));
@@ -224,7 +270,7 @@ export function createEgressInspector(opts) {
     const up = net.connect(t.port, t.host, () => {
       sock.write('HTTP/1.1 200 Connection Established\r\n\r\n'); up.write(head); up.pipe(sock); sock.pipe(up);
     });
-    up.setTimeout(opts.upstreamTimeoutMs ?? 5000, () => up.destroy());
+    up.setTimeout(upstreamTimeoutMs, () => up.destroy());
     up.on('error', () => sock.destroy()); sock.on('error', () => up.destroy());
   });
 
@@ -245,6 +291,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   const insp = createEgressInspector(c);
   insp.listen().then(({ port }) => {
     console.log(`sentinel-egress listening ${c.listenHost}:${port} mode=${c.mode} allow=[${[...insp.cfg.allow]}] ` +
-      `honeytokens=${insp.cfg.honeytokens.length / 2} max=${c.maxBytes} clients=${c.allowClientCidrs}`);
+      `honeytokens=${insp.cfg.honeytokens.length} max=${c.maxBytes} clients=${c.allowClientCidrs}`);
   }, (e) => { console.error(`sentinel-egress failed to start: ${e.message}`); process.exit(1); });
 }
