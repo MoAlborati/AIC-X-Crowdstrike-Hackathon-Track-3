@@ -6,11 +6,12 @@ Modeled on the firm's convergence process (see `gates/` — encodes the content-
 ## Roles
 - **Operator (you, humans):** review PRs, approve/merge, answer blockers in STATE.md. Final authority.
 - **Orchestrator (lead Claude session):** owns the loop. Picks tickets, dispatches agents, opens PRs,
-  updates STATE.md, enforces gates. Never merges its own PR without operator approval.
+  updates STATE.md, enforces gates. Merges only under §Endgame policies (reviewer APPROVE + green tests).
 - **Implementer agent:** builds one ticket on a feature branch. Writes code + tests.
 - **Tester agent:** enforces `gates/tester-gate.md` (data-rich fixtures, real seams, delete-the-fix proof).
 - **Reviewer agent:** enforces `gates/reviewer-gate.md` (adversarial self-review) BEFORE the PR opens,
   so the human review starts from a clean baseline.
+- **Merge-steward agent:** merges PRs that meet the §Endgame policies merge rule. It has no other authority.
 - **Every child agent** ends its final reply with one status line: `STATUS: DONE | DEGRADED | BLOCKED`
   (see Model policy below).
 
@@ -58,11 +59,39 @@ defensive, but the subject matter is prompt injection + exfiltration).
 5. **Reviewer gate:** Reviewer agent runs `gates/reviewer-gate.md` adversarially. Fix findings.
 6. **Open PR:** push branch, open PR with the template filled (links ticket, DoD item, gate evidence).
    Set STATE.md: ticket -> IN REVIEW, record PR number. **STOP and wait for operator** on that ticket.
-7. **Operator review:** humans comment/approve. Orchestrator addresses comments as new commits
-   (never force-merges). On approval, operator (or Orchestrator if operator says "auto-merge ok") merges.
+7. **Review + merge:** a reviewer or merge-steward agent merges once the reviewer verdict is APPROVE and
+   tests are green (§Endgame policies). At most 2 fix rounds per PR. Humans may review at any time; their
+   comments are addressed as new commits (never force-push or force-merge).
 8. **Integrate:** after merge, update STATE.md metrics table, mark DoD item, pull main, pick next ticket.
 9. **Delivery gate (recurring):** after any ticket touching detection/demo, run `gates/delivery-gate.md`
    — a live-drive on the data-rich DVAA target (not a toy fixture). Record result in STATE.md.
+
+## Endgame policies (operator, 2026-10-12 11:58 PDT)
+Operator's direction: "limit scope, our goal is to win the hackathon". These override any earlier rule in this file that conflicts with them.
+- **Deadline: 16:00 PDT.** Schedule:
+  - now–13:30: land T3 at its minimum scope, plus #14 (T2), T10, and fixes
+  - 13:30–14:30: integration, delivery gate (**≥5 clean replays**), real metrics
+  - **14:30: FEATURE FREEZE.** After this, only fixes to the demo path, with no new features
+  - 14:30–15:30: rehearsal. **The fallback video is recorded last**
+  - 15:30–16:00: buffer
+- **Merge authority:** a reviewer or merge-steward agent may merge a PR once (a) its reviewer verdict is
+  **APPROVE** and (b) its **tests are green**. A NEEDS_WORK PR is never merged. Humans can review at any time. Docs-only PRs may be merged by
+  their author after a conflict check.
+- **Review-round cap:** at most **2 fix rounds per PR**. Anything still open after round 2 goes in the PR
+  body under **"Known limitations"**, and the PR then merges.
+- **T3 scope frozen** to the demo-critical minimum:
+  1. honeytoken tripwire
+  2. destination provenance
+  3. full-payload, fail-closed, request-side scan
+  4. T4 verdicts
+
+  Everything else in T3 is **stretch**: do not start it before the freeze, and do not start it after.
+- **Architecture finding (T8):** DVAA agents execute tools **in-process**, so the proxy can **prevent only
+  request-side (pre-forward)** attacks. **Response-side checks are alert-only.** Do not claim response-side
+  blocking anywhere. The pitch claim is decided after the egress spike.
+- **Repo visibility:** judges will get access, and the repo goes **public** later. Keep commits free of secrets
+  and private notes (honeytokens are DVAA's fake planted values only). Presentation materials and the video
+  come at the end.
 
 ## Worktrees (required for concurrent tickets)
 - **Every concurrently running ticket MUST use its own `git worktree`** at `/home/gingy/crowdstrike-<ticket>`
@@ -89,7 +118,7 @@ same checkout (§Worktrees). Dashboard + detector + attack bench are disjoint an
 - **Heartbeat about every 10 minutes:** check open PRs for reviews and comments (`gh pr status`, `gh pr view
   --comments`), integrate merged ones, dispatch agents to address review comments as new commits, top the pool back up to ≥5,
   and update STATE.md.
-- Hard stop conditions: all 7 DoD items merged + demo rehearsed green; OR operator says stop; OR a
+- Hard stop conditions: **16:00 PDT deadline**; OR all 7 DoD items merged + demo rehearsed green; OR operator says stop; OR a
   blocker in STATE.md is unresolved and no unblocked ticket remains (then: surface, wait).
 
 ## Guardrails (firm rules, non-negotiable)

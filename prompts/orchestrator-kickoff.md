@@ -39,7 +39,8 @@ remove the worktree after its PR merges. Never let two agents share a checkout.
    ticket while advancing others.
 7. **Delivery gate:** after any ticket touching detection/demo, run `gates/delivery-gate.md`
    (live-drive on the real DVAA fleet; ≥5 consecutive clean replays for demo-ready). Record in STATE.md.
-8. **Never merge your own PR** without operator approval. Only outward actions: PRs to this repo +
+8. **Merge only per LOOP.md §Endgame policies:** reviewer verdict APPROVE + green tests (reviewer or
+   merge-steward merges). Never merge a NEEDS_WORK PR. Max 2 fix rounds, then "Known limitations" + merge. Only outward actions: PRs to this repo +
    the authorized local DVAA target.
 
 ## Degradation handling
