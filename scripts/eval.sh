@@ -14,7 +14,8 @@
 #   dashboard       start the T5 dashboard on loopback in the background, print its URL
 #   dashboard-stop  stop the dashboard started by `dashboard`
 #   all             doctor, up, test, score, contrast, dashboard; then a summary table
-#   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs); NOT YET MERGED if absent
+#   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs; needs Node >= 24, writes .eval/track3a/);
+#                   NOT YET MERGED if absent
 #   gate <PR#>      MERGE GATE: merge the PR into origin/main in a temp worktree and run `test` there;
 #                   exit 1 on a conflict or any failing suite. Required before merging any PR.
 #                   Also on the merged tree: claim drift (scripts/claim-drift.mjs: T3/DVAA %s in the pitch docs
@@ -593,8 +594,10 @@ cmd_dashboard() {
   echo "  log: .eval/dashboard.log   stop: scripts/eval.sh dashboard-stop"
   return 0
 }
-# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Note: run-demo.mjs
-# rewrites track3a/runs/results.json + RESULTS.md (its own recorded outputs), so this is not part of `all`.
+# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Since #113, run-demo.mjs
+# writes its run outputs to the gitignored .eval/track3a/ (override: TRACK3A_OUT), not track3a/runs/. It needs
+# Node >= 24 (NODE_USE_ENV_PROXY for the egress-guard stacks; nvm v24.16.0 on the team box) and exits 2 on
+# Node < 24, so it is not part of `all` (the default Node on some machines is 22).
 cmd_track3a() {
   hdr "track3a (Track 3 Path A: node track3a/run-demo.mjs)"
   require_node || return 1
