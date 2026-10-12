@@ -192,6 +192,28 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **Gate notes:** delivery-gate (hackathon-scaled convergence) — **≥5 consecutive clean demo replays**
   before we call it demo-ready (see `gates/delivery-gate.md`).
 
+## T11 — One-command local evaluation
+- **DoD:** supports 1–7 (makes every DoD item checkable by teammates and judges)
+- **Deps:** none (reports components that have not landed as NOT YET MERGED)
+- **Scope:** `scripts/eval.sh`, `scripts/setup-dvaa.sh` (offline-friendly clone only), `EVAL.md`, `.gitignore`,
+  `README.md` (quickstart pointer), `BACKLOG.md` (this entry)
+- **What:** `scripts/eval.sh {doctor|up|down|test|score|contrast|dashboard|dashboard-stop|all}`. On this WSL
+  machine, and for judges once the repo is public, one command checks the toolchain, brings up the pinned DVAA
+  fleet on loopback, runs every `sentinel/*` and `captures/` suite, scores T7, verifies the T8 contrast and
+  starts the T5 dashboard. `EVAL.md` is the quickstart.
+- **Acceptance:**
+  - `doctor` checks Node ≥22 (selects nvm's ≥24 when PATH has 22), Docker + compose and the pinned DVAA
+    checkout via `scripts/setup-dvaa.sh`, and prints a `fix:` for every failure.
+  - `up` starts docker project `dvaa-t1`, health-checks every port and fails if any port is published beyond
+    127.0.0.1.
+  - `test` prints a pass/fail table for every suite and lists every failing test by name and every explicit
+    SKIPPED notice. A suite that runs zero tests, or hits the per-suite timeout, is a FAIL.
+  - `score`, `contrast` and `dashboard` print their results table or URL.
+  - Every step fails loudly. A missing component prints `NOT YET MERGED` and is never skipped silently.
+    `EVAL_STRICT=1` turns NOT YET MERGED into a failure.
+  - Outputs go to `.eval/` (gitignored). Committed results are never rewritten.
+- **Gate notes:** delivery-gate — `all` run on this machine against the real `dvaa-t1` fleet; output in the PR.
+
 ---
 
 ## Stretch (only after all 7 DoD items merge — do not start early)
