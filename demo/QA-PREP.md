@@ -257,8 +257,8 @@ that platform or an acquisition target, not a rival to it."
 "Layer by layer: the proxy is keyword-gated, so a plain phrasing walks past it (1 of 22 blocked in our own test); spacing and homoglyph bypasses are closed by #122. Response-side
 findings arrive after the tool ran, so they alert but don't prevent. The egress guard doesn't read TLS, accepts any port on an
 allowlisted host, forwards the `Host` header unchanged and scans gzip bodies raw; it also can't tell arbitrary data sent
-to an allowlisted host from normal traffic, and it never sees DNS. MCP tool descriptions and A2A agent cards are out of scope, and file-type or parser-differential attacks
-(content hidden in non-text files) are untested, because we inspect text fields, not file content.
+to an allowlisted host from normal traffic, and it never sees DNS. MCP tool descriptions and A2A agent cards are out of scope, and our file-type matrix (#157) still leaks zip, gzip and UTF-16
+containers at egress and base64 canaries on chat paths.
 What holds is default-deny on the destination: every non-allowlisted host we tried was denied, whatever the wording.
 Egress isn't scored on an attack set, and email, DNS, multi-turn, encoded and non-English exfil are untested there."
 *If asked about held-out indirect injection:* "On the held-out LLMail-Inject + BIPIA set, we detect 8.1% and prevent 3.2%
@@ -266,6 +266,14 @@ against DVAA's 51.4%, with 0 of 200 clean emails blocked against its 18, and we 
 is the backstop for any real send."
 **Proof:** SUBMISSION.md "Known limitations" (one line per gap, with the next step); issues #126, #129, #112, #105; `captures/holdout-ipi/RESULTS.md`.
 
+
+**18. "Did you run HackMyAgent?"**
+"Yes, as a held-out set, and we lose in every category. On 164 payloads from DVAA's authors' own tool, placed direct and
+indirect, held-out detection is 9% and prevention 1%, against DVAA's 63%; our benign FP is 0% against its 13%. Two caveats,
+not excuses: that battery is written to trip DVAA's own detector, and much of it is live-agent reconnaissance judged by
+the agent's reply, not request-side injection. Our proxy isn't a general agent scanner; egress default-deny is the
+backstop for any real send to a non-allowlisted host."
+**Proof:** held-out; `captures/holdout-hackmyagent/RESULTS.md` (per-category table), PR #156.
 ---
 
 ### If you blank
