@@ -1,12 +1,15 @@
 # SentinelProxy
 
-**An inline AI detection-and-response guardrail for agents: a working slice of Falcon AIDR.**
+**An exfil-focused guardrail for tool-using agents: one pre-forward check, default-deny egress at the tool boundary, and alerting.**
 
 CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
-model and tools. It turns an indirect prompt injection that tries to exfiltrate data or misuse a tool into a Falcon/AIDR-shaped alert, mapped to MITRE
-ATLAS and OWASP, and it blocks the attacks it catches before forwarding or at egress. Our target is **DVAA** (Damn
+model and tools. It turns an indirect prompt injection that tries to exfiltrate data or misuse a tool into an AIDR-shaped alert, mapped to MITRE
+ATLAS and OWASP, and it blocks the attacks it catches before forwarding or at egress. We complement Falcon AIDR at the tool
+boundary; we have not integrated with it. Our target is **DVAA** (Damn
 Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox, run offline on
-`127.0.0.1`. This is an authorized hackathon project, and all of the work is defensive.
+`127.0.0.1`. **Deterministic sandbox, no LLM:** DVAA answers with canned responses, so nothing here has been tested
+against a live model that paraphrases, splits or encodes its exfil. This is an authorized hackathon project, and all
+of the work is defensive.
 
 **Scope.** SentinelProxy stops prompt-injection-driven *exfiltration and tool misuse*. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
 
@@ -24,7 +27,28 @@ external communication (Jun 2025). OWASP lists it as LLM01 Prompt Injection and 
 Disclosure. It is also ASI01 Agent Goal Hijack and ASI02 Tool Misuse in the OWASP Top 10 for Agentic
 Applications 2026. All pitch wording comes from [`planning/CITATIONS.md`](planning/CITATIONS.md).
 
-## Two enforcement points
+## Where data actually leaves
+
+Our honest headline, from [`sentinel/scoring/RESULTS.md`](sentinel/scoring/RESULTS.md):
+
+- **Regex detection is not enough, and we have the numbers to prove it.** On the blended 353-case corpus, DVAA's own
+  scanner prevents more than we do (63.0% against our 41.8%), at a 12.8% benign FP rate (21/164).
+- **Where data actually leaves, we prevent 80.3% (57/71 exfil positives)**, against DVAA's 90.1% (64/71). Most of the
+  blended gap is injection-only text that steals nothing (we prevent 18.6% of it, DVAA 46.6%).
+- **One pre-forward rule does all of our scored prevention.** All 79 prevented positives fire
+  `inbound.exfil_instruction`. Honeytokens, provenance and taint are tripwires and alerts. The honeytokens are DVAA's
+  own known secrets, so read them as a known-secret tripwire, not planted canaries.
+- **The control that actually blocks is default-deny egress at the tool boundary.** It stops the RepoBot exfil that
+  happens inside the agent, where no request-side check can reach (recorded run in `demo/captures/egress-demo-block.txt`).
+- **Benign:** 0 of 164 benign cases blocked, on a benign set the rules were also tuned on. That is a small sample,
+  not a zero-FP guarantee, and we don't headline it.
+
+**We attacked ourselves.** On 600 held-out public jailbreak and injection rows we never tuned on, T3 detected 28.5%
+and prevented **0%**, because none of them carries a destination to steal to ([`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md)).
+Our own critic (issue #112) also found that spacing out an account number (`U S 1 3 3 0 ...`) slips past the blocking
+rule. Destination canonicalization would close it; it is not merged yet. The blocking verbs are English only.
+
+## The enforcement points
 
 1. **Request-side proxy** ([`sentinel/proxy`](sentinel/proxy), with the T3 detectors in
    [`sentinel/detectors`](sentinel/detectors)). It is a reverse proxy in front of the agent's
@@ -80,14 +104,16 @@ so it can't go stale. How to read them:
 - **Two lenses.** *Detection* asks whether we raised the right alert. *Prevention* asks whether the
   exfiltration was actually stopped. We report both separately, because an alert-only check detects but
   does not prevent.
-- **Benign false positives.** The 0% benign FP rate is on the 164-case benign corpus, the same corpus the
+- **Benign false positives.** The 0 of 164 benign blocked is on the 164-case benign corpus (which the rules were
+  also tuned on, so it is not a zero-FP guarantee), the same corpus the
   DVAA baseline detector is scored on, so the comparison is like for like. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 - **Recall.** SentinelProxy's detection recall is now slightly above DVAA's baseline, but the baseline has
   the higher prevention recall, at a 12.8% benign FP rate (figures in RESULTS.md). We do not claim to beat it on
   prevention.
 - **The 8KB window.** DVAA's own scanner looks only at the head and tail 8KB of a payload. Injections
   placed in the middle of a long benign document evade it. SentinelProxy scans the full payload and catches
-  2/2 of the `evadesBaseline` cases in the corpus. That small set is the only place we claim an outright win.
+  2/2 of the `evadesBaseline` cases in the corpus. That is n=2, against a weakness DVAA built in on purpose, so we
+  don't treat it as a differentiator.
 
 ## Honest limitations
 
@@ -104,6 +130,12 @@ so it can't go stale. How to read them:
 - **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md).
 - Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
   An injection that never attempts exfiltration may be flagged without being blocked.
+
+## Track 1: SOC Brief
+
+[`track1/`](track1/) is our Track 1 entry, a SOC alert briefing. It is **deterministic by design; the LLM can only
+reword**. The briefing and its disposition come from rules, and the optional LLM may rewrite the wording but cannot
+lower the disposition, so it cannot talk an alert down. Details in [`track1/README.md`](track1/README.md).
 
 ## Repo map
 

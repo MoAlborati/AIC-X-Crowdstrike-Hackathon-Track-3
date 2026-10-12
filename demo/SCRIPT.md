@@ -8,6 +8,12 @@
 > behind a single "WIRING REGISTRY" that prints `NOT YET MERGED: <component>` rather than skipping silently if
 > one is ever absent.
 >
+> **Pitch frame (critic #112, creative #105).** We are an exfil-focused guardrail, not a jailbreak classifier and not
+> "a slice of Falcon AIDR". Prevention on the blended corpus loses to DVAA's scanner (42% vs 63%), so we own that, then
+> show where data actually leaves (80.3% prevented, 57/71) and the control that actually blocks: **default-deny egress
+> at the tool boundary**. Say "deterministic sandbox, no LLM" in the first 20 seconds, say "recorded" on every replay
+> beat, and never headline "100% precision" or "0% FP".
+>
 > Companion deck: `demo/DECK.md`. Rehearsal + fallback-video checklist + replay log: `demo/REHEARSAL.md`.
 
 ## Ground rules (STRATEGY §8)
@@ -72,6 +78,7 @@ Spoken lines are in quotes. Roughly 150 words per minute. The time column is cum
 > "Air Canada lost a tribunal case over its chatbot. A Chevy dealer's chatbot 'agreed' to sell a 2024
 > Tahoe for $1. CrowdStrike's CEO put it plainly: 'Each prompt becomes an entry point for the
 > adversary.' Today that prompt can arrive inside a document your agent reads."
+> "Everything you'll see runs in a deterministic sandbox, no LLM, and most of it is recorded. We'll say which."
 
 *Screen:* slide 2 (two incidents plus the Kurtz quote).
 
@@ -86,7 +93,7 @@ Spoken lines are in quotes. Roughly 150 words per minute. The time column is cum
 
 ### Beat 3 — EXPLOIT, red (0:40–1:00) · terminal, then dashboard left pane
 
-> "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
+> "Recorded run. This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
 > "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
 
 ```bash
@@ -102,9 +109,9 @@ Expected on screen: `submit_to_index`, `true`, then
 
 *(Pause for two seconds and let it land.)*
 
-### Beat 3b — 8KB evasion, red (1:00–1:20, REQUIRED — DoD item 1) · terminal
+### Beat 3b — 8KB evasion, red (1:00–1:10, keep it to 10 seconds) · terminal
 
-> "DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
+> "Recorded fixtures. DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
 
 ```bash
 # The two mid-document T6 variants: the injection sits between the head/tail 8KB windows, so DVAA's
@@ -125,9 +132,10 @@ jq -rc '.beatsBaseline | {evasionFixtures:(.eligible|length), t3Caught:.byDetect
 Expected: `evadesDvaaBaseline:true` + `fullScanFindsSignal:true` on both fixtures, and `t3Caught: 2` of 2.
 Say "8KB evasion: 2/2 fixtures". **Never** a blanket "beats the baseline": on the full corpus T3 detects slightly
 more, but DVAA's baseline prevents more (Beat 7).
-This is DoD item 1 — **not optional**. `demo/run-demo.sh` Beat 3b drives it.
+This is DoD item 1, but it rests on n=2 fixtures against a weakness DVAA built in on purpose, so it is **not** a
+differentiator: keep it to 10 seconds and move on. `demo/run-demo.sh` Beat 3b drives it.
 
-### Beat 4 — DETECT → ALERT → BLOCK, green (1:20–1:50) · terminal + dashboard
+### Beat 4 — DETECT → ALERT → BLOCK, green (1:10–1:40, the one live beat) · terminal + dashboard
 
 *Every quoted line in Beats 3, 3b, 4, 4b, 5a and 7 is a `say` line of `demo/run-demo.sh`, word for word; the runner
 shows each one in cyan. `demo/run-demo.sh --check-script` (also preflight row 0 of every run) fails if they drift.*
@@ -158,7 +166,7 @@ Expected, from the live proxy's own log: `{"action":"blocked_request","status":4
 "reasons":["exfil_instruction_inbound","injection_markers","payee_not_confirmed"]}]}`. The substring inspector
 also runs but has no needles in the shipped config, so it never fires. **The credit is T3 alone.**
 
-Then the recording of the same block on the live DVAA run, plus the T4 alert the T10 pipeline built from it:
+*Say "recorded" when the screen moves from the live 403 to the lines below.* Then the recording of the same block on the live DVAA run, plus the T4 alert the T10 pipeline built from it:
 
 ```bash
 jq -rc 'select(.type=="exchange" and ((.action//"")|test("block"))) | {action, target, status:.response.status, verdicts:[.verdicts[]|select(.flagged==true)|{phase, detector, disposition, reasons}]}' captures/contrast/runs/proxy-block.proxy.jsonl
@@ -188,9 +196,9 @@ detector or reason set than the spoken line.
 
 > "Nothing was forwarded, so nothing could be exfiltrated."
 
-### Beat 4b — Egress guard, green (inside the Beat 4 window) · terminal
+### Beat 4b — Egress guard, green: the blocking story (1:40–1:55) · terminal
 
-> "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
+> "Recorded egress run, and this is our real blocking story: default-deny egress at the tool boundary. RepoBot reads its payload inside the agent, so the proxy cannot stop that exfil. The egress guard does. It denies non-allowlisted destinations and honeytokens, and fails closed."
 
 ```bash
 # Inspector decisions from the recorded block-mode run of scripts/egress-demo.sh (sentinel/egress/, PR #45):
@@ -211,9 +219,9 @@ deny above.
 
 Live encore (after the clock, about a minute, its own compose stack): `scripts/egress-demo.sh both`.
 
-### Beat 5a — Secure-by-design twin, red vs green (1:50–2:05) · terminal, then Slide 6 (three columns)
+### Beat 5a — Secure-by-design twin, red vs green (1:55–2:05) · terminal, then Slide 6 (three columns)
 
-> "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+> "Recorded run. Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
 
 *Point at Slide 6 while the output lands: left, RAGBot 7005 pwned; middle, the AIM twin denied; right, 7005
 unmodified behind SentinelProxy, blocked (Beat 4).*
@@ -243,17 +251,19 @@ scripts/eval.sh contrast
 Response-side honeytoken tripwires fire after the tool already ran: **alert-only for prevention** of the exfil. In
 block mode they **withhold the reply** (T3-fix #56), so the secret never reaches the client.
 
-### Beat 6 — How it works (2:05–2:30) · Slide 7
+### Beat 6 — How it works (2:05–2:20) · Slide 7
 
-> "We didn't invent these controls. We borrowed them from fields that already solved the confused deputy.
-> Banks check the payee before money moves, so we block any destination that came only from untrusted content.
-> Power of attorney is limited by what the principal granted, so the user's own turn sets the mandate and a document
-> can't widen it. And a dead-man switch fails closed: if our scanner times out or the input is too big, egress is
-> denied and we raise an alert. We scan the full payload and never truncate it."
+> "We borrowed two controls from fields that already solved the confused deputy. Banks check the payee before money
+> moves, so we block any destination that came only from untrusted content. And a dead-man switch fails closed: if our
+> scanner times out or the input is too big, egress is denied and we raise an alert."
+
+*Honest framing if asked:* one pre-forward rule (`inbound.exfil_instruction`) carries all 79 scored preventions; the
+honeytoken, provenance and taint layers are tripwires and alerts. The honeytokens are DVAA's own known secrets, so call
+them a "known-secret tripwire".
 
 *Screen:* slide 7, three rows of field → mechanism → our rule.
 
-### Beat 7 — Outcome + close (2:30–2:50) · Slides 8 → 10
+### Beat 7 — Outcome, "we attacked ourselves", close (2:20–2:55) · Slides 8 → 10
 
 `run-demo.sh` prints exactly two headline rows (detection, prevention) for T3 vs DVAA's own baseline, with FP,
 plus the evasion result. Every number is read from the committed `sentinel/scoring/results.json`:
@@ -269,19 +279,22 @@ plus the evasion result. Every number is read from the committed `sentinel/scori
 (Values above are as of `results.json` on origin/main `a37e430` (after T3-recall #46): 189 attack + 164 benign cases.
 The spoken line is static, so the presenter can read it here word for word. **Every number and every comparison in
 it** ("we detect slightly more", "zero false alarms … versus its 21", "DVAA prevents more, 63 versus 42", "12.8
-percent", "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
-Beat 7 FAILS naming the claim if the file no longer supports it. Then update the line in `run-demo.sh` and here together.)
+percent", "57 of 71" exfil prevented, "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
+Beat 7 FAILS naming the claim if the file no longer supports it. The held-out "600 ... prevent zero" line is checked
+against `captures/holdout-hf/RESULTS.md`. Then update the line in `run-demo.sh` and here together.)
 
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "From the committed scoring run, against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic, 21 of 164 cases. We blocked none of them, on a benign set we also tuned on. Where data actually leaves, we prevent 80 percent, 57 of 71 exfil attempts. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
-> "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
+> "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
+
+> "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data. SentinelProxy is an exfil-focused guardrail for tool-using agents. Thank you."
 
 Latency: say exactly "median under a tenth of a millisecond, p95 around half a millisecond". The median (0.082 ms)
 is stable across rescoring; p95 moves between about 0.39 and 0.52 ms between runs, so never quote a sharper p95
 claim like "under half a millisecond". `run-demo.sh` fails Beat 7 if median ≥ 0.1 ms or p95 is outside 0.25–1 ms.
 
-*Hard stop at 3:00. The 8KB-evasion beat (3b) is DoD item 1 — **never cut it**. If running long, cut the
-benign pass in Beat 4 first, then trim Beat 6 to two mechanisms.*
+*Hard stop at 3:00. If running long, cut the benign pass in Beat 4 first, then Beat 6, then shrink 3b to its first
+line. Never cut the "we attacked ourselves" line: it defuses the hardest Q&A question before a judge asks it.*
 
 ---
 
@@ -289,19 +302,20 @@ benign pass in Beat 4 first, then trim Beat 6 to two mechanisms.*
 
 | Beat | Window | Seconds | Spoken words (approx.) |
 |---|---|---|---|
-| 1 Hook | 0:00–0:20 | 20 | 45 |
+| 1 Hook + "deterministic sandbox, no LLM" | 0:00–0:20 | 20 | 65 |
 | 2 Structure | 0:20–0:40 | 20 | 60 |
-| 3 Exploit (red) | 0:40–1:00 | 20 | 40 |
-| 3b 8KB evasion (red, DoD 1) | 1:00–1:20 | 20 | 40 |
-| 4 + 4b Detect/block + egress (green) | 1:20–1:50 | 30 | 125 |
-| 5a Twin, red vs green | 1:50–2:05 | 15 | 35 |
-| 6 How it works | 2:05–2:30 | 25 | 80 |
-| 7 Close | 2:30–2:50 | 20 | 75 |
-| Buffer | 2:50–3:00 | 10 | — |
+| 3 Exploit (red, recorded) | 0:40–1:00 | 20 | 45 |
+| 3b 8KB evasion (red, recorded) | 1:00–1:10 | 10 | 40 |
+| 4 Detect/block (green, live) | 1:10–1:40 | 30 | 100 |
+| 4b Egress default-deny (green, recorded) | 1:40–1:55 | 15 | 55 |
+| 5a Twin, red vs green (recorded) | 1:55–2:05 | 10 | 35 |
+| 6 How it works | 2:05–2:20 | 15 | 50 |
+| 7 Outcome + "we attacked ourselves" + close | 2:20–2:55 | 35 | 165 |
+| Buffer | 2:55–3:00 | 5 | — |
 
-Beats 4–7 run dense: the verbatim Beat 4 + 4b lines are about 125 words in 30 seconds, which is too fast to read
-aloud in full. Rehearsal must confirm they fit. If not, cut the benign
-pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is DoD item 1 — never cut it.
+Beats 4–7 run dense, and Beat 7 is about 165 words in 35 seconds, which is too fast to read aloud in full. Rehearsal
+must confirm they fit. If not, cut the benign pass in Beat 4, then Beat 6, then shrink 3b. If you shorten a spoken line,
+drop whole sentences; don't reword (the runner checks the text).
 
 > **Note on metrics:** the stage reads `sentinel/scoring/results.json`. Figures from the older 29-case
 > corpus are stale and must not be used anywhere. **Never hand-type metrics into the slides.**
@@ -315,7 +329,7 @@ Every quoted fact must appear verbatim in `planning/CITATIONS.md` "Safe slide wo
 - Chevy: "A Chevy dealer's chatbot 'agreed' to sell a 2024 Tahoe for $1". Never say "sold".
 - Kurtz: "Each prompt becomes an entry point for the adversary." (George Kurtz, CEO & founder)
 - Hardy: "The Confused Deputy", ACM SIGOPS OSR 22(4):36–38, 1988.
-- Mechanisms (slide 7): Confirmation of Payee, limited power of attorney / user-turn mandate, dead-man fail-closed.
+- Mechanisms (slide 7): Confirmation of Payee and dead-man fail-closed are spoken; the user-turn mandate stays on the slide.
   All three are rated **Yes** in `planning/ADJACENT.md` §6a / §10.3a. Before the demo, confirm all three are actually
   implemented in merged T3. If one isn't, drop it rather than claim it.
 - **Don't say** "BEC, the $3 billion-a-year fraud" (use "~$3 billion-a-year" if it's ever used), "lost in court",
