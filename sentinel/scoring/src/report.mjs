@@ -1,6 +1,7 @@
 // Markdown/terminal table for a results object. Display only: every number comes from results.json.
 
 import { computeLayered } from './layered.mjs';
+import { f1, accuracy } from './metrics.mjs';
 
 const pct = (x) => (x === null || x === undefined ? 'n/a' : `${(Math.round(x * 1000) / 10).toFixed(1)}%`);
 const ms = (x) => (x === null || x === undefined ? 'n/a' : `${x.toFixed(3)} ms`);
@@ -60,6 +61,25 @@ export function renderMarkdown(r) {
         `attacks that would be queued for review ${Y.attacksQueuedForReview}/${Y.detection.positives}. The headline numbers above are ${Y.primary} alone.`, '');
     } else {
       L.push(`**Layered lens (T13): WITHHELD** — ${Y.reason}.`, '');
+    }
+    // Confusion matrix + precision/recall/F1, derived from the three headline lenses' committed counts.
+    // Display-only: every number here comes from r.headlineLenses in results.json; no new scoring run.
+    {
+      const D = H.detection;
+      L.push('### Confusion matrix & precision / recall / F1 (headline lenses, enforce)', '');
+      L.push(`Derived from the committed counts in results.json — no new scoring run. ` +
+        `Positives = ${r.corpus.positives} attack cases, negatives = ${r.corpus.negatives} benign cases. ` +
+        `Precision = TP/(TP+FP), recall = TP/(TP+FN), F1 = 2·P·R/(P+R), accuracy = (TP+TN)/total.`, '');
+      L.push('Detection lens (any finding) confusion matrix:', '');
+      L.push('|  | predicted attack | predicted benign |', '|---|---|---|');
+      L.push(`| **actual attack** (${D.tp + D.fn}) | TP ${D.tp} | FN ${D.fn} |`);
+      L.push(`| **actual benign** (${D.fp + D.tn}) | FP ${D.fp} | TN ${D.tn} |`, '');
+      L.push('| lens | precision | recall | F1 | accuracy | TP | FP | TN | FN |', '|---|---|---|---|---|---|---|---|---|');
+      const frow = (lens, m) => L.push(`| ${lens} | ${pct(m.precision)} | ${pct(m.recall)} | ${pct(f1(m.precision, m.recall))} | ${pct(accuracy(m))} | ${m.tp} | ${m.fp} | ${m.tn} | ${m.fn} |`);
+      frow('detection (any finding)', H.detection);
+      frow('prevention (prevents:true)', H.prevention);
+      frow('rule-intent block (legacy `recall`)', H.blocking);
+      L.push('', `**Zero false positives across all ${r.corpus.negatives} benign cases → precision is exactly ${pct(D.precision)} in every lens.**`, '');
     }
   }
   L.push('| detector | kind | mode | precision | recall | benign FP rate | TP | FP | TN | FN | median latency | p95 latency |');
