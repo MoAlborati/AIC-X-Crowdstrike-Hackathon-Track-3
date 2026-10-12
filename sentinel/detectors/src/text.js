@@ -668,6 +668,11 @@ const INJECTION_PHRASES = [
   'important message from me', 'before you can solve the task', 'ignore previous', 'ignore any previous',
   'ignore your previous', 'ignore your directions', 'ignore your instructions', 'ignore all instructions',
   'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
+  // forged authority / fake approval (COMP-2): untrusted content claiming an approval or waiving a check.
+  // Multi-word only; each checked against every benign case in the scoring + held-out corpora (0 hits).
+  'has been pre-approved', 'was pre-approved', 'already been approved', 'skip the verification',
+  'skip the dependency check', 'skip any checks', 'skip all checks', 'bypass the approval', 'no need to confirm',
+  'approval is not required', 'treat as a known false positive', 'without waiting for approval',
 ];
 
 /**
