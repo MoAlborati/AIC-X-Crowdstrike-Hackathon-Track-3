@@ -154,7 +154,7 @@ DVAA's 8KB head+tail baseline.
 | Prevention recall (pre-forward) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
 | 8KB evasion | `<<METRIC>>`/2 fixtures | — |
 | Corpus | `<<METRIC: N attack + M benign cases>>` | |
-| In-detector latency | under half a millisecond | |
+| In-detector latency | median under a tenth of a millisecond, p95 around half a millisecond | |
 
 Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `sentinel/scoring/RESULTS.md`) after the
 15:00 rescore. Beat 7 of `run-demo.sh` prints them.
@@ -165,7 +165,7 @@ Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `se
 **Speaker notes**
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
-latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **Never put a guessed number on it.**
+latency, the one latency phrase we quote is "median under a tenth of a millisecond, p95 around half a millisecond" (figures in RESULTS.md). **Never put a guessed number on it.**
 Say it plainly: our detection recall is now slightly above DVAA's baseline, but the baseline has the higher
 prevention recall, at a 12.8% benign FP rate.
 Our 0% benign FP is on the 164-case benign corpus. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
@@ -174,7 +174,7 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
 
-**Scope (say it if asked about generalization):** "SentinelProxy stops prompt-injection-driven exfiltration and tool misuse. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5%, prevented 0%, with 0/400 false positives; DVAA detected 60.7% at 5.5% false positives (held-out; pending #84, see `captures/holdout-hf/RESULTS.md` once merged).
+**Scope (say it if asked about generalization):** "SentinelProxy stops prompt-injection-driven exfiltration and tool misuse. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
 
 ---
 

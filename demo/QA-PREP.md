@@ -104,7 +104,7 @@ mode. Alert-only findings count as detection, never as prevention. On the 164-ca
 figures after the 15:00 rescore.
 
 **12. "What does the proxy add end to end?"**
-"The detector itself is well under a millisecond per case. The whole proxy hop, measured on loopback, added a
+"The detector itself runs at a median under a tenth of a millisecond, p95 around half a millisecond per case. The whole proxy hop, measured on loopback, added a
 median of 1.28 ms for a small request and 5.86 ms for a 79 KB one. On our own OpsBot (Path A), the median turn goes
 from 2.5 ms undefended to 8.7 ms behind both the chat proxy and the egress guard. These are loopback numbers with no
 LLM in the loop, so a real model call dwarfs them."
@@ -140,11 +140,12 @@ The headline numbers are read from the committed scoring output, which anyone ca
 **16. "How does it do on generic jailbreaks?"**
 "Not well at blocking, by design. On a held-out set of 600 attacks and 400 benign cases from three public Hugging Face
 jailbreak and injection sets, none of which point data anywhere, we detected 28.5%, prevented 0%, and had 0 of 400
-false positives. DVAA's scanner detected 60.7% at a 5.5% false-positive rate. SentinelProxy blocks only when an
+false positives. By set, we detected 58% of Gandalf, 19% of SPML and about 8% of jailbreak-classification. DVAA's
+scanner detected and prevented 60.7%, with 22 of 400 false positives (5.5%). SentinelProxy blocks only when an
 injection tries to move data to a destination or misuse a tool, so it's an exfiltration and tool-misuse guardrail,
 not a general jailbreak classifier. Generic jailbreak text with no action is alerted at most. Pair it with a jailbreak
 classifier such as Prompt Guard."
-**Proof:** held-out; pending #84 (`captures/holdout-hf/RESULTS.md` once merged).
+**Proof:** held-out; see #84 and `captures/holdout-hf/RESULTS.md`.
 
 ---
 

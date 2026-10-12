@@ -101,7 +101,7 @@ so it can't go stale. How to read them:
 - **Egress guard scope** (T12). It does not intercept HTTPS: CONNECT is decided by host only. Egress events
   are linked to chat turns by best-effort time-window attribution only, and are reported standalone when the
   match is ambiguous. In-container loopback SSRF never reaches it.
-- **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5%, prevented 0%, with 0/400 false positives; DVAA detected 60.7% at 5.5% false positives (held-out; pending #84, see `captures/holdout-hf/RESULTS.md` once merged).
+- **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md).
 - Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
   An injection that never attempts exfiltration may be flagged without being blocked.
 
