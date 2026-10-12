@@ -8,6 +8,8 @@
 //      nothing is forwarded (fail-closed; we never forward or scan a truncated body).
 //   2. Decode `content-encoding` (gzip/deflate/br, bounded by the same cap) so inspectors see the
 //      plaintext. Unsupported/undecodable encoding: block -> refused; observe -> forward + ALERT.
+//      A decoded REQUEST body that is not valid UTF-8 (binary/unknown content): block -> 415
+//      `uninspectable_content`; observe -> forward + ALERT (#157).
 //   3. Run request-phase inspectors over the FULL decoded body + URL + headers, under a deadline
 //      (limits.inspectorTimeoutMs).
 //        block mode   + flagged -> structured 403 refusal, upstream is never contacted.
@@ -63,7 +65,7 @@ export const CONNECTIONS_PER_IN_FLIGHT = 4;
 // The complete set of codes a client can ever see. Static strings; nothing inspector-derived.
 export const REFUSAL_CODES = Object.freeze([
   'flagged_request', 'flagged_response', 'inspector_error', 'inspector_timeout',
-  'request_too_large', 'response_too_large', 'uninspectable_encoding', 'capture_unavailable',
+  'request_too_large', 'response_too_large', 'uninspectable_encoding', 'uninspectable_content', 'capture_unavailable',
   'upstream_unreachable', 'upstream_timeout', 'overloaded', 'client_timeout', 'internal_error',
 ]);
 const STATIC_DETAIL_ACTIONS = new Set(['rejected_not_forwarded', 'rejected_not_returned']);
@@ -551,6 +553,17 @@ export function createProxy(config, deps = {}) {
         await emitAlert(requestId, { reason: 'uninspectable_encoding', phase, encoding: err.encoding, error: err.message, action: block ? 'fail_closed' : `${phase === 'request' ? 'forwarded' : 'returned'}_uninspected` });
         if (block) return { stop: refuse(phase === 'request' ? 415 : 502, phase, 'uninspectable_encoding') };
         return { decoded: null };
+      }
+      // #157: a request body that is not valid UTF-8 after content-decoding (octet-stream, binary
+      // multipart parts, images, unknown binary types) cannot be parsed by T3 and is only byte-scanned
+      // for raw canaries. Block mode refuses it before forwarding (fail-closed); observe forwards + ALERT.
+      // Text bodies of ANY content-type (JSON, text, form, base64 data URIs inside JSON) are inspected as before.
+      if (phase === 'request' && decoded.length > 0 && !isUtf8(decoded)) {
+        await emitAlert(requestId, {
+          reason: 'uninspectable_content', phase, content_type: String(headers['content-type'] ?? '').slice(0, 100),
+          bytes: decoded.length, action: block ? 'fail_closed' : 'forwarded_uninspected',
+        });
+        if (block) return { stop: refuse(415, phase, 'uninspectable_content') };
       }
       let verdicts;
       let alertOnly = [];
