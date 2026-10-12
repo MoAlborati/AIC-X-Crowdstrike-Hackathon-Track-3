@@ -1,0 +1,1 @@
+Track 3 (Tourniquet, 3B) · SHA cb2b7f5 (v1.0-submission) · Playwright stage walk of the T5 incident-replay dashboard at 1440x900: the 4 captures in demo order — vulnerable, aim-twin, proxy-blocked, egress-blocked — showing the real Tourniquet alerts (HoneytokenExfiltrationAttempt / NonAllowlistedEgressDestination · Blocked).

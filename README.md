@@ -104,6 +104,7 @@ scripts/egress-demo.sh both   # egress guard live: observe (exfil lands), then b
 
 - [`EVAL.md`](EVAL.md) explains what each step shows and how to fix failures.
 - [`CHAT.md`](CHAT.md) explains how to ask the team's orchestrator agent a question through GitHub Issues.
+- **Demo videos:** [`demo/videos/`](demo/videos/README.md) — offline screen recordings of every track (Track 3 Tourniquet, Track 3 Path A OpsBot, Track 1 SOC Brief, and the "403 that lied" encore), with an index of SHA, duration and what each one shows.
 
 ## Results
 
