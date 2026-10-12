@@ -5,8 +5,8 @@
 //      A run absent from the map falls through to the sidecars below.
 //   2. $SENTINEL_ALERTS_DIR/<capture-id>.alerts.json
 //   3. sentinel/scoring/alerts/<capture-id>.alerts.json   (expected T3/T7 replay output)
-//   4. sentinel/dashboard/alerts/<capture-id>.alerts.json   (real T3 replay verdicts, fixtures/make-real-alerts.mjs)
-//   5. sentinel/dashboard/fixtures/alerts/<capture-id>.alerts.json   (PLACEHOLDER, labeled in the UI)
+//   4. sentinel/dashboard/fixtures/alerts/<capture-id>.alerts.json   (PLACEHOLDER, only with ?dev=1)
+//   5. sentinel/dashboard/alerts/<capture-id>.alerts.json   (real T3 replay verdicts, fixtures/make-real-alerts.mjs)
 // The capture id's '/' becomes '__' in the filename. Sidecar shape:
 //   { captureId, placeholder?: bool, note?: string, runs: { <runKey>: [<T4 alert>, ...] } }
 // A run with no sidecar has no detector verdicts. The UI then shows "no detector verdicts recorded"
@@ -21,9 +21,11 @@ export function alertDirs(env = process.env) {
   const dirs = [];
   if (env.SENTINEL_ALERTS_DIR) dirs.push({ dir: env.SENTINEL_ALERTS_DIR, placeholder: false });
   dirs.push({ dir: path.join(REPO_ROOT, 'sentinel', 'scoring', 'alerts'), placeholder: false });
-  // Real T3 verdicts over the recorded stage traffic (fixtures/make-real-alerts.mjs). Never placeholder.
-  dirs.push({ dir: path.join(DASHBOARD_DIR, 'alerts'), placeholder: false });
   if (!env.SENTINEL_HIDE_PLACEHOLDERS) dirs.push({ dir: path.join(DASHBOARD_DIR, 'fixtures', 'alerts'), placeholder: true });
+  // Real T3 verdicts over the recorded stage traffic (fixtures/make-real-alerts.mjs). Never placeholder.
+  // Last, so ?dev=1 still shows the placeholder fixtures where they exist; the stage view (no ?dev=1)
+  // filters placeholder dirs out and lands here.
+  dirs.push({ dir: path.join(DASHBOARD_DIR, 'alerts'), placeholder: false });
   return dirs;
 }
 
