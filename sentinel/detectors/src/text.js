@@ -239,6 +239,29 @@ export function findSpacedRuns(text) {
   }
   return out;
 }
+/**
+ * All runs from findSpacedRuns joined into ONE text per variant ('\n' between runs, never part of a token,
+ * URL or email), with one offset map back to the source (-1 at the joints). Callers scan each variant
+ * once instead of once per run (#122 review: per-run calls cost ~2 us each, 20k runs = 40 ms). Linear.
+ * `compact` is null when no run had a '.'/'-' (it would equal `keep`).
+ */
+export function joinSpacedRuns(runs) {
+  if (!runs.length) return null;
+  const build = (key, posKey) => {
+    let len = runs.length - 1;
+    for (const r of runs) len += r[key].length;
+    const pos = new Int32Array(len);
+    let at = 0;
+    runs.forEach((r, k) => {
+      if (k) pos[at++] = -1;
+      pos.set(r[posKey], at);
+      at += r[posKey].length;
+    });
+    return { text: runs.map((r) => r[key]).join('\n'), pos };
+  };
+  const keep = build('keep', 'posKeep');
+  return { keep, compact: runs.some((r) => r.keep !== r.compact) ? build('compact', 'posCompact') : null };
+}
 /** The ASCII chars of `text` at `pos`, as one string (latin1 is exact for ASCII). */
 function gather(text, pos) {
   const b = Buffer.allocUnsafe(pos.length);
