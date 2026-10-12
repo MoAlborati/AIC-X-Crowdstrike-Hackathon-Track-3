@@ -1,10 +1,10 @@
 // SentinelProxy T4 — secret redaction for alert bodies.
 //
 // Rule: an alert NEVER carries a secret value. Any string matching a secret pattern, or containing a
-// known canary (honeytoken) value — raw, case-varied, separator-split, base64/base64url, hex,
-// %-encoded — is replaced by `[REDACTED:<kind>:sha256=<16 hex>]` (canaries additionally carry their
-// id). The hash lets an analyst correlate "same secret seen twice" without the alert body becoming a
-// second exfil channel.
+// known canary (honeytoken) value — raw, case-varied, separator-split, base64/base64url, hex, fully
+// or partially %-encoded — is replaced by `[REDACTED:<kind>:sha256=<16 hex>]` (canaries additionally
+// carry their id). The hash lets an analyst correlate "same secret seen twice" without the alert
+// body becoming a second exfil channel.
 //
 // COST BOUND (review B1 on PR #3): every scan here is LINEAR in the input length.
 //   - Regex patterns are either fixed-length, have bounded quantifiers, or are structured so a failed
@@ -226,7 +226,10 @@ export function prepareCanaries(canaries = []) {
       seen.add(norm);
       needles.push({ form, norm });
     }
-    prepared.push({ id: typeof c.id === 'string' && c.id ? c.id : 'unknown', value: c.value, sha: sha256Short(c.value), needles });
+    // A lowercase-alphanumeric value is its own normalized 'raw' needle, so every exact occurrence is
+    // already a normalized hit: skip the duplicate exact pass (halves the spans on overlap floods).
+    const rawCovered = /^[a-z0-9]+$/.test(c.value);
+    prepared.push({ id: typeof c.id === 'string' && c.id ? c.id : 'unknown', value: c.value, sha: sha256Short(c.value), needles, rawCovered });
   }
   // longest first so overlapping canaries redact fully
   prepared.sort((a, b) => b.value.length - a.value.length);
@@ -261,25 +264,27 @@ function applySpans(str, spans, replacement) {
   return out + str.slice(cursor);
 }
 
-function redactCanaries(str, prepared, findings) {
-  if (prepared.length === 0) return str;
+/** Canary spans in `view` coordinates: exact raw substrings plus encoded / case-varied /
+ *  separator-split forms on the normalized view. O(n + matches) per needle. */
+function canarySpans(view, prepared, formSuffix) {
   const spans = [];
   // 1) exact raw substring (any characters; length >= MIN_CANARY_VALUE_CHARS is enforced above)
   for (const c of prepared) {
-    let i = str.indexOf(c.value);
+    if (c.rawCovered) continue;
+    let i = view.indexOf(c.value);
     while (i !== -1) {
-      spans.push({ start: i, end: i + c.value.length, c, form: 'raw' });
-      i = str.indexOf(c.value, i + c.value.length);
+      spans.push({ start: i, end: i + c.value.length, c, form: 'raw' + formSuffix });
+      i = view.indexOf(c.value, i + c.value.length);
     }
   }
-  // 2) encoded / case-varied / separator-split forms on the normalized view, mapped back to `str`.
+  // 2) encoded / case-varied / separator-split forms on the normalized view, mapped back to `view`.
   //    Per-code-unit ASCII fold (NOT String#toLowerCase, which can change length, e.g. "İ"), so an
   //    attacker cannot desync the position map; non-ASCII is dropped like any separator.
-  const posMap = new Int32Array(str.length);
-  const codes = new Uint8Array(str.length);
+  const posMap = new Int32Array(view.length);
+  const codes = new Uint8Array(view.length);
   let n = 0;
-  for (let i = 0; i < str.length; i++) {
-    let ch = str.charCodeAt(i);
+  for (let i = 0; i < view.length; i++) {
+    let ch = view.charCodeAt(i);
     if (ch >= 65 && ch <= 90) ch += 32;
     if ((ch >= 97 && ch <= 122) || (ch >= 48 && ch <= 57)) {
       posMap[n] = i;
@@ -291,9 +296,26 @@ function redactCanaries(str, prepared, findings) {
     for (const nd of c.needles) {
       let i = norm.indexOf(nd.norm);
       while (i !== -1) {
-        spans.push({ start: posMap[i], end: posMap[i + nd.norm.length - 1] + 1, c, form: nd.form });
+        spans.push({ start: posMap[i], end: posMap[i + nd.norm.length - 1] + 1, c, form: nd.form + formSuffix });
         i = norm.indexOf(nd.norm, i + nd.norm.length);
       }
+    }
+  }
+  return spans;
+}
+
+function redactCanaries(str, prepared, findings) {
+  if (prepared.length === 0) return str;
+  const spans = canarySpans(str, prepared, '');
+  // 3) the same scan on the %XX-decoded view (review B3 on PR #12). An exfil URL may encode ANY
+  //    subset of the canary's characters ("dvaa%2Dadmin%2Dsecret", "%64vaa-admin-secret"), which is
+  //    neither the raw form nor the fully-encoded hex form. View spans are mapped back to original
+  //    spans and merged with the raw-view spans (union) below. No marker ranges are consulted here,
+  //    so a "%5BREDACTED:" wrapper cannot hide a canary either.
+  const dv = percentDecodedView(str);
+  if (dv) {
+    for (const sp of canarySpans(dv.view, prepared, '+url')) {
+      spans.push({ start: dv.from[sp.start], end: dv.to[sp.end - 1], c: sp.c, form: sp.form });
     }
   }
   // A merged group may cover several canaries (partial overlap): one marker per distinct canary, so

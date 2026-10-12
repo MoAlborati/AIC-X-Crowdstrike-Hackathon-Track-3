@@ -31,6 +31,7 @@ export const CATALOG = deepFreeze({
   },
   // technique ID -> { name, tactic } (tactic from ATLAS `achieves` relationship)
   atlasTechniques: {
+    'AML.T0051.000': { name: 'LLM Prompt Injection: Direct', tactic: 'AML.TA0005' }, // PR #15 deepset rows
     'AML.T0051.001': { name: 'LLM Prompt Injection: Indirect', tactic: 'AML.TA0005' },
     'AML.T0053': { name: 'AI Agent Tool Invocation', tactic: 'AML.TA0005' },
     'AML.T0057': { name: 'LLM Data Leakage', tactic: 'AML.TA0010' },

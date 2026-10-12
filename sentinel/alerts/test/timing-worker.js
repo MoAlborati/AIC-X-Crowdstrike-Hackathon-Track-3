@@ -7,8 +7,14 @@ import { makeVerdict } from './helpers.js';
 
 const fill = (unit, n) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
 
-function verdictFor({ fields, unit, len, canaryFlood }) {
+function verdictFor({ fields, unit, len, canaryFlood, overlapCanaries, canaries }) {
   const v = makeVerdict('egress_secret_pattern', 0);
+  if (canaries) v.canaries = canaries;
+  if (overlapCanaries) {
+    // canaries 'a'x8 … 'a'x(8+count-1): against an all-'a' (or all-'%61') input every offset matches
+    // every canary — the most expensive canary shape found in review round 3 (one merged group).
+    v.canaries = Array.from({ length: overlapCanaries }, (_, i) => ({ id: `O${i}`, value: 'a'.repeat(8 + i) }));
+  }
   if (canaryFlood) {
     // max canary count x max value length, each a near-miss of the input (worst case for substring search)
     v.canaries = Array.from({ length: canaryFlood.count }, (_, i) => ({
