@@ -104,13 +104,23 @@ $('capture').addEventListener('change', async () => {
 });
 $('run').addEventListener('change', () => loadReplay());
 
+const HEADLINE_IDS = { det: ['det-rate', 'det-base'], prev: ['prev-rate', 'prev-base'], fp: ['fp-rate', 'fp-base'], lat: ['t7-lat', 'lat-base'] };
 async function loadScoring() {
   const r = await getJson('/api/scoring');
   const v = headlineView(r.body);
-  $('det-rate').textContent = v.det;
-  $('fp-rate').textContent = v.fp;
-  $('det-rate').classList.toggle('pending', v.pending);
-  $('fp-rate').classList.toggle('pending', v.pending);
+  for (const [k, [valId, baseId]] of Object.entries(HEADLINE_IDS)) {
+    const t = v.tiles[k];
+    // Unit in a smaller span so a latency like "0.067 ms" fits the tile at projector size, unclipped.
+    const m = /^(.*\d) (ms)$/.exec(t.value);
+    $(valId).textContent = m ? m[1] : t.value;
+    if (m) $(valId).append(h('span', { class: 'unit' }, m[2]));
+    $(valId).classList.toggle('pending', t.pending);
+    $(baseId).textContent = t.base;
+    $(`tile-${k}`).querySelector('.big-sub').textContent = t.sub;
+  }
+  $('tile-det').classList.toggle('legacy', v.legacy);
+  $('lens-note').hidden = !v.lensNote;
+  $('lens-note').textContent = v.lensNote ?? '';
   $('scoring-note').textContent = v.note;
 }
 
