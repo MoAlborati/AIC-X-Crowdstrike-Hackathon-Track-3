@@ -41,10 +41,11 @@
 Current `sentinel/scoring/RESULTS.md` on `main`:
 | System | Detection | Prevention | Benign FP |
 |---|---|---|---|
-| SentinelProxy T3 | 63.0% (119/189) | 41.8% (79/189) | **0.0% (0/164)** |
+| SentinelProxy T3 | 67.7% (128/189) | 41.8% (79/189) | **0.0% (0/164)** |
 | DVAA baseline | 65.6% | 63.0% | 12.8% (21/164) |
-- Pending PRs that change these: **#56 T3-fix** (shadow-review blockers) and **#46 T3-recall**: detection 63.0% → **83.1%**,
-  prevention 41.8% → **50.3%**, benign FP stays **0/164**. RESULTS.md is regenerated at the 15:00 rescore.
+- **#46 T3-recall merged:** detection 63.0% → **67.7%** (now above DVAA's 65.6%), prevention unchanged at **41.8%**
+  (DVAA 63.0%), benign FP stays **0/164**. RESULTS.md is regenerated at the 15:00 rescore.
+- Held-out: Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 - T3 catches both cases that evade DVAA's 8 KB scan baseline (2/2, prevented 2/2). DVAA's recall comes with 12.8% benign FP.
 
 ## Backlog pointer
@@ -135,7 +136,7 @@ See BACKLOG.md. Next: queue 3 (#56; #62 merged), queue 2 (#49 → #46), #57, #50
 | 2 Detect+block | T2, T3, T3-fix, T3-recall | #14, #21, #24, #41, #42, #67; #56, #46 open | MERGED core; queues 3 (#56) and 2 (#46) | Request-side block only; `.mjs` canonical (#37 → #67) |
 | 3 AIDR alert | T4, T10 | #3, #12, #26 | MERGED | #26 wires verdicts → alerts → dashboard |
 | 4 Incident graph | T5, T5-lens | #11; #49 open | MERGED; #49 heads queue 2 | Headline Detected/Prevented vs DVAA (mock judge review) |
-| 5 Scoring | T7, T7-real | #13, #28 | MERGED | 63.0% / 41.8% / 0 FP now; 83.1% / 50.3% / 0 FP with #46 |
+| 5 Scoring | T7, T7-real | #13, #28 | MERGED | 67.7% / 41.8% / 0 FP (on the 164-case benign corpus) with #46 merged |
 | 6 Secure contrast | T8, spike, T12, T12-live | #16, #18, #22, #45; #57 open | MERGED; #57 self-merge | Response-side alert-only; egress enforced at tool boundary |
 | 7 Demo script | T9, T9-fix | #9, #35, #65; #50 open | MERGED; #50 self-merge | Presenter Catherine (Mac); video #66 |
 | Track 3A | OpsBot | #62 | MERGED | Same submission as Path B (#63) |

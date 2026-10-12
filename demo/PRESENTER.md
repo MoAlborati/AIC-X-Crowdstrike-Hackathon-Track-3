@@ -116,6 +116,7 @@ Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut
 - **Scope the FP claim every time:** "0% FP on the 164-case benign corpus." Never say "zero false positives" without that scope.
 - **The comparison one-liner** (matches Beat 7 after #95): "DVAA's baseline prevents more, 63 percent versus our 42; we detect slightly more, with zero false alarms on the 164 benign cases versus its 21, and we catch the 2 cases that evade its 8KB window."
 - Don't say "DVAA has higher recall" without a qualifier. Since #46/#95 that's only true for **prevention**; on detection T3 is ahead (67.7% vs 65.6%).
+- **Held-out FP caveat:** "Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46."
 - Never say we "beat the baseline" across the board. Say "8KB evasion: 2/2 fixtures", which is the case we do win.
 - Latency: say exactly "median under a tenth of a millisecond, p95 around half a millisecond". p95 moves between about 0.39 and 0.52 ms from run to run, so never say "under half a millisecond".
 
