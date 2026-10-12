@@ -106,12 +106,18 @@ export async function dvaaBaselineDetector({ root = REPO_ROOT, allowReplica = fa
       DETECTION_EDGE: b.DETECTION_EDGE,
     },
     inspect(c) {
+      // Prevention lens, judged the same way as T3: a hit on a request-side unit (an input message) acts
+      // before the agent runs and prevents; a hit only on the reply/tool calls is after-the-fact for an
+      // in-process agent. (DVAA itself runs detectAttacks() on agent inputs.)
       const fired = new Map();
       for (const u of textUnits(c)) {
         const r = b.detectAttacks(u.text);
+        const pre = u.where.startsWith('request.');
         for (const cat of r.categories) {
           const ruleId = `dvaa.${cat}`;
-          if (!fired.has(ruleId)) fired.set(ruleId, { ruleId, wouldBlock: true, evidence: u.where });
+          const prev = fired.get(ruleId);
+          if (!prev) fired.set(ruleId, { ruleId, wouldBlock: true, prevents: pre, direction: pre ? 'request' : 'response', evidence: u.where });
+          else if (pre && !prev.prevents) fired.set(ruleId, { ...prev, prevents: true, direction: 'request', evidence: u.where });
         }
       }
       return { fired: [...fired.values()] };
@@ -165,9 +171,15 @@ export async function t3Detector({ root = REPO_ROOT, modulePath, policyPath } = 
     inspect(c) {
       const det = t3.createDetector({ policy, honeytokens: t3.DVAA_HONEYTOKENS ?? [], agent: c.agent ?? undefined, logger: quiet });
       const d = det.inspect({ sessionId: `t7:${c.id}`, agent: c.agent ?? undefined, request: c.request, response: toOpenAIResponse(c) });
+      // wouldBlock = the rule's policy intent (kept for the original "blocking" lens). `prevents` is T3's own
+      // honest claim: false for alert-only rules and for post-execution (response tool-call) findings on
+      // in-process agents, which are alert + evidence only. The harness scores prevention on `prevents`.
       const fired = (d.findings ?? []).map((f) => ({
         ruleId: f.ruleId,
         wouldBlock: f.wouldBlock !== false,
+        prevents: d.failClosed === true || f.prevents === true,
+        direction: f.direction ?? null,
+        postExecution: f.postExecution === true,
         alwaysEnforce: d.failClosed === true,
         evidence: typeof f.evidence === 'string' ? f.evidence.slice(0, 200) : undefined,
       }));

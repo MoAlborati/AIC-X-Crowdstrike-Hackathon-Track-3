@@ -7,6 +7,14 @@
 // "flagged" (= detection) is the same in both modes: a rule that would block fired. "blocked" differs.
 // Precision / recall / FP rate are reported for both detection and blocking in each mode.
 //
+// Two further, stricter-vs-looser lenses (added after the T3 shadow review; existing fields keep their meaning):
+//   anyFinding  — detection recall: ANY finding fired (incl. alert-only rules and post-execution findings).
+//   prevention  — a finding that actually PREVENTS the harm (fired.prevents === true: pre-forward, or a reply
+//                 the proxy withholds). A response-side tool-call finding on an in-process agent (DVAA) fired
+//                 after the tool already ran: it is alert + evidence only and does NOT count here. Detectors
+//                 that do not report `prevents` default to their would-block verdict (prevents ≡ wouldBlock).
+// "blocking" (the original headline lens) counts any would-block rule, so it OVERSTATES prevention for T3.
+//
 // Determinism: corpus, labels, verdicts, itemized FP/FN and override stats are deterministic for a given
 // checkout. Latency fields and generatedAt are measurements and vary run to run.
 
@@ -34,17 +42,25 @@ export const LABEL_RULE =
   'prompt-injection cases); benign captures/fixtures are negative. Recall is also split exfil vs injection-only ' +
   '(recallByPositiveKind)';
 
-function verdicts(fired, ruleModes) {
+/** Does this fired rule prevent the harm? Explicit `prevents` wins; otherwise fall back to wouldBlock. */
+export const firedPrevents = (f) => f.alwaysEnforce === true || (typeof f.prevents === 'boolean' ? f.prevents : f.wouldBlock === true);
+
+function verdicts(fired, ruleModes, failClosed = false) {
   const flagged = fired.some((f) => f.wouldBlock || f.alwaysEnforce);
   const enforceBlocked = fired.some((f) => f.alwaysEnforce || (f.wouldBlock && ruleModes[f.ruleId] !== 'report-only'));
   const reportOnlyBlocked = fired.some((f) => f.alwaysEnforce);
-  return { flagged, blocked: { enforce: enforceBlocked, 'report-only': reportOnlyBlocked } };
+  const detectedAny = failClosed || fired.length > 0;
+  const prevented = {
+    enforce: failClosed || fired.some((f) => f.alwaysEnforce || (firedPrevents(f) && ruleModes[f.ruleId] !== 'report-only')),
+    'report-only': failClosed || fired.some((f) => f.alwaysEnforce),
+  };
+  return { flagged, blocked: { enforce: enforceBlocked, 'report-only': reportOnlyBlocked }, detectedAny, prevented };
 }
 
 // Everything that changes a verdict is in the determinism key: which rules fired, whether each would block,
 // whether each is fail-closed (alwaysEnforce), and the case-level failClosed flag.
 const verdictKey = ({ fired, failClosed }) =>
-  `${fired.map((f) => `${f.ruleId}:${f.wouldBlock ? 1 : 0}:${f.alwaysEnforce ? 1 : 0}`).join('|')}#failClosed=${failClosed ? 1 : 0}`;
+  `${fired.map((f) => `${f.ruleId}:${f.wouldBlock ? 1 : 0}:${f.alwaysEnforce ? 1 : 0}:${firedPrevents(f) ? 1 : 0}`).join('|')}#failClosed=${failClosed ? 1 : 0}`;
 
 /**
  * An errored case is never dropped: it stays in perCase and is scored as a FAILURE of the detector, so the
@@ -65,6 +81,8 @@ function erroredCase(c, error) {
     error,
     flagged: failed,
     blocked: { enforce: failed, 'report-only': failed },
+    detectedAny: failed,
+    prevented: { enforce: failed, 'report-only': failed },
     latencyMs: null,
   };
 }
@@ -108,7 +126,7 @@ export function runDetector(det, cases, { iterations = 5, ruleModes = {} } = {})
       evadesBaseline: c.evadesBaseline,
       fired: first.fired,
       failClosed: first.failClosed,
-      ...verdicts(first.fired, ruleModes),
+      ...verdicts(first.fired, ruleModes, first.failClosed),
       latencyMs: round(median(times)),
     });
   }
@@ -122,6 +140,8 @@ function scoreDetector(det, run, cases, ruleModes = {}) {
     modes[mode] = {
       detection: rates(confusion(perCase, (r) => r.flagged)),
       blocking: rates(confusion(perCase, (r) => r.blocked[mode])),
+      anyFinding: rates(confusion(perCase, (r) => r.detectedAny)),
+      prevention: rates(confusion(perCase, (r) => r.prevented[mode])),
     };
   }
   // Recall split by what the positive is: an attempted exfil, or an injection with no exfil attempt.
@@ -132,6 +152,14 @@ function scoreDetector(det, run, cases, ruleModes = {}) {
     const tp = rows.filter((r) => r.flagged).length;
     recallByPositiveKind[kind] = { positives: rows.length, tp, fn: rows.length - tp, recall: rows.length ? round(tp / rows.length) : null };
   }
+  // Same split for the two honest lenses: detection (any finding) and prevention (enforce).
+  const splitBy = (pred) => Object.fromEntries(['exfil', 'injectionOnly'].map((kind) => {
+    const rows = perCase.filter((r) => r.groundTruth === 'positive' && kindOf.get(r.id) === kind);
+    const tp = rows.filter(pred).length;
+    return [kind, { positives: rows.length, tp, fn: rows.length - tp, recall: rows.length ? round(tp / rows.length) : null }];
+  }));
+  const recallByPositiveKindAnyFinding = splitBy((r) => r.detectedAny);
+  const recallByPositiveKindPrevention = splitBy((r) => r.prevented.enforce);
   const bySource = {};
   for (const src of [...new Set(cases.map((c) => c.source))].sort()) {
     bySource[src] = rates(confusion(perCase.filter((r) => r.source === src), (r) => r.flagged));
@@ -147,6 +175,15 @@ function scoreDetector(det, run, cases, ruleModes = {}) {
     modes,
     bySource,
     recallByPositiveKind,
+    recallByPositiveKindAnyFinding,
+    recallByPositiveKindPrevention,
+    // Positives seen by some finding but NOT prevented in enforce: detected only after the fact (alert + evidence).
+    detectedNotPrevented: perCase.filter((r) => r.groundTruth === 'positive' && r.detectedAny && !r.prevented.enforce)
+      .map((r) => ({ id: r.id, rules: r.fired.map((f) => ({ ruleId: f.ruleId, prevents: firedPrevents(f), ...(f.direction ? { direction: f.direction } : {}), ...(f.postExecution ? { postExecution: true } : {}) })) })),
+    // Benign cases with ANY finding (alert-only included) and benign cases PREVENTED (blocked) in enforce.
+    falsePositivesAnyFinding: perCase.filter((r) => r.groundTruth === 'negative' && r.detectedAny).map((r) => ({ id: r.id, rules: r.fired.map((f) => f.ruleId) })),
+    falsePositivesPrevention: perCase.filter((r) => r.groundTruth === 'negative' && r.prevented.enforce).map((r) => ({ id: r.id, rules: r.fired.filter(firedPrevents).map((f) => f.ruleId) })),
+    falseNegativesPrevention: perCase.filter((r) => r.groundTruth === 'positive' && !r.prevented.enforce).map((r) => r.id),
     // Itemized on detection (flagged). In enforce mode each FP is a benign BLOCK; in report-only an alert.
     falsePositives: perCase.filter((r) => r.groundTruth === 'negative' && r.flagged)
       .map((r) => ({ id: r.id, source: r.source, group: r.group, rules: rulesOf(r), ...(r.errored ? { errored: true, error: r.error } : {}) })),
@@ -154,8 +191,8 @@ function scoreDetector(det, run, cases, ruleModes = {}) {
       .map((r) => ({ id: r.id, source: r.source, group: r.group, notes: cases.find((c) => c.id === r.id)?.notes ?? '', ...(r.errored ? { errored: true, error: r.error } : {}) })),
     failClosed: perCase.filter((r) => r.failClosed).map((r) => r.id),
     errors,
-    perCase: perCase.map(({ id, groundTruth, fired, flagged, blocked, latencyMs, errored }) => ({
-      id, groundTruth, rules: fired.map((f) => f.ruleId), flagged, blockedEnforce: blocked.enforce, latencyMs, ...(errored ? { errored: true } : {}),
+    perCase: perCase.map(({ id, groundTruth, fired, flagged, blocked, detectedAny, prevented, latencyMs, errored }) => ({
+      id, groundTruth, rules: fired.map((f) => f.ruleId), flagged, blockedEnforce: blocked.enforce, detectedAny, preventedEnforce: prevented.enforce, latencyMs, ...(errored ? { errored: true } : {}),
     })),
     overrides: { standIn: overrideStats(standInEvents(det.name, perCase, ruleModes)) },
   };
@@ -187,6 +224,7 @@ function beatsBaseline(cases, scored) {
   const eligible = cases.filter((c) => c.evadesBaseline === true).map((c) => c.id);
   const base = scored['dvaa-baseline'];
   const flaggedBy = (name) => new Set((scored[name]?.perCase ?? []).filter((r) => r.flagged).map((r) => r.id));
+  const preventedBy = (name) => new Set((scored[name]?.perCase ?? []).filter((r) => r.preventedEnforce).map((r) => r.id));
   const out = { eligible, baselineAvailable: Boolean(base?.available), baselineMismatch: [], byDetector: {} };
   if (base?.available) {
     // T6 says DVAA's real detectAttacks() misses these. If our run of it catches one, the label is stale.
@@ -197,7 +235,9 @@ function beatsBaseline(cases, scored) {
     if (!s.available || name === 'dvaa-baseline') continue;
     const f = flaggedBy(name);
     const caught = eligible.filter((id) => f.has(id));
-    out.byDetector[name] = { eligible: eligible.length, beaten: caught.length, cases: caught };
+    const p = preventedBy(name);
+    const prevented = eligible.filter((id) => p.has(id));
+    out.byDetector[name] = { eligible: eligible.length, beaten: caught.length, cases: caught, beatenPrevention: prevented.length, casesPrevention: prevented };
   }
   return out;
 }
@@ -244,6 +284,9 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
     falsePositiveRate: null,
     latencyMs: { median: null, p95: null },
     counts: null,
+    detectionRecall: null,
+    preventionRecall: null,
+    headlineLenses: null,
   });
   let top;
   if (hm) {
@@ -255,6 +298,11 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
       falsePositiveRate: hm.falsePositiveRate,
       latencyMs: { median: h.latencyMs.median, p95: h.latencyMs.p95 },
       counts: { attack: hm.positives, benign: hm.negatives, fp: hm.fp, fn: hm.fn },
+      // Honest lenses (new fields; existing ones above are unchanged for the dashboard):
+      detectionRecall: h.modes.enforce.anyFinding.recall,
+      preventionRecall: h.modes.enforce.prevention.recall,
+      headlineLenses: Object.fromEntries(Object.entries({ detection: h.modes.enforce.anyFinding, prevention: h.modes.enforce.prevention, blocking: hm })
+        .map(([k, m]) => [k, { recall: m.recall, precision: m.precision, falsePositiveRate: m.falsePositiveRate, tp: m.tp, fp: m.fp, tn: m.tn, fn: m.fn }])),
     };
   } else if (hErrors > 0) {
     // A detector that errored on any case gets no headline (T5 reads the file, not the exit code). Its
