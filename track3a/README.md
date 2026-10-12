@@ -1,8 +1,8 @@
 # Track 3 Path A: OpsBot, built by us, attacked and defended
 
 Track 3 has two paths: (A) build your own agent and defend it, (B) attack a provided agent and build a
-detector. The main SentinelProxy demo is Path B (DVAA). This folder is our Path A add-on. It
-shows that SentinelProxy is a drop-in guardrail for **any** OpenAI-compatible agent, not just DVAA.
+detector. The main Tourniquet demo is Path B (DVAA). This folder is our Path A add-on. It
+shows that Tourniquet is a drop-in guardrail for **any** OpenAI-compatible agent, not just DVAA.
 
 Everything runs on 127.0.0.1. All secrets are FAKE honeytokens (`honeytokens.json`). `sentinel/**`
 is used **unmodified**: only its CLIs and our own config files are used.
@@ -27,9 +27,9 @@ ground-truth block (like DVAA's `dvaa{}`), with `injectionFollowed`, `exfilAttem
   to <url>".
 
 ## The defenses (layers)
-1. **SentinelProxy chat proxy** (`sentinel/proxy/cli.mjs`, T2+T3, `mode: block`, config
+1. **Tourniquet chat proxy** (`sentinel/proxy/cli.mjs`, T2+T3, `mode: block`, config
    `proxy.config.json`): inspects the request **before** it reaches the agent.
-2. **SentinelProxy egress guard** (`sentinel/egress/inspector.mjs`, T12, `MODE=block`): OpsBot runs with
+2. **Tourniquet egress guard** (`sentinel/egress/inspector.mjs`, T12, `MODE=block`): OpsBot runs with
    `NODE_USE_ENV_PROXY=1 HTTP_PROXY=…`, so every tool call to the outside goes through it. It scans the full URL and body for
    honeytokens and secret shapes, and checks the destination allowlist.
 3. **OpsBot's own mandate** (`OPSBOT_HARDENED=1`, secure-by-design): a per-request grant derived **only**

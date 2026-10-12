@@ -1,4 +1,6 @@
-# SentinelProxy — demo script (Track 3 core 376 words ≈2:49; expanded run ≈6:00 for the 5–7 min slot)
+# Tourniquet — demo script (Track 3 core 376 words ≈2:49; expanded run ≈6:00 for the 5–7 min slot)
+
+*Why the name: a tourniquet stops the bleed — Tourniquet stops data exfiltration (the "bleed") and other agent tool-misuse at the egress boundary.*
 
 > Beats follow `planning/STRATEGY.md` §7. Every factual claim spoken on stage uses the "Safe slide wording" from
 > `planning/CITATIONS.md`. Don't paraphrase those claims and don't add new ones. **Never fill a metric by hand.**
@@ -82,7 +84,7 @@ scripts/eval.sh up          # bring up the DVAA fleet (or scripts/setup-dvaa.sh 
 #      node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json
 #    and falls back to the recording (captures/contrast/runs/proxy-block.*) if it can't.
 
-# 3. Real SentinelProxy alerts on the dashboard. The committed captures carry no alert sidecars, so a bare
+# 3. Real Tourniquet alerts on the dashboard. The committed captures carry no alert sidecars, so a bare
 #    dashboard reads "No detector verdicts recorded". run-demo.sh converts the RECORDED block-mode run with the
 #    T10 pipeline (deterministic, into .eval/stage/), then serves captures/ + the two pipeline incidents:
 node sentinel/pipeline/cli.mjs convert captures/contrast/runs/proxy-block.proxy.jsonl \
@@ -173,7 +175,7 @@ in the middle, or if the median latency in `results.json` reaches 0.1 ms.
 *Every quoted line in Beats 3, 3b, 4, 4b, 5a and 7 is a `say` line of `demo/run-demo.sh`, word for word; the runner
 shows each one in cyan. `demo/run-demo.sh --check-script` (also preflight row 0 of every run) fails if they drift.*
 
-> "Same agent, same document, now through SentinelProxy. First, a normal question: it passes."
+> "Same agent, same document, now through Tourniquet. First, a normal question: it passes."
 
 `run-demo.sh` starts the **real shipped proxy** (`node sentinel/proxy/cli.mjs`, block mode, inspectors
 `[substring, sentinel-t3]`) on an ephemeral loopback port in front of 7005, then:
@@ -223,7 +225,7 @@ tool already ran, so prevention there is alert-only, but block mode withholds th
 The climax is live (critic A pass 2, #138; Catherine, #131). `run-demo.sh` starts the real two-layer run,
 `scripts/encore-two-layer.sh block` (PR #139), **in the background when Beat 4 starts**. It takes about 14 s warm on the stage
 Mac (about 20 s on WSL), because it recreates its own compose stack. By Beat 4b it has finished, and the runner shows its result:
-user turn → SentinelProxy (block) → RepoBot 7022 → poisoned `AGENTS.md` → tool egress → egress inspector (block) → canary.
+user turn → Tourniquet (block) → RepoBot 7022 → poisoned `AGENTS.md` → tool egress → egress inspector (block) → canary.
 **Warm it at T-5** (`scripts/encore-two-layer.sh block`, once) so images and layers are cached; cold start is about 22 s.
 
 > "Live now, in its own sandbox: an agent that reads the poison itself."
@@ -273,7 +275,7 @@ scripts/eval.sh contrast   # verifies the T8 A/B against DVAA's ground truth (re
 |---|---|---|---|
 | RED | RAGBot 7005 | exfil executed (`dvaa.exfilExecuted=true`) | `aim-ab.demo.json` runA |
 | GREEN | RAGBot-AIM 7014 | denied by AIM (`exfilExecuted=false`) | `aim-ab.demo.json` runB |
-| GREEN | RAGBot 7005 + SentinelProxy | blocked pre-forward by T3 (`action=blocked_request`, `detector:sentinel-t3`) | `captures/contrast/runs/proxy-block.proxy.jsonl` |
+| GREEN | RAGBot 7005 + Tourniquet | blocked pre-forward by T3 (`action=blocked_request`, `detector:sentinel-t3`) | `captures/contrast/runs/proxy-block.proxy.jsonl` |
 
 **Prevention map (Q&A):** RAGBot 7005 is blocked request-side, before forwarding. LegacyBot 7003's reply is withheld.
 RepoBot 7022 reads its payload inside the agent, so the egress guard is the control that stops it.
@@ -296,7 +298,7 @@ them a "known-secret tripwire".
 Slide 8 and is **not read aloud**:
 
 ```
-                         T3 (SentinelProxy)          DVAA baseline
+                         T3 (Tourniquet)          DVAA baseline
   detection (any finding)  recall 67.7%  FP 0.0%        recall 65.6%  FP 12.8%
   prevention (pre-forward) recall 41.8%  FP 0.0%        recall 63.0%  FP 12.8%
   8KB evasion: 2/2 fixtures (T3)
@@ -333,7 +335,7 @@ ourselves" line: it defuses the hardest Q&A question before a judge asks it.*
 
 ### Beat 8 — OpsBot / Path A: it generalizes (≈0:35) · Slide 11 · `node track3a/run-demo.mjs`
 
-> "That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified SentinelProxy, a different agent."
+> "That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified Tourniquet, a different agent."
 
 *Screen:* Slide 11 (the Path-A layering table) and, in the terminal, `node track3a/run-demo.mjs` (about 2 s; it prints
 the matrix). Numbers are the committed `track3a/RESULTS.md`: attacks stopped per stack — undefended 0/2, chat proxy

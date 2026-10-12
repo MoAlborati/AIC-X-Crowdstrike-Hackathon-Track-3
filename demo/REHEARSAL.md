@@ -1,4 +1,4 @@
-# REHEARSAL — SentinelProxy demo (ticket T9)
+# REHEARSAL — Tourniquet demo (ticket T9)
 
 How we rehearse `demo/SCRIPT.md` to a clean sub-3-minute run, and the delivery-gate evidence that the
 deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interactive, or `--auto`).

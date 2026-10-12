@@ -1,4 +1,4 @@
-// SentinelProxy T3 — user-turn mandate + the single policy evaluation (BACKLOG T3, ADJACENT §10.3a).
+// Tourniquet T3 — user-turn mandate + the single policy evaluation (BACKLOG T3, ADJACENT §10.3a).
 //
 // A mandate is a per-session grant {tools, destinations, maxAmount, expires} derived ONLY from
 // principal (user/system) turns, excluding untrusted segments embedded in them, plus an optional

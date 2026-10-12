@@ -32,7 +32,7 @@ The lenses are the T7 harness lenses, in enforce mode:
 
 | Detector | Detection recall | Prevention recall | Precision (prevention) | Benign FP (detection) | Benign FP (prevention) |
 |----------|-----------------:|------------------:|-----------------------:|----------------------:|-----------------------:|
-| **T3** (SentinelProxy, with #46) | **0.285** (171/600) | **0.000** (0/600) | n/a (0 blocks) | 0.000 (0/400) | 0.000 (0/400) |
+| **T3** (Tourniquet, with #46) | **0.285** (171/600) | **0.000** (0/600) | n/a (0 blocks) | 0.000 (0/400) | 0.000 (0/400) |
 | T3, pre-#46 (`50d7bbb`) | 0.193 (116/600) | 0.000 (0/600) | n/a (0 blocks) | 0.000 (0/400) | 0.000 (0/400) |
 | DVAA baseline | 0.607 (364/600) | 0.607 (364/600) | 0.943 | 0.055 (22/400) | 0.055 (22/400) |
 

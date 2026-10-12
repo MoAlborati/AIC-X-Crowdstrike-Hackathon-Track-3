@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // probe.mjs — HELD-OUT coverage probe: run DVAA's OWN documented exploit inputs through the REAL
-// SentinelProxy T3 detector core (sentinel/detectors) and record detect / prevent / egress-catch.
+// Tourniquet T3 detector core (sentinel/detectors) and record detect / prevent / egress-catch.
 //
 // SCOPE + SAFETY
 //   - Defensive measurement only, loopback only. We author NO new attack payloads: every exfil (outbound)

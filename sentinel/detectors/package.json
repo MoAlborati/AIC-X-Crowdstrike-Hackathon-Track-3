@@ -1,8 +1,8 @@
 {
-  "name": "@sentinelproxy/detectors",
+  "name": "@tourniquet/detectors",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy T3 detector core: honeytoken tripwire, taint/provenance, egress heuristics, user-turn mandate, cumulative caps. Pure library, zero dependencies.",
+  "description": "Tourniquet T3 detector core: honeytoken tripwire, taint/provenance, egress heuristics, user-turn mandate, cumulative caps. Pure library, zero dependencies.",
   "type": "module",
   "main": "index.js",
   "exports": { ".": "./index.js" },

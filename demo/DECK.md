@@ -1,4 +1,4 @@
-# SentinelProxy — deck outline (10-slide Track 3 core + Slides 11–12 for the expanded ≈6:00 run + 1 backup)
+# Tourniquet — deck outline (10-slide Track 3 core + Slides 11–12 for the expanded ≈6:00 run + 1 backup)
 
 > **Status: T9 — wired to merged components.** Pairs with `demo/SCRIPT.md` (driven by `demo/run-demo.sh`), and
 > the slide numbers here match the beat sheet. Main now has T2–T8 + T11; the 8KB-evasion beat is required (DoD 1).
@@ -20,8 +20,9 @@
 ## Slide 1 — Title
 
 **On slide**
-- **SentinelProxy**
+- **Tourniquet**
 - An exfil-focused guardrail for tool-using agents, at the tool boundary.
+- *Why the name:* a tourniquet stops the bleed — Tourniquet stops data exfiltration and other agent tool-misuse at the egress boundary.
 - Small print: deterministic sandbox (DVAA, offline, canned replies), no LLM in the loop.
 - Team · CrowdStrike × Santa Clara University · Track 3: Secure — Attack & Defend the Agent
 
@@ -61,7 +62,7 @@ Beat 2 (0:14–0:35). "Confused deputy" and Hardy stay in the footer, unspoken. 
 protect the agents you can't rebuild, from the outside." This is the **only** narrative analogy in the talk. Don't add Agloe, HACCP or immunology.
 The point is that the attacker never breaks in. The harm runs through the deputy's *legitimate* permissions, so the
 place to defend is between the deputy and its tools, not the deputy's input (ADJACENT §1, §10.1). That's where
-SentinelProxy sits.
+Tourniquet sits.
 
 ---
 
@@ -75,7 +76,7 @@ SentinelProxy sits.
 - **8KB-evasion moment (recorded, 10 seconds max):** the two mid-document T6 variants
   (`EVA-POS-MIDDLE-001`, `EVA-BENCH-MIDDLE-001`) hide the injection between DVAA's head/tail 8KB windows
   (`docLength ≈ 22.8KB`, `injectionAtByte ≈ 11.3K`, `inMiddleGap=true`) → DVAA's baseline scanner: **no detection**.
-  A full scan still carries the signal. **8KB evasion: 2/2 fixtures** caught by SentinelProxy (T3).
+  A full scan still carries the signal. **8KB evasion: 2/2 fixtures** caught by Tourniquet (T3).
 
 **Speaker notes**
 Beat 3 (0:35–0:50) + Beat 3b (0:50–1:04). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
@@ -88,7 +89,7 @@ organizer-provided sandbox; every secret is fake.
 
 ---
 
-## Slide 5 — Same attack, through SentinelProxy (GREEN), then default-deny egress
+## Slide 5 — Same attack, through Tourniquet (GREEN), then default-deny egress
 
 **On slide**
 - **LIVE** (the one live beat), through the real shipped proxy: benign question → **HTTP 200** (forwarded untouched), then DVAA's
@@ -125,19 +126,19 @@ verbatim from `run-demo.sh`. Point at the case card: it names the *source* docum
 
 | RED | GREEN | GREEN |
 |---|---|---|
-| **RAGBot 7005** | **RAGBot-AIM 7014** | **RAGBot 7005 + SentinelProxy** |
+| **RAGBot 7005** | **RAGBot-AIM 7014** | **RAGBot 7005 + Tourniquet** |
 | exfil executed | denied: "action 'http:post' is outside the agent's declared capability grant" | blocked pre-forward, before the request is sent |
 | `exfilExecuted=true` | `exfilExecuted=false` | `action=blocked_request` (proxy-block.proxy.jsonl) |
 
 - Footer (T8, PR #16, merged): `scripts/eval.sh contrast` verifies the A/B against DVAA ground truth
-  (SecureBot 7001 + AIM 7014 + SentinelProxy). The recorded runs are checked, never rewritten.
+  (SecureBot 7001 + AIM 7014 + Tourniquet). The recorded runs are checked, never rewritten.
 - **Prevention map (from T3, #24):** RAGBot 7005 → blocked **request-side, pre-forward**; LegacyBot 7003 →
   **reply withheld**; RepoBot 7022 → the proxy **cannot stop the exfil** (payload read in-agent), and **T12's egress guard is the control that stops it**.
 
 **Speaker notes**
 Beat 5a (1:38–1:50), recorded: say so. **Show this slide only, no dashboard tab**:
 the aim-twin replay draws the call in red with "Detected · alert-only", which reads as a leak. The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
-which is secure by design. The point to make: AIM works because someone rebuilt the agent, while SentinelProxy protects
+which is secure by design. The point to make: AIM works because someone rebuilt the agent, while Tourniquet protects
 the *unmodified* 7005 from outside. Both quoted verdicts come straight from `aim-ab.demo.json`. Different agents are
 prevented by different controls (see the prevention map) — request-side block, response withhold, or egress guard —
 and response-side tripwires are alert-only for prevention (the reply is withheld in block mode). Don't claim we beat AIM. We complement it.
@@ -172,7 +173,7 @@ DVAA's 8KB head+tail baseline.
 
 **On slide**
 
-| | T3 (SentinelProxy) | DVAA baseline |
+| | T3 (Tourniquet) | DVAA baseline |
 |---|---|---|
 | Detection recall (any finding) · benign FP | 67.7% · 0.0% | 65.6% · 12.8% |
 | Prevention recall (pre-forward, detector only; egress not in the harness) · benign FP | 41.8% · 0.0% | 63.0% · 12.8% |
@@ -203,7 +204,7 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
 
-**Scope (say it if asked about generalization):** "SentinelProxy is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus (DVAA's scanner prevents 64 of 71, but blocks 21 of 164 legitimate requests; we block 0 of 164). Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
+**Scope (say it if asked about generalization):** "Tourniquet is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus (DVAA's scanner prevents 64 of 71, but blocks 21 of 164 legitimate requests; we block 0 of 164). Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
 
 ---
 
@@ -233,7 +234,7 @@ only allowed efficacy wording is "Up to 99% efficacy at sub-30ms latency (CrowdS
 ## Slide 10 — Close
 
 **On slide**
-- **SentinelProxy:** an exfil-focused guardrail for tool-using agents: one pre-forward check, default-deny egress, alerting.
+- **Tourniquet:** an exfil-focused guardrail for tool-using agents: one pre-forward check, default-deny egress, alerting.
 - **A document can ask. Only the user can authorize.**
 - Deterministic sandbox, no LLM. Scored on DVAA ground truth and published-benchmark labels; misses and held-out failures published.
 - Repo link · team names · "Thank you."
@@ -256,7 +257,7 @@ Thank you." (Watch-only = the recorded observe-mode egress run, `sentinel/egress
 | Stack | Indirect | Direct | Attacks stopped | Benign FP |
 |---|---|---|---|---|
 | Undefended OpsBot | LEAKED | LEAKED | 0/2 | 0/2 |
-| + SentinelProxy chat proxy | LEAKED | blocked (request) | 1/2 | 0/2 |
+| + Tourniquet chat proxy | LEAKED | blocked (request) | 1/2 | 0/2 |
 | + chat proxy + egress guard | blocked (egress) | blocked (request) | 2/2 | 0/2 |
 | Hardened OpsBot (mandate only) | blocked (mandate) | LEAKED | 1/2 | 0/2 |
 | Hardened + chat proxy + egress guard | blocked | blocked | 2/2 | 0/2 |
@@ -272,16 +273,16 @@ committed table if a judge asks. **Cut this slide first if running long** (after
 
 ---
 
-## Slide 12 — SentinelProxy as a product (Ciocca Venture Award) · expanded run
+## Slide 12 — Tourniquet as a product (Ciocca Venture Award) · expanded run
 
 **On slide**
-- **Title:** SentinelProxy — a drop-in egress guard for tool-using agents.
+- **Title:** Tourniquet — a drop-in egress guard for tool-using agents.
 - **Problem:** agents with tools read untrusted text; an indirect injection makes the agent send private data out with the user's authority (the "lethal trifecta").
 - **Who uses & pays:** teams running agents they can't rebuild — vendor, open-source, or legacy internal — with no enterprise AIDR budget. User: the platform / AppSec engineer shipping an OpenAI-compatible agent. Pain: "we can't ship until security signs off on what it can send out."
 - **Wedge:** one egress sidecar — the agent's only route out. No code or model changes; runs in observe mode first.
 - **How it stands apart** (destination provenance vs prompt-content classifiers):
 
-| | What it is | Where SentinelProxy fits |
+| | What it is | Where Tourniquet fits |
 |---|---|---|
 | **SWG / SASE** (network egress) | A secure web gateway enforces a destination allowlist on employee web traffic — by destination, not content | We apply the same default-deny egress model one layer down, to an agent's tool calls |
 | Falcon AIDR | CrowdStrike's enterprise AI detection & response platform | We complement it at the tool boundary; not integrated. Alerts use an AIDR-shaped schema |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# eval.sh — one-command local evaluation of every SentinelProxy component (T11).
+# eval.sh — one-command local evaluation of every Tourniquet component (T11).
 #
 # Usage: scripts/eval.sh <target>
 #   doctor          check Node >=22 (prefers nvm's >=24), Docker, the pinned DVAA checkout; print fixes
@@ -604,7 +604,7 @@ cmd_dashboard() {
   echo "  log: .eval/dashboard.log   stop: scripts/eval.sh dashboard-stop"
   return 0
 }
-# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Since #113, run-demo.mjs
+# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with Tourniquet. Since #113, run-demo.mjs
 # writes its run outputs to the gitignored .eval/track3a/ (override: TRACK3A_OUT), not track3a/runs/. It needs
 # Node >= 24 (NODE_USE_ENV_PROXY for the egress-guard stacks; nvm v24.16.0 on the team box) and exits 2 on
 # Node < 24, so it is not part of `all` (the default Node on some machines is 22).

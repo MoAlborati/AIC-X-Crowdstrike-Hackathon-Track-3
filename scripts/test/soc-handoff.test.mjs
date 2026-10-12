@@ -1,4 +1,4 @@
-// scripts/soc-handoff.sh: SentinelProxy alerts -> SOC Brief, offline.
+// scripts/soc-handoff.sh: Tourniquet alerts -> SOC Brief, offline.
 // Run: node --test scripts/test/soc-handoff.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

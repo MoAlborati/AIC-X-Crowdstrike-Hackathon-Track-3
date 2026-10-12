@@ -94,7 +94,7 @@
     ],
     "benignOk": null,
     "crmReached": false,
-    "reply": "SentinelProxy refused this request: flagged_request",
+    "reply": "Tourniquet refused this request: flagged_request",
     "alertsSoFar": 2
   },
   {
@@ -154,7 +154,7 @@
     ],
     "benignOk": null,
     "crmReached": false,
-    "reply": "SentinelProxy refused this request: flagged_request",
+    "reply": "Tourniquet refused this request: flagged_request",
     "alertsSoFar": 2
   },
   {
@@ -276,7 +276,7 @@
     ],
     "benignOk": null,
     "crmReached": false,
-    "reply": "SentinelProxy refused this request: flagged_request",
+    "reply": "Tourniquet refused this request: flagged_request",
     "alertsSoFar": 2
   },
   {

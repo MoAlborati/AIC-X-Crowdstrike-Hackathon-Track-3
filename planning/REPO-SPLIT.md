@@ -25,13 +25,13 @@ Base for both: current `main` (`origin/main` @ `6f08e7a` at time of writing — 
 | `track1/` subtree (SOC Brief) | **root of the repo** (contents hoisted) | removed |
 | `sentinel/`, `scripts/`, `captures/`, `demo/`, `track3a/`, `spike/`, `docs/`, `gates/`, `prompts/`, `planning/`, `handoffs/` | — | kept |
 | Root governance (`AGENTS.md`, `LOOP.md`, `STATE.md`, `BACKLOG.md`, `GOAL.md`, `EVAL.md`, `RESUME.md`, `CHAT.md`, `README.md`) | — | kept |
-| `SUBMISSION.md` | `track1/SUBMISSION.md` → becomes **root `SUBMISSION.md`** | root `SUBMISSION.md` (SentinelProxy) — already Track 3's |
+| `SUBMISSION.md` | `track1/SUBMISSION.md` → becomes **root `SUBMISSION.md`** | root `SUBMISSION.md` (Tourniquet) — already Track 3's |
 | `.github/` issue+PR templates | — (optional copy) | kept |
 
 Each track already has its own submission:
 - **Track 1 repo uses** its own `SUBMISSION.md` — "SOC Brief: Track 1 submission (AI for SOC Analyst)", lead
   @shrutidoshi94. In the subtree split it is already at the repo root (it was `track1/SUBMISSION.md`).
-- **Track 3 repo uses** the existing root `SUBMISSION.md` — "SentinelProxy: an inline detection-and-response
+- **Track 3 repo uses** the existing root `SUBMISSION.md` — "Tourniquet: an inline detection-and-response
   guardrail for AI agents". No change.
 
 There is **no root `package.json`**. `track1/package.json` (`track1-soc-brief`, node >=22) is self-contained and

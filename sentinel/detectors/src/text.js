@@ -1,4 +1,4 @@
-// SentinelProxy T3 — linear-time text scanners for attacker-controlled input.
+// Tourniquet T3 — linear-time text scanners for attacker-controlled input.
 //
 // ReDoS rule (PR #3 review): no regex with an unbounded quantifier is ever run across attacker text.
 // Everything here is one of:

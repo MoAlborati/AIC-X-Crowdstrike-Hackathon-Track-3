@@ -87,7 +87,7 @@ don't matter there. The residual risk is a host the operator allowlisted."
 **Proof:** `results.json` perCase (all 79 fire `inbound.exfil_instruction`); creative pass 2 on #105; issue #112 (critic B).
 
 **3. "The dashboard says Blocked, but the canary got the data?"**
-"Those are two different runs. In the unprotected run SentinelProxy only observes. DVAA runs tools inside its own
+"Those are two different runs. In the unprotected run Tourniquet only observes. DVAA runs tools inside its own
 process, so anything we see after execution is detection only, with an alert and evidence. In the protected runs we
 prevent: a 403 before the request is forwarded, so the agent never runs, and an egress deny at the tool boundary.
 The attacker server receives nothing. Response-side findings stay alert-only for prevention; in block mode they
@@ -197,7 +197,7 @@ The headline numbers are read from the committed scoring output, which anyone ca
 "Not well at blocking, by design. On a held-out set of 600 attacks and 400 benign cases from three public Hugging Face
 jailbreak and injection sets, we detected 28.5%, prevented 0%, and had 0 of 400
 false positives. By set, we detected 58% of Gandalf, 19% of SPML and about 8% of jailbreak-classification. DVAA's
-scanner detected and prevented 60.7%, with 22 of 400 false positives (5.5%). SentinelProxy blocks only when an
+scanner detected and prevented 60.7%, with 22 of 400 false positives (5.5%). Tourniquet blocks only when an
 injection tries to move data to a destination or misuse a tool, so it's an exfiltration and tool-misuse guardrail,
 not a general jailbreak classifier. Generic jailbreak text with no action is alerted at most. Pair it with a jailbreak
 classifier such as Prompt Guard."

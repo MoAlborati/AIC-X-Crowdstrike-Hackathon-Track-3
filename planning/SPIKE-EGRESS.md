@@ -1,6 +1,6 @@
 # SPIKE — Tool-boundary egress interception for DVAA
 
-**Question.** Can we route the outbound tool calls of DVAA's agents through SentinelProxy, so that we enforce
+**Question.** Can we route the outbound tool calls of DVAA's agents through Tourniquet, so that we enforce
 at the real tool boundary and not only at `POST /v1/chat/completions`?
 
 **Answer: yes, without changing DVAA's source.** DVAA runs on `node:24-alpine` (Node v24.21.0). Node ≥24.5

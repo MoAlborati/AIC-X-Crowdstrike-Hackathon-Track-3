@@ -20,7 +20,7 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
 - [ ] `scripts/eval.sh up`. Expect `all 22 DVAA ports answer 200` and `bound to 127.0.0.1`.
 - [ ] Clean slate before the final dry run: `scripts/eval.sh dashboard-stop; rm -rf .eval/score`, so no stale dashboard
       or rescored latency differs from the slides. **Never run `docker system prune` before 18:00.**
-- [ ] Dry run: `demo/run-demo.sh --auto --no-dvaa --no-teardown`. It starts the dashboard **with the real SentinelProxy
+- [ ] Dry run: `demo/run-demo.sh --auto --no-dvaa --no-teardown`. It starts the dashboard **with the real Tourniquet
       alerts** (preflight 3/3), so don't start the dashboard by hand. The Summary must end
       `demo run clean — no failing beats · dashboard http://127.0.0.1:<port>/`, and Beat 4 must show a **live** `200`
       then `403`, with no `WARN live proxy unavailable`. If :9100 was busy, the runner moves the dashboard to the next
@@ -78,7 +78,7 @@ Pause for two seconds and let it land.
 Say "2 of 2 fixtures" only if a judge asks.
 
 **1:04 · Beat 4 Block (green, live)** · Cmd-K, **Enter**
-> "Same agent, same document, now through SentinelProxy. First, a normal question: it passes."
+> "Same agent, same document, now through Tourniquet. First, a normal question: it passes."
 
 Screen: live `200`.
 > "Now the attack."
@@ -123,7 +123,7 @@ Beat 7; that's fine — Beats 8–10 use Slides 11–12 and their own one-line c
 ### Expansion beats 8–10 (expanded run only; presenter-driven, not `run-demo.sh`)
 
 **≈3:35 · Beat 8 OpsBot / Path A** · Slide 11 · terminal: `node track3a/run-demo.mjs` (≈2 s)
-> "That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified SentinelProxy, a different agent."
+> "That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified Tourniquet, a different agent."
 
 Screen: the matrix (undefended 0/2 … hardened + both 2/2; benign 0/2 every row). Fallback: open `track3a/RESULTS.md`.
 **Cut this beat first if running long** (after Beat 10).

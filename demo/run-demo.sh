@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# demo/run-demo.sh — deterministic driver for the SentinelProxy demo (ticket T9).
+# demo/run-demo.sh — deterministic driver for the Tourniquet demo (ticket T9).
 #
 # Drives the beats of demo/SCRIPT.md on THIS machine, in order, from the committed
 # captures/ fixtures. Nothing here makes a live LLM or external API call inside the demo
@@ -206,7 +206,7 @@ headline_cmd() {
     .detectors as $d | .headlineLenses as $h | .counts as $c |
     "corpus: \($c.attack) attack + \($c.benign) benign cases, labelled by DVAA ground truth (T1 captures) and the published benchmarks (T6)",
     "",
-    "                         T3 (SentinelProxy)          DVAA baseline",
+    "                         T3 (Tourniquet)          DVAA baseline",
     "  detection (any finding)  recall \($h.detection.recall|pct)  FP \($h.detection.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.anyFinding.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate|pct)",
     "  prevention (pre-forward) recall \($h.prevention.recall|pct)  FP \($h.prevention.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.prevention.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.prevention.falsePositiveRate|pct)",
     "",
@@ -252,7 +252,7 @@ headline_cmd() {
   # 3 percent; the sandbox's scanner stops 51" comes from captures/holdout-ipi/RESULTS.md (#142): T3 prevention 0.032
   # (12/370), DVAA 0.514 (190/370).
   local ipi="$REPO/captures/holdout-ipi/RESULTS.md"
-  grep -Eq '^\| \*\*T3\*\* \(SentinelProxy\) \| [^|]* \| \*\*0\.032\*\* \(12/370\)' "$ipi" 2>/dev/null \
+  grep -Eq '^\| \*\*T3\*\* \(Tourniquet\) \| [^|]* \| \*\*0\.032\*\* \(12/370\)' "$ipi" 2>/dev/null \
     && grep -Eq '^\| DVAA baseline \| 0\.514 \(190/370\) \| 0\.514 \(190/370\)' "$ipi" \
     || { echo "Beat 7 spoken claim no longer true in captures/holdout-ipi/RESULTS.md: front-door 3 percent vs scanner 51"; bad=1; }
   [ "$bad" = 0 ] || { echo "update the Beat 7 say line in run-demo.sh and demo/SCRIPT.md together"; return 1; }
@@ -298,7 +298,7 @@ live_proxy_start() {
     [ -n "$LIVE_PORT" ] && break; sleep 0.1
   done
   [ -n "$LIVE_PORT" ] || { echo "proxy did not report a listening port"; live_proxy_stop; return 1; }
-  echo "SentinelProxy (shipped CLI, block) on 127.0.0.1:$LIVE_PORT -> 7005, inspectors $(head -1 "$LIVE_DIR/stdout" | jq -c .inspectors)"
+  echo "Tourniquet (shipped CLI, block) on 127.0.0.1:$LIVE_PORT -> 7005, inspectors $(head -1 "$LIVE_DIR/stdout" | jq -c .inspectors)"
 }
 live_proxy_stop() {
   [ -n "$LIVE_PID" ] || return 0
@@ -409,7 +409,7 @@ egress_truth_cmd() {
     || { echo "recorded run does not show both RAGBot and RepoBot PREVENTED"; return 1; }
 }
 # Beat 4b LIVE (critic A pass 2, #138: the climax should be live; Catherine, #131). The real two-layer encore
-# (scripts/encore-two-layer.sh block, PR #139): user turn -> SentinelProxy (block) -> RepoBot 7022 -> poisoned AGENTS.md
+# (scripts/encore-two-layer.sh block, PR #139): user turn -> Tourniquet (block) -> RepoBot 7022 -> poisoned AGENTS.md
 # -> tool egress -> egress inspector (block) -> canary. Ground truth is the canary (attacker server) log: the script exits
 # 0 in block mode only if the attacker got 0 hits AND the inspector logged a deny; exit 3 = Docker or the DVAA image is
 # missing. Cold start is about 22 s: warm it at T-5 by running the same command once. A watchdog (no `timeout` on stock
@@ -552,7 +552,7 @@ print_summary() {
 # =================================================================================
 # PRE-FLIGHT (not part of the 3-minute stage clock)
 # =================================================================================
-hdr "SentinelProxy demo  ·  mode=$([ "$AUTO" = 1 ] && echo AUTO || echo interactive)"
+hdr "Tourniquet demo  ·  mode=$([ "$AUTO" = 1 ] && echo AUTO || echo interactive)"
 note "repo: $REPO"
 note "SCRIPT: demo/SCRIPT.md    (deterministic replay from captures/)"
 
@@ -596,7 +596,7 @@ else
 fi
 advance
 
-hdr "Preflight 3/3 — real SentinelProxy alerts (T10 pipeline) + the T5 dashboard (loopback)"
+hdr "Preflight 3/3 — real Tourniquet alerts (T10 pipeline) + the T5 dashboard (loopback)"
 STAGE_OK=0
 if [ -f "$PIPELINE_CLI" ] && [ -f "$PROXY_BLOCK_JSONL" ] && [ -f "$EGRESS_BLOCK_JSONL" ]; then
   printf '  %s$ node sentinel/pipeline/cli.mjs convert %s --egress %s --out .eval/stage/pipe%s\n' \
@@ -638,7 +638,7 @@ if [ -x "$EVAL" ] && [ -f "$REPO/sentinel/dashboard/server.mjs" ]; then
     fi
     if [ "$STAGE_OK" = 1 ]; then
       if stage_verify; then
-        ok "dashboard shows the real SentinelProxy alerts (not placeholders)"
+        ok "dashboard shows the real Tourniquet alerts (not placeholders)"
         record "preflight: stage alerts" PASS "IndirectPromptInjection blocked + egress denies on dashboard"
       else
         bad "dashboard does not show the real block alerts"
@@ -693,9 +693,9 @@ fi
 advance
 
 # ---- Beat 4 — request-side BLOCK: shipped proxy + T3 detector (#14/#24/#41) -----
-hdr "Beat 4 — DETECT -> BLOCK (green) · SentinelProxy in front of 7005"
+hdr "Beat 4 — DETECT -> BLOCK (green) · Tourniquet in front of 7005"
 egress_live_start   # Beat 4b's live two-layer run starts now, in the background (about 20 s)
-say "Same agent, same document, now through SentinelProxy. First, a normal question: it passes."
+say "Same agent, same document, now through Tourniquet. First, a normal question: it passes."
 if [ -f "$PROXY_BLOCK_JSONL" ]; then
   printf '  %s$ live_proxy_start%s\n' "$B" "$Z"
   mkdir -p "$LIVE_DIR"

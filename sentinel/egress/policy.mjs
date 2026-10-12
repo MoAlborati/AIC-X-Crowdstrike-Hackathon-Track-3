@@ -1,4 +1,4 @@
-// SentinelProxy T12 — tool-boundary egress policy (pure function, no I/O).
+// Tourniquet T12 — tool-boundary egress policy (pure function, no I/O).
 //
 //   inspectEgress(request, config) -> verdict  (same envelope as T3's toInspectorVerdict, direction "egress")
 //

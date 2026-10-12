@@ -1,4 +1,4 @@
-// SentinelProxy T4 — detector category -> framework mapping (single, data-driven table).
+// Tourniquet T4 — detector category -> framework mapping (single, data-driven table).
 //
 // Every framework ID used by an alert comes from the CATALOG below, and every detector category's tags
 // come from CATEGORY_MAP below. No call site hard-codes a framework ID; schema.js resolves everything

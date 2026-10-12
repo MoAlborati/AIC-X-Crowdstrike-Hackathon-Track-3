@@ -1,8 +1,10 @@
-# SentinelProxy
+# Tourniquet
 
 **An exfil-focused guardrail for tool-using agents: one pre-forward check, default-deny egress at the tool boundary, and alerting.**
 
-CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
+*Why the name:* A tourniquet stops the bleed: Tourniquet stops data exfiltration (the "bleed") and other agent tool-misuse vulnerabilities at the egress boundary.
+
+CrowdStrike x Santa Clara University hackathon, Track 3. Tourniquet sits between an AI agent and its
 model and tools. It turns an indirect prompt injection that tries to exfiltrate data or misuse a tool into an AIDR-shaped alert, mapped to MITRE
 ATLAS and OWASP, and it is designed to block exfil before forwarding or at egress. It does not block everything it catches: in our
 corpus it detects 128 of 189 attacks and prevents 79, including 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked (DVAA's own scanner prevents 64 of 71 but blocks 21 of 164). We complement Falcon AIDR at the tool
@@ -12,7 +14,7 @@ Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox,
 against a live model that paraphrases, splits or encodes its exfil. This is an authorized hackathon project, and all
 of the work is defensive.
 
-**Scope.** SentinelProxy is designed to stop prompt-injection-driven *exfiltration and tool misuse*; it prevents 57 of 71 exfil attempts in our corpus, with 0 of 164 legitimate requests blocked; DVAA's own scanner prevents 64 of 71 but blocks 21 of 164. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
+**Scope.** Tourniquet is designed to stop prompt-injection-driven *exfiltration and tool misuse*; it prevents 57 of 71 exfil attempts in our corpus, with 0 of 164 legitimate requests blocked; DVAA's own scanner prevents 64 of 71 but blocks 21 of 164. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
 
 ## The problem
 
@@ -74,7 +76,7 @@ has allowlisted, including an HTTPS CONNECT to an allowlisted host, where TLS is
 
 ```mermaid
 flowchart LR
-  A[Agent client] -->|chat request| P[SentinelProxy<br/>sentinel/proxy + T3 detectors]
+  A[Agent client] -->|chat request| P[Tourniquet<br/>sentinel/proxy + T3 detectors]
   P -->|allowed only| D[DVAA agent<br/>127.0.0.1 only]
   D -->|response, alert-only| P --> A
   D -->|outbound tool call| E[Egress guard<br/>sentinel/egress, T12]
@@ -115,11 +117,11 @@ so it can't go stale. How to read them:
 - **Benign false positives.** The 0 of 164 benign blocked is on the 164-case benign corpus (which the rules were
   also tuned on, so it is not a zero-FP guarantee), the same corpus the
   DVAA baseline detector is scored on, so the comparison is like for like. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
-- **Recall.** SentinelProxy's detection recall is now slightly above DVAA's baseline, but the baseline has
+- **Recall.** Tourniquet's detection recall is now slightly above DVAA's baseline, but the baseline has
   the higher prevention recall, at a 12.8% benign FP rate (figures in RESULTS.md). We do not claim to beat it on
   prevention.
 - **The 8KB window.** DVAA's own scanner looks only at the head and tail 8KB of a payload. Injections
-  placed in the middle of a long benign document evade it. SentinelProxy scans the full payload and catches
+  placed in the middle of a long benign document evade it. Tourniquet scans the full payload and catches
   2/2 of the `evadesBaseline` cases in the corpus. That is n=2, against a weakness DVAA built in on purpose, so we
   don't treat it as a differentiator.
 

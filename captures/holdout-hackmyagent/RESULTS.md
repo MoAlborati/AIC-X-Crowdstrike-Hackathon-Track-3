@@ -1,4 +1,4 @@
-# HELD-OUT results — hackmyagent battery vs SentinelProxy T3
+# HELD-OUT results — hackmyagent battery vs Tourniquet T3
 
 > **HELD-OUT. NEVER merge these numbers into the headline.** This set is the DVAA authors' own attack tool
 > ([`opena2a-org/hackmyagent`](https://github.com/opena2a-org/hackmyagent) @ `033f4fa1`, Apache-2.0), used as a
@@ -19,7 +19,7 @@
 
 | detector | detection (any finding) | prevention (request-side block) | benign FP rate |
 |---|--:|--:|--:|
-| **SentinelProxy T3** | **9% (31/328)** | **1% (2/328)** | **0% (0/164)** |
+| **Tourniquet T3** | **9% (31/328)** | **1% (2/328)** | **0% (0/164)** |
 | DVAA baseline (`detectAttacks`, 8KB scan) | 63% (208/328) | 63% (208/328) | 13% (21/164) |
 
 **We lose on recall, badly, on the authors' own battery, and win only on false positives.** The DVAA baseline

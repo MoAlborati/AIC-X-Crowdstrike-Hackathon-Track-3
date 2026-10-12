@@ -2,7 +2,7 @@
 
 Deterministic replay fixtures captured from the **real DVAA fleet** (not hand-written
 toy JSON). DVAA is the organizer-provided, intentionally vulnerable training sandbox
-for the CrowdStrike × SCU hackathon (Track 3); it runs only on localhost. SentinelProxy
+for the CrowdStrike × SCU hackathon (Track 3); it runs only on localhost. Tourniquet
 is a purely defensive detector that consumes these captures. Later tickets (T2 proxy,
 T3 detector, T4 alerts) replay these against the detector.
 
@@ -49,7 +49,7 @@ agent received is DVAA's bundled payload document delivered over `POST /v1/chat/
 | `flight.demo.json` | Indirect injection → wallet exfiltration | FlightBot 7017 (vuln) vs FlightBot-AIM 7018 (AIM) | APWN-DE-007 | `act2.exfiltrated=true`; canary `wallet=` carries FAKE cards/passport | A2=EXFIL, A3=BLOCKED |
 
 All three show a planted honeytoken crossing an egress boundary on the vulnerable agent
-and being denied on the AIM-protected twin — the exact signal SentinelProxy must catch.
+and being denied on the AIM-protected twin — the exact signal Tourniquet must catch.
 
 ## Benign fixtures — `benign/`
 

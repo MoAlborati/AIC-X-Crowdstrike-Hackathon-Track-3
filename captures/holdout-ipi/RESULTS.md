@@ -25,7 +25,7 @@ The lenses are the same as in `captures/holdout-hf/RESULTS.md` (T7, enforce mode
 
 | Detector | Detection recall | Prevention recall | Precision (prev.) | Benign FP, clean emails (det. / prev.) | Benign FP, LLMail "False" rows, noisy (det. / prev.) |
 |----------|-----------------:|------------------:|------------------:|---------------------------------------:|-----------------------------------------------------:|
-| **T3** (SentinelProxy) | **0.081** (30/370) | **0.032** (12/370) | 1.00 (12/12) | **0/200** / **0/200** | 35/200 / 0/200 |
+| **T3** (Tourniquet) | **0.081** (30/370) | **0.032** (12/370) | 1.00 (12/12) | **0/200** / **0/200** | 35/200 / 0/200 |
 | DVAA baseline | 0.514 (190/370) | 0.514 (190/370) | 0.613 | 18/200 (9%) / 18/200 | 102/200 / 102/200 |
 
 The two benign groups are reported separately because the LLMail `attack_attempt: False` label is noisy. 29 of

@@ -1,7 +1,7 @@
 # DVAA challenge coverage map (HELD-OUT)
 
 > **HELD-OUT — do NOT merge into the headline metrics.** This is a defensive coverage artifact that maps
-> SentinelProxy's T3 detector against DVAA's documented challenge roster. It is kept separate from the
+> Tourniquet's T3 detector against DVAA's documented challenge roster. It is kept separate from the
 > delivery-gate / submission numbers on purpose (per the ATTACK-EVAL brief). The headline claim rests on
 > the four demo'd endpoints and the delivery-gate replays, not on this map.
 
@@ -79,7 +79,7 @@ Rows below record DVAA's documented attack class and the T3 rule class that woul
 
 ## Reading
 
-- **Where SentinelProxy is strong (measured):** the honeytoken tripwire + taint/destination egress layer
+- **Where Tourniquet is strong (measured):** the honeytoken tripwire + taint/destination egress layer
   caught **every** DVAA exfil we replayed (3/3), on the exact outbound bytes DVAA's own agents emit. The
   honeytoken set (14 DVAA tokens) is matched by value, so detection is **pool-size-independent** — it covers
   any agent that touches those tokens, not just the three replayed.

@@ -1,4 +1,4 @@
-// SentinelProxy T4 — AIDR/Falcon-shaped alert builder.
+// Tourniquet T4 — AIDR/Falcon-shaped alert builder.
 //
 //   buildAlert(verdict, opts) -> frozen alert object (JSON-serializable)
 //
@@ -88,7 +88,7 @@ export class AlertOverflowError extends Error {
 /** Machine-readable description of the emitted alert (the "documented schema"). */
 export const ALERT_SCHEMA = Object.freeze({
   $id: SCHEMA_VERSION,
-  description: 'SentinelProxy AIDR/Falcon-shaped detection alert',
+  description: 'Tourniquet AIDR/Falcon-shaped detection alert',
   required: [
     'SchemaVersion', 'AlertId', 'DetectName', 'DetectDescription', 'Category', 'RuleId', 'Severity',
     'SeverityName', 'Tactic', 'TacticId', 'Technique', 'TechniqueId', 'MitreAtlas', 'MitreAttack',

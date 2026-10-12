@@ -2,7 +2,7 @@
 // Start OpsBot on loopback.
 // Env: OPSBOT_PORT (default 0 = ephemeral), OPSBOT_HARDENED=1, OPSBOT_EXFIL_URL (required, local canary),
 //      OPSBOT_ALLOW_ORIGINS=comma list (static destination allowlist, e.g. the internal CRM origin).
-// To route tool egress through SentinelProxy's egress guard: NODE_USE_ENV_PROXY=1 HTTP_PROXY=http://127.0.0.1:<guard>
+// To route tool egress through Tourniquet's egress guard: NODE_USE_ENV_PROXY=1 HTTP_PROXY=http://127.0.0.1:<guard>
 import { createOpsBot } from './opsbot.mjs';
 
 const bot = createOpsBot({
