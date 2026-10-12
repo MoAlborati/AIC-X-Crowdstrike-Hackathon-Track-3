@@ -668,11 +668,6 @@ const INJECTION_PHRASES = [
   'important message from me', 'before you can solve the task', 'ignore previous', 'ignore any previous',
   'ignore your previous', 'ignore your directions', 'ignore your instructions', 'ignore all instructions',
   'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
-  // forged authority / fake approval (COMP-2): untrusted content claiming an approval or waiving a check.
-  // Multi-word only; each checked against every benign case in the scoring + held-out corpora (0 hits).
-  'has been pre-approved', 'was pre-approved', 'already been approved', 'skip the verification',
-  'skip the dependency check', 'skip any checks', 'skip all checks', 'bypass the approval', 'no need to confirm',
-  'approval is not required', 'treat as a known false positive', 'without waiting for approval',
 ];
 
 /**
@@ -685,6 +680,26 @@ export function findInjectionPhrases(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
   const lower = foldConfusables(text).replace(/\s+/g, ' ').toLowerCase();
   return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
+}
+
+/**
+ * Forged authority / fake approval (COMP-2, idea from #140): text claiming an approval was already given or
+ * waiving a check. Matched ONLY on untrusted content (tool outputs), never on a principal turn: a user may
+ * legitimately write "no need to confirm" and must not lose their own mandate for it (review of #151).
+ * Multi-word only; each checked against every benign case of the main + held-out corpora (0 hits, enforced
+ * by test/forged-authority.test.js, which imports this list). Raises risk only; phrase-bound (no paraphrase).
+ */
+export const FORGED_AUTHORITY_PHRASES = Object.freeze([
+  'has been pre-approved', 'was pre-approved', 'skip the verification', 'skip the dependency check',
+  'skip any checks', 'bypass the approval', 'no need to confirm', 'approval is not required',
+  'treat as a known false positive', 'without waiting for approval',
+]);
+
+/** Forged-authority phrases in UNTRUSTED text (same normalization as findInjectionPhrases; linear). */
+export function findForgedAuthorityPhrases(text) {
+  if (typeof text !== 'string' || text.length === 0) return [];
+  const lower = foldConfusables(text).replace(/\s+/g, ' ').toLowerCase();
+  return FORGED_AUTHORITY_PHRASES.filter((p) => lower.indexOf(p) !== -1);
 }
 
 // ---- lookalike destinations ----------------------------------------------------------------------

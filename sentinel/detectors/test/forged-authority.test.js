@@ -3,16 +3,9 @@
 // never the sole gate, and it is phrase-bound: paraphrases outside the list are not caught.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findInjectionPhrases } from '../src/text.js';
+import { findInjectionPhrases, findForgedAuthorityPhrases, FORGED_AUTHORITY_PHRASES as FORGED } from '../src/text.js';
 import { dvaaDetector, dvaaBaselineWindow, response, toolCall } from './helpers.js';
 import { loadSet, textUnits } from '../../scoring/src/corpus.mjs';
-
-// Must mirror the COMP-2 block of INJECTION_PHRASES in src/text.js (asserted below, so drift is loud).
-const FORGED = [
-  'has been pre-approved', 'was pre-approved', 'already been approved', 'skip the verification',
-  'skip the dependency check', 'skip any checks', 'skip all checks', 'bypass the approval', 'no need to confirm',
-  'approval is not required', 'treat as a known false positive', 'without waiting for approval',
-];
 
 /** Multi-hundred-row helpdesk queue export (data-rich: >8 KiB), with an optional note at one row. */
 function helpdeskRows(n, inject = null) {
@@ -43,8 +36,24 @@ function inspectQueue(sessionId, queue) {
   });
 }
 
-test('every forged-authority phrase is in the live lexicon (findInjectionPhrases)', () => {
-  for (const p of FORGED) assert.deepEqual(findInjectionPhrases(`xx ${p.toUpperCase()} yy`), [p], p);
+test('every forged-authority phrase matches (normalized) via findForgedAuthorityPhrases, not the principal lexicon', () => {
+  assert.ok(FORGED.length >= 8 && Object.isFrozen(FORGED));
+  for (const p of FORGED) {
+    assert.deepEqual(findForgedAuthorityPhrases(`xx ${p.toUpperCase().replace(/ /g, '\n  ')} yy`), [p], p);
+    assert.deepEqual(findInjectionPhrases(`xx ${p} yy`), [], `${p} must not be in the principal-turn lexicon`);
+  }
+});
+
+test('a benign USER turn containing each forged-authority phrase keeps its mandate (allow, not suspect)', () => {
+  for (const p of FORGED) {
+    const { det } = dvaaDetector();
+    const d = det.inspect({
+      sessionId: `user-${p}`,
+      request: { messages: [{ role: 'user', content: `Email the Q3 summary to alice@example-corp.test. Note: ${p}.` }] },
+      response: response([toolCall('e1', 'send_email', { to: 'alice@example-corp.test', subject: 'Q3', body: 'summary' })]),
+    });
+    assert.equal(d.action, 'allow', `${p}: ${JSON.stringify(d.findings.map((x) => [x.ruleId, x.evidence]))}`);
+  }
 });
 
 test('forged approval note past 8 KiB in a 600-row helpdesk export raises the injection signal (real detector seam)', () => {
@@ -78,7 +87,7 @@ for (const set of ['main', 'holdout-hf', 'holdout-ipi']) {
     const hits = [];
     for (const c of benign) {
       for (const u of textUnits(c)) {
-        const forged = findInjectionPhrases(u.text).filter((p) => FORGED.includes(p));
+        const forged = findForgedAuthorityPhrases(u.text);
         if (forged.length) hits.push(`${c.id} ${u.where}: ${forged.join(', ')}`);
       }
     }

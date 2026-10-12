@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables,
+  findInjectionPhrases, findForgedAuthorityPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -216,7 +216,9 @@ export function createDetector(opts = {}) {
       ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: foldConfusables(p.text), principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
-      u.phrases = findInjectionPhrases(u.text);
+      // Forged-authority phrases count only in untrusted content: on a principal turn they are the user's own
+      // words and must not make the turn suspect (that would strip the user's mandate).
+      u.phrases = u.principal ? findInjectionPhrases(u.text) : [...findInjectionPhrases(u.text), ...findForgedAuthorityPhrases(u.text)];
       u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
