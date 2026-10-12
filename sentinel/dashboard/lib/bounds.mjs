@@ -11,9 +11,11 @@ export const BOUNDS = Object.freeze({
   MAX_CAPTURE_BYTES: 8 * 1024 * 1024,
 
   // Number of capture files the server will index (captures/ + one subdirectory level).
-  // T1 plans 3-5 captures and T6 adds a few dozen variants. Overflow: /api/captures returns HTTP 507
-  // naming the count. The dashboard does not list only the first N.
-  MAX_CAPTURE_FILES: 500,
+  // T1 plans 3-5 captures and T6 adds a few dozen variants; held-out run dumps pushed the real index to
+  // 358 (72% of the old 500 cap, #112 CRITIC-C #3), so 2000 leaves ~5x headroom. Indexing is a stat +
+  // readdir per file, so 2000 stays fast. Overflow: /api/captures returns HTTP 507 naming the count.
+  // The dashboard does not list only the first N.
+  MAX_CAPTURE_FILES: 2000,
 
   // Incident-graph node budget. Nodes are messages, tool calls, tool results, sinks and alerts.
   // Tool-output ROWS are not nodes: a 500-row result is one node carrying rowCount, so this budget
