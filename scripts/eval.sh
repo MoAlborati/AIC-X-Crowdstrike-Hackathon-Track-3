@@ -5,7 +5,8 @@
 #   doctor          check Node >=22 (prefers nvm's >=24), Docker, the pinned DVAA checkout; print fixes
 #   up              start the DVAA fleet (docker project dvaa-t1, every port published on 127.0.0.1 only)
 #   down            stop the DVAA fleet
-#   test            run every *.test.js/*.test.mjs suite under sentinel/, captures/, track3a/ and track1/
+#   test            run every *.test.js/*.test.mjs suite under sentinel/, captures/, track3a/, track1/ and scripts/;
+#                   a test file anywhere else in the repo is an UNGATED FAIL row (never skipped silently)
 #                   (found by glob; a missing track dir is reported as NOT YET MERGED "not present"),
 #                   print a pass/fail table; exit 1 on any failing suite
 #   score           run the T7 scoring harness, print its results table
@@ -351,7 +352,7 @@ cmd_down() {
 # Test suites. Discovery is by glob: every directory under SUITE_ROOTS that holds a
 # *.test.js or *.test.mjs file is a suite, so a new suite is picked up without editing this script.
 # The ticket list below only labels suites and turns a component that is absent into NOT YET MERGED.
-SUITE_ROOTS=(sentinel captures track3a track1)
+SUITE_ROOTS=(sentinel captures track3a track1 scripts)
 KNOWN_SUITES=(
   "T2|sentinel/proxy"
   "T3|sentinel/detectors"
@@ -362,6 +363,7 @@ KNOWN_SUITES=(
   "T8|captures/contrast"
   "3A|track3a"
   "track1|track1"
+  "handoff|scripts"
 )
 # Prints "component_dir|test_dir" per suite. The component dir (the cwd the tests expect) is the parent
 # of a test/ or tests/ dir, otherwise the dir itself.
@@ -376,6 +378,15 @@ discover_suites() {
       case "$(basename "$t")" in test|tests) comp="$(dirname "$t")" ;; *) comp="$t" ;; esac
       echo "$comp|$t"
     done
+}
+# Prints every *.test.js/*.test.mjs dir outside SUITE_ROOTS (dot dirs and node_modules pruned). Such files
+# have no runner in this gate; cmd_test turns each into an UNGATED FAIL row so they are never skipped silently.
+discover_ungated() {
+  local r pat=""
+  for r in "${SUITE_ROOTS[@]}"; do pat="$pat|$r"; done
+  ( cd "$REPO" && find . \( -name node_modules -o -name '.?*' \) -prune -o \
+      -type f \( -name '*.test.js' -o -name '*.test.mjs' \) -print 2>/dev/null ) \
+    | sed 's|^\./||' | grep -Ev "^(${pat#|})/" | while IFS= read -r t; do dirname "$t"; done | sort -u
 }
 # The command runs the exact discovered files with node --test (so no file can fall outside a
 # package.json glob), keeping any --test-* flags the package's own test script sets (e.g. concurrency).
@@ -464,7 +475,14 @@ cmd_test() {
     SUITE_ROWS+=("$dir|$ticket|NOT YET MERGED|-|-|-|-|$note")
     SUITE_MISSING+=("$ticket $dir"); nym=1
   done
-  if [ ${#suites[@]} -eq 0 ]; then bad "no test files found under sentinel/ or captures/"; return 1; fi
+  local ung=()
+  while IFS= read -r entry; do ung+=("$entry"); done < <(discover_ungated)
+  for entry in ${ung[@]+"${ung[@]}"}; do
+    bad "UNGATED: $entry/ has *.test.* files but is outside SUITE_ROOTS (${SUITE_ROOTS[*]}); add it to scripts/eval.sh"
+    SUITE_ROWS+=("$entry|(none)|FAIL|-|-|-|-|UNGATED: test files outside SUITE_ROOTS, no runner in this gate")
+    rc=1
+  done
+  if [ ${#suites[@]} -eq 0 ]; then bad "no test files found under ${SUITE_ROOTS[*]}"; return 1; fi
   { echo "SUITE|TICKET|RESULT|PASS|FAIL|SKIP|TIME|NOTES"; printf '%s\n' "${SUITE_ROWS[@]}"; } | print_table
   if [ ${#SUITE_SKIPS[@]} -gt 0 ]; then
     echo; warn "${#SUITE_SKIPS[@]} explicit SKIPPED notice(s) from the suites (optional sources not present):"
