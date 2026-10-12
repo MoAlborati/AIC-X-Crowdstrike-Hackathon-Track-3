@@ -161,12 +161,10 @@ test('finding 3 (real seam): a dirty DVAA checkout via $DVAA_SRC warns and exits
   const prev = process.env.DVAA_SRC;
   process.env.DVAA_SRC = dir;
   try {
-    const det = await dvaaBaselineDetector();
-    assert.equal(det.provenance.dvaaCheckout, '$DVAA_SRC');
-    assert.equal(det.provenance.dvaaDirty, true);
-    const r = runScoring({ detectors: [det], iterations: 1 });
-    assert.ok(r.warnings.some((w) => /^dvaa-baseline drift: .*uncommitted changes/.test(w)), r.warnings.join('; '));
-    assert.equal(exitCode(r), 1);
+    // Since PR #15 the T6 bridge (captures/variants/tools/baseline.mjs) verifies the checkout before
+    // importing any DVAA code and refuses a dirty tree outright. That is stricter than the warn-and-exit-1
+    // path this test was written for, so assert the refusal: a dirty DVAA is never scored.
+    await assert.rejects(dvaaBaselineDetector(), /refusing to import DVAA code from \$DVAA_SRC=.*tree not clean/);
   } finally {
     if (prev === undefined) delete process.env.DVAA_SRC;
     else process.env.DVAA_SRC = prev;
