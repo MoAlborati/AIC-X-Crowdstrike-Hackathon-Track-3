@@ -10,7 +10,31 @@ scripts/eval.sh all
 ```
 
 `all` runs `doctor → up → test → score → contrast → dashboard` and ends with a summary table. Each step
-also runs on its own (`scripts/eval.sh <step>`).
+also runs on its own (`scripts/eval.sh <step>`). Before merging a PR, run `scripts/eval.sh gate <PR#>`
+(see the merge gate section below).
+
+## Merge gate (required before ANY merge)
+
+```bash
+scripts/eval.sh gate <PR#>
+```
+
+**Run this before merging any PR, and do not merge on a non-zero exit.** Two PRs can each be green on
+their own and still break each other's tests once both land on `main`. That happened with #15 and #16. The gate:
+
+1. fetches `origin/main` and `pull/<PR#>/head`;
+2. merges the PR into the current `origin/main` in a throwaway worktree under `.eval/gate-worktrees/`.
+   A merge conflict is a `GATE FAIL`;
+3. runs `test` on that merged tree. Every directory under `sentinel/` and `captures/` that contains a
+   `*.test.js` or `*.test.mjs` file is a suite, **found by glob**, so a new suite is gated without editing
+   the script. The exact files are run with `node --test` (keeping any `--test-*` flags from the package's
+   own test script), so no file can fall outside a `package.json` glob;
+4. prints `GATE PASS` (exit 0) or `GATE FAIL ... Do not merge.` (exit 1), and keeps logs in `.eval/gate-pr<N>/`.
+
+Any failing test, a suite that runs zero tests, or a suite that hits `EVAL_SUITE_TIMEOUT` fails the gate.
+Merge `main` into the PR again and re-run the gate if `main` moved after you ran it. `EVAL_KEEP=1` keeps
+the merge worktree for debugging. Also run `scripts/eval.sh up` first so the live-DVAA seams run
+instead of skipping.
 
 ## Requirements
 
@@ -28,7 +52,7 @@ also runs on its own (`scripts/eval.sh <step>`).
 |---|---|---|
 | `doctor` | Checks the tools above and the pinned DVAA checkout (through `scripts/setup-dvaa.sh clone`), and reports whether the fleet is up. Every FAIL prints a `fix:` line. | One `PASS` line per check. `WARN DVAA fleet ... not running` before the first `up` is normal. |
 | `up` | Starts DVAA as docker project `dvaa-t1` through `scripts/setup-dvaa.sh up`. A fleet that is already healthy is left as is. It then health-checks all 22 ports and **fails if any port is published beyond 127.0.0.1**. | `PASS all 22 DVAA ports answer 200`, `PASS every published port is bound to 127.0.0.1`, and the pinned commit the fleet was built from. The first build takes a few minutes. |
-| `test` | Runs every test suite: `sentinel/proxy` (T2), `sentinel/detectors` (T3), `sentinel/alerts` (T4), `sentinel/dashboard` (T5), `sentinel/scoring` (T7), `captures/variants` (T6), `captures/contrast` (T8), plus any new `sentinel/<x>/test`. Real seams are switched on: `DVAA_SRC` points at the pinned checkout with `DVAA_REQUIRE_REAL=1`, and `SENTINEL_REQUIRE_DVAA=1` is set while the fleet is up. | A table `SUITE / TICKET / RESULT / PASS / FAIL / SKIP / TIME / NOTES`, then any explicit `SKIPPED` notices the suites printed, then every failing test by name. Full logs are in `.eval/test/`. |
+| `test` | Runs every suite found by glob (any dir under `sentinel/` or `captures/` with `*.test.js`/`*.test.mjs`). Known components are labeled with their ticket: `sentinel/proxy` (T2), `sentinel/detectors` (T3), `sentinel/alerts` (T4), `sentinel/dashboard` (T5), `sentinel/scoring` (T7), `captures/variants` (T6), `captures/contrast` (T8). A known component with no tests on the branch shows NOT YET MERGED, and new suites show `(new)`. Exits 1 on any failure. Real seams are switched on: `DVAA_SRC` points at the pinned checkout with `DVAA_REQUIRE_REAL=1`, and `SENTINEL_REQUIRE_DVAA=1` is set while the fleet is up. | A table `SUITE / TICKET / RESULT / PASS / FAIL / SKIP / TIME / NOTES`, then any explicit `SKIPPED` notices the suites printed, then every failing test by name. Full logs are in `.eval/test/`. |
 | `score` | Runs the T7 harness (`sentinel/scoring/cli.mjs`) over the T1 captures and the T6 corpus, and scores each detector against DVAA's `dvaa{}` ground truth. | The markdown results table (precision, recall, **benign FP rate**, TP/FP/TN/FN, median/p95 latency), the "beats DVAA baseline" cases, and per-rule override rates. Written to `.eval/score/`, so the committed `sentinel/scoring/results.json` is not modified. |
 | `contrast` | T8: recomputes the recorded vulnerable / AIM-defended / proxied A/B from `captures/contrast/runs` (on a copy in `.eval/contrast/`) and checks every cell against ground truth. `EVAL_LIVE=1` also re-captures it from the live fleet. | The three-column table and `PASS recorded contrast holds`. |
 | `dashboard` | Starts the T5 dashboard in the background on `127.0.0.1:9100` (loopback only, DNS-rebinding guarded). If `score` ran, it shows the fresh `.eval/score/results.json`. | `open: http://127.0.0.1:9100/` plus the number of replayable captures. Stop it with `scripts/eval.sh dashboard-stop`. |

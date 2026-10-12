@@ -322,6 +322,10 @@ cmd_test() {
     echo; warn "${#SUITE_SKIPS[@]} explicit SKIPPED notice(s) from the suites (optional sources not present):"
     printf '        - %s\n' "${SUITE_SKIPS[@]}"
   fi
+  # Machine-readable list for `gate` (one "suite: test name" per line; suite-level failures included).
+  { [ ${#SUITE_FAILS[@]} -gt 0 ] && printf '%s\n' "${SUITE_FAILS[@]}"
+    printf '%s\n' "${SUITE_ROWS[@]}" | awk -F'|' '$3=="FAIL"{print $1": [suite FAIL] "$8}' | sed 's/; log .*//'; } \
+    | sort -u > "$OUT/test/failures.txt"
   if [ ${#SUITE_FAILS[@]} -gt 0 ]; then
     echo; bad "${#SUITE_FAILS[@]} failing test(s):"
     printf '        - %s\n' "${SUITE_FAILS[@]}"
@@ -430,12 +434,15 @@ cmd_dashboard_stop() {
 # ---------------------------------------------------------------------------------------------------
 # Merge gate: PR head merged into the current origin/main, in a throwaway worktree, then `test`.
 # A merge conflict or any failing suite fails the gate. Logs: .eval/gate-pr<N>/.
-GATE_TMP=""
+GATE_TMP=""; GATE_TMP2=""
 cmd_gate() {
   local rc
   gate_run "$@"; rc=$?
   if [ -n "$GATE_TMP" ] && [ "${EVAL_KEEP:-0}" != 1 ]; then
-    git -C "$SELF_REPO" worktree remove --force "$GATE_TMP" >/dev/null 2>&1; rm -rf "$GATE_TMP"
+    local d
+    for d in "$GATE_TMP" "$GATE_TMP2"; do
+      [ -n "$d" ] && { git -C "$SELF_REPO" worktree remove --force "$d" >/dev/null 2>&1; rm -rf "$d"; }
+    done
   fi
   return $rc
 }
@@ -468,9 +475,25 @@ gate_run() {
   echo "  merged tree ${merged:0:12} in $tmp"
   rm -rf "$OUT/gate-pr$pr"
   EVAL_REPO="$tmp" EVAL_OUT="$OUT/gate-pr$pr" EVAL_STRICT=0 bash "$SELF" test; rc=$?
+  # Attribute failures: run the same suites on origin/main alone, so a red main is not blamed on the PR.
+  if [ "$rc" != 0 ] && [ "$base" != "$merged" ]; then
+    local btmp="$tmp.main"
+    git -C "$SELF_REPO" worktree add -q --detach "$btmp" "$base" && GATE_TMP2="$btmp"
+    EVAL_REPO="$btmp" EVAL_OUT="$OUT/gate-pr$pr/main-baseline" EVAL_STRICT=0 bash "$SELF" test > /dev/null 2>&1
+    local mf="$OUT/gate-pr$pr/test/failures.txt" bf="$OUT/gate-pr$pr/main-baseline/test/failures.txt"
+    if [ -f "$bf" ]; then
+      local new old
+      new="$(comm -23 <(grep -v '\[suite FAIL\]' "$mf" | sort) <(grep -v '\[suite FAIL\]' "$bf" | sort))"
+      old="$(comm -12 <(grep -v '\[suite FAIL\]' "$mf" | sort) <(grep -v '\[suite FAIL\]' "$bf" | sort))"
+      echo
+      if [ -n "$new" ]; then bad "failures NEW with this PR (not on origin/main):"; echo "$new" | sed 's/^/        - /'
+      else ok "no new test failures from this PR"; fi
+      if [ -n "$old" ]; then warn "failures already present on origin/main ${base:0:12} (main is red; not caused by this PR):"; echo "$old" | sed 's/^/        - /'; fi
+    fi
+  fi
   echo
   if [ "$rc" = 0 ]; then ok "GATE PASS: PR #$pr merged with main ${base:0:12} passes every suite (logs .eval/gate-pr$pr/)"
-  else bad "GATE FAIL: PR #$pr merged with main ${base:0:12} breaks the suites above. Do not merge. (logs .eval/gate-pr$pr/)"; rc=1; fi
+  else bad "GATE FAIL: PR #$pr merged with main ${base:0:12} is not green. Do not merge. (logs .eval/gate-pr$pr/)"; rc=1; fi
   [ "${EVAL_KEEP:-0}" = 1 ] && echo "  EVAL_KEEP=1: merge worktree kept at $tmp (remove: git worktree remove --force $tmp)"
   return $rc
 }

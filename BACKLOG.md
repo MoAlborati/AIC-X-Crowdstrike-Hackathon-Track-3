@@ -197,7 +197,7 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **Deps:** none (reports components that have not landed as NOT YET MERGED)
 - **Scope:** `scripts/eval.sh`, `scripts/setup-dvaa.sh` (offline-friendly clone only), `EVAL.md`, `.gitignore`,
   `README.md` (quickstart pointer), `BACKLOG.md` (this entry)
-- **What:** `scripts/eval.sh {doctor|up|down|test|score|contrast|dashboard|dashboard-stop|all}`. On this WSL
+- **What:** `scripts/eval.sh {doctor|up|down|test|score|contrast|dashboard|dashboard-stop|all|gate <PR#>}`. On this WSL
   machine, and for judges once the repo is public, one command checks the toolchain, brings up the pinned DVAA
   fleet on loopback, runs every `sentinel/*` and `captures/` suite, scores T7, verifies the T8 contrast and
   starts the T5 dashboard. `EVAL.md` is the quickstart.
@@ -212,6 +212,10 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - Every step fails loudly. A missing component prints `NOT YET MERGED` and is never skipped silently.
     `EVAL_STRICT=1` turns NOT YET MERGED into a failure.
   - Outputs go to `.eval/` (gitignored). Committed results are never rewritten.
+  - **Merge gate** (coordinator request, after #15 and #16 broke each other on `main`): `test` discovers every suite
+    under `sentinel/` and `captures/` by glob and exits non-zero on any failure. `scripts/eval.sh gate <PR#>` merges
+    the PR into `origin/main` in a temp worktree and runs `test` there. It is documented in `EVAL.md` as required
+    before any merge.
 - **Gate notes:** delivery-gate — `all` run on this machine against the real `dvaa-t1` fleet; output in the PR.
 
 ---
