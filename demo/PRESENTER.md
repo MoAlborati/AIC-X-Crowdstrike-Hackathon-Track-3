@@ -7,10 +7,6 @@ If you need to shorten a line, drop sentences from it. Don't reword it.
 Judge answers: [`demo/QA-PREP.md`](QA-PREP.md). Read it once before 18:00.
 All commands run from the repo root. Under Colima the repo must be somewhere under `~`, because Colima only shares `$HOME`.
 
-> **If #76 (`t5-stage`) is not merged:** there is no `?stage=1&capture=` and no **Copy alert JSON** button. For the
-> Beat 3 and Beat 5a tabs, open `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runA` (vulnerable) and `…&run=runB`
-> (AIM twin) instead. The Beat 4 and 4b tabs (`?id=live/…`) are on main already and don't change.
-
 ## T-30 min checklist
 
 - [ ] `colima start --cpu 4 --memory 6`, then confirm with `docker info | head -3`.
