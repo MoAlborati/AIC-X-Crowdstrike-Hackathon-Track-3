@@ -18,7 +18,7 @@ offline on localhost. This is an authorized, sanctioned hackathon; all work is d
 | `STATE.md` | Living loop state (phase, active ticket, open PRs, blockers, decision log). |
 | `BACKLOG.md` | Ordered tickets T1–T9 + stretch, deps graph, parallel waves. |
 | `AGENTS.md` | Roles, model policy, status-line contract, how `handoffs/` works. |
-| `gates/` | SE / tester / reviewer / delivery checklists (encode the firm's data-scale rules). |
+| `gates/` | SE / tester / reviewer / delivery checklists (encode the team's data-scale reliability rules). |
 | `prompts/` | Reusable child-agent prompt templates the orchestrator fills per ticket. |
 | `handoffs/` | Per-ticket handoff files written on a degradation/safety stop. |
 | `sentinel/` | The product: `proxy/`, `detectors/`, `alerts/`, `dashboard/`, `scoring/`. |
