@@ -60,6 +60,9 @@ test('fail loud: bad enum/number values', () => {
   for (const o of bad) assert.throws(() => buildAlert(makeVerdict('taint_flow_exfil', 0, o)), AlertValidationError, JSON.stringify(o));
 });
 
+// CPU time of this thread, not wall clock (flake fix): under merge-gate load wall clock measures the scheduler.
+const cpuUsage = typeof process.threadCpuUsage === 'function' ? (prev) => process.threadCpuUsage(prev) : (prev) => process.cpuUsage(prev);
+const cpuMs = (c) => (c.user + c.system) / 1000;
 test('data-rich: 700 alerts built in a loop across every category — all valid, unique ids, latency measured', () => {
   const { warnings, onWarning } = warnSink();
   const N = 700;
@@ -67,9 +70,9 @@ test('data-rich: 700 alerts built in a loop across every category — all valid,
   const times = [];
   for (let i = 0; i < N; i++) {
     const v = makeVerdict(CATEGORIES[i % CATEGORIES.length], i);
-    const t0 = process.hrtime.bigint();
+    const c0 = cpuUsage();
     const a = buildAlert(v, { onWarning });
-    times.push(Number(process.hrtime.bigint() - t0) / 1e6);
+    times.push(cpuMs(cpuUsage(c0)));
     assert.deepEqual(validateAlert(a), [], `alert ${i}`);
     ids.add(a.AlertId);
     // decision/lookups at scale: alert #i still carries its own entities (no capped scan anywhere)
@@ -80,8 +83,8 @@ test('data-rich: 700 alerts built in a loop across every category — all valid,
   times.sort((x, y) => x - y);
   const median = percentile(times, 50);
   const p95 = percentile(times, 95);
-  console.log(`# buildAlert latency over ${N} alerts: median=${median.toFixed(3)}ms p95=${p95.toFixed(3)}ms`);
-  assert.ok(p95 < 50, `p95 ${p95}ms too slow`);
+  console.log(`# buildAlert CPU over ${N} alerts: median=${median.toFixed(3)}ms p95=${p95.toFixed(3)}ms`);
+  assert.ok(p95 < 50, `p95 ${p95}ms CPU too slow`);
 });
 
 test('very long TaintPath (5000 hops) is bounded with explicit marker + warning; source and sink kept', () => {

@@ -459,15 +459,24 @@ export function createProxy(config, deps = {}) {
   // deps.scrub: the CLI builds one scrubber over T3's honeytokens + flagSubstrings and shares it with T3's logger.
   const scrub = deps.scrub ?? makeLogScrubber(flagSubstringCanaries(config.inspect.flagSubstrings));
   const block = mode === 'block';
+  // deps.newRequestId: test seam only (pins a UUID the scrubber would mangle); production uses randomUUID.
+  const newRequestId = deps.newRequestId ?? randomUUID;
   let inFlight = 0;
 
+  // request_id is the proxy's own randomUUID(), never client data, and it is the ONLY key that joins an alert
+  // record to its exchange record (which is not scrubbed). The scrubber's payment-card / digit-run patterns
+  // match ~1 in 8,000 UUIDs (e.g. 41812006-4939-4383-…: a Luhn-valid run across the hyphens). A redacted
+  // id orphaned that alert from its exchange (pipeline flake: extra `proxy-unattributed` capture, ~2.5% of
+  // 210-request runs). So the id is re-pinned after scrubbing; every other field stays redacted.
+  const scrubAlert = (requestId, fields) => ({ ...scrub(fields), request_id: requestId });
+
   async function emitAlert(requestId, alert) {
-    const record = scrub({ type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
+    const record = scrubAlert(requestId, { type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
     logAlert(record);
     try {
       await sink.write(record);
     } catch (err) {
-      logAlert(scrub({ type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
+      logAlert(scrubAlert(requestId, { type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
     }
     return record;
   }
@@ -670,7 +679,7 @@ export function createProxy(config, deps = {}) {
   };
 
   function dispatch(req, res, opts) {
-    const requestId = randomUUID();
+    const requestId = newRequestId();
     if (inFlight >= limits.maxInFlight) {
       // Admission control: refuse before reading/buffering anything. The unread body is discarded
       // (no memory held); the connection closes after the reply.
