@@ -5,14 +5,15 @@
 //        [--allow-replica] [--detector-module FILE.mjs]... [--headline NAME]
 //        [--decision-log FILE.jsonl] [--rule-mode RULE=report-only]...
 //
-// Exit codes: 0 scored cleanly; 1 detector errors or label warnings; 2 bound/corpus error (nothing written).
+// Exit codes: 0 scored cleanly; 1 detector errors (headline withheld), label warnings or DVAA pin drift
+// (results are still written, with the reason in headline.status / warnings); 2 bound/corpus error (nothing written).
 
 import { writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { REPO_ROOT } from './src/corpus.mjs';
 import { builtinDetectors, moduleDetector } from './src/detectors.mjs';
-import { runScoring } from './src/harness.mjs';
+import { runScoring, exitCode } from './src/harness.mjs';
 import { renderMarkdown } from './src/report.mjs';
 
 const { values: a } = parseArgs({
@@ -51,7 +52,7 @@ try {
     writeFileSync(a.md, `${md}\n`);
     console.error(`wrote ${path.relative(process.cwd(), a.out)} and ${path.relative(process.cwd(), a.md)}`);
   }
-  process.exit(results.errorCount || results.warnings.some((w) => w.startsWith('dvaa-baseline flagged')) ? 1 : 0);
+  process.exit(exitCode(results));
 } catch (err) {
   console.error(JSON.stringify({ level: 'ERROR', event: 'sentinel.scoring.failed', error: err.name, message: err.message, ...(err.toJSON?.() ?? {}) }));
   process.exit(2);

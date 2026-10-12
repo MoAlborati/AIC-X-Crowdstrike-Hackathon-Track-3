@@ -35,6 +35,30 @@ export function noopDetector() {
   };
 }
 
+// The DVAA commit the baseline numbers (and T6's evadesBaseline labels) were produced against.
+export const DVAA_PINNED_COMMIT = '57918267d8d529ceec6d40fc9836ab09d128eee4';
+
+/** null when git cannot tell (not a repo); otherwise true iff `git status --porcelain` is non-empty. */
+export function gitDirty(dir) {
+  try {
+    return execFileSync('git', ['-C', dir, 'status', '--porcelain'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() !== '';
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drift check for a dvaa-real baseline: returns a warning string, or null when the checkout is exactly the
+ * pinned commit and clean. Unknown commit / unknown cleanliness count as drift (fail-loud, not "probably ok").
+ */
+export function dvaaDrift(prov) {
+  if (prov?.source !== 'dvaa-real') return null;
+  const problems = [];
+  if (prov.dvaaCommit !== DVAA_PINNED_COMMIT) problems.push(`commit ${prov.dvaaCommit ?? 'unknown'} != pinned ${DVAA_PINNED_COMMIT}`);
+  if (prov.dvaaDirty !== false) problems.push(prov.dvaaDirty ? 'checkout has uncommitted changes' : 'checkout cleanliness unknown');
+  return problems.length ? `dvaa-baseline drift: ${problems.join('; ')} (baseline numbers not comparable)` : null;
+}
+
 function gitHead(dir) {
   try {
     return execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -77,6 +101,8 @@ export async function dvaaBaselineDetector({ root = REPO_ROOT, allowReplica = fa
       source: b.source,
       dvaaCheckout: !b.root ? null : b.root === process.env.DVAA_SRC ? '$DVAA_SRC' : 'pinned T1 clone',
       dvaaCommit: commit,
+      dvaaPinnedCommit: DVAA_PINNED_COMMIT,
+      dvaaDirty: b.root ? gitDirty(b.root) : null,
       DETECTION_EDGE: b.DETECTION_EDGE,
     },
     inspect(c) {

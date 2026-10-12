@@ -35,11 +35,13 @@ export function renderMarkdown(r) {
   for (const [name, d] of Object.entries(r.detectors)) {
     if (!d.available) continue;
     L.push(`## ${name}`, '');
+    const k = d.recallByPositiveKind;
+    L.push(`Recall by positive kind: exfil ${pct(k.exfil.recall)} (${k.exfil.tp}/${k.exfil.positives}) · injection-only ${pct(k.injectionOnly.recall)} (${k.injectionOnly.tp}/${k.injectionOnly.positives})`, '');
     L.push(`False positives (benign cases flagged; blocks in enforce): ${d.falsePositives.length || 'none'}`);
-    for (const f of d.falsePositives) L.push(`- ${f.id} — ${f.rules.map((x) => x.ruleId).join(', ')}`);
+    for (const f of d.falsePositives) L.push(`- ${f.id} — ${f.errored ? `DETECTOR ERROR (scored as fail-closed block): ${f.error}` : f.rules.map((x) => x.ruleId).join(', ')}`);
     L.push(`False negatives (attacks missed): ${d.falseNegatives.length || 'none'}`);
-    for (const f of d.falseNegatives) L.push(`- ${f.id}${f.notes ? ` — ${f.notes.slice(0, 100)}` : ''}`);
-    if (d.errors.length) L.push(`ERRORS: ${d.errors.map((e) => `${e.id}: ${e.error}`).join('; ')}`);
+    for (const f of d.falseNegatives) L.push(`- ${f.id}${f.errored ? ` — DETECTOR ERROR (scored as miss): ${f.error}` : f.notes ? ` — ${f.notes.slice(0, 100)}` : ''}`);
+    if (d.errors.length) L.push(`ERRORS (${d.errors.length}, each scored as a failure above): ${d.errors.map((e) => `${e.id}: ${e.error}`).join('; ')}`);
     const rules = d.overrides.standIn;
     if (rules.length) {
       L.push('', 'Override tracking (stand-in: benign corpus = simulated human approvals, until S5):', '');

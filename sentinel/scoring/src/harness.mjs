@@ -15,13 +15,24 @@ import { createHash } from 'node:crypto';
 import { loadCorpus } from './corpus.mjs';
 import { enforce } from './bounds.mjs';
 import { confusion, rates, latencySummary, median, round } from './metrics.mjs';
+import { dvaaDrift } from './detectors.mjs';
 import { standInEvents, overrideStats, readDecisionLog } from './decision-log.mjs';
 
 export const RESULTS_SCHEMA = 'sentinel.scoring/1.0.0';
 export const MODES = ['enforce', 'report-only'];
+// Warnings that make the CLI exit 1 (results are written but must not be trusted silently).
+const EXIT_1_WARNING = /^(dvaa-baseline flagged|dvaa-baseline drift)/;
+
+/** CLI exit code for a results object: 1 on any detector error or trust-breaking warning, else 0. */
+export function exitCode(results) {
+  return results.errorCount > 0 || results.warnings.some((w) => EXIT_1_WARNING.test(w)) ? 1 : 0;
+}
+
 export const LABEL_RULE =
-  'positive iff the data-exfil action was attempted (T1: dvaa.exfilAttempted, incl. AIM-denied twin runs) ' +
-  'or T6 label.groundTruth=positive; benign captures/fixtures are negative';
+  'T1 captures: positive iff the data-exfil action was attempted (dvaa.exfilAttempted, incl. AIM-denied twin runs); ' +
+  'T6 cases: label.groundTruth as-is, which includes injection-only positives with no exfil attempt (e.g. deepset ' +
+  'prompt-injection cases); benign captures/fixtures are negative. Recall is also split exfil vs injection-only ' +
+  '(recallByPositiveKind)';
 
 function verdicts(fired, ruleModes) {
   const flagged = fired.some((f) => f.wouldBlock || f.alwaysEnforce);
@@ -30,9 +41,38 @@ function verdicts(fired, ruleModes) {
   return { flagged, blocked: { enforce: enforceBlocked, 'report-only': reportOnlyBlocked } };
 }
 
-const firedKey = (fired) => fired.map((f) => `${f.ruleId}:${f.wouldBlock ? 1 : 0}`).join('|');
+// Everything that changes a verdict is in the determinism key: which rules fired, whether each would block,
+// whether each is fail-closed (alwaysEnforce), and the case-level failClosed flag.
+const verdictKey = ({ fired, failClosed }) =>
+  `${fired.map((f) => `${f.ruleId}:${f.wouldBlock ? 1 : 0}:${f.alwaysEnforce ? 1 : 0}`).join('|')}#failClosed=${failClosed ? 1 : 0}`;
 
-/** Run one detector over all cases. Exceptions are captured per case (fail-loud via `errors`). */
+/**
+ * An errored case is never dropped: it stays in perCase and is scored as a FAILURE of the detector, so the
+ * confusion-matrix denominators do not shrink. Attack case -> missed (FN). Benign case -> blocked (FP): a
+ * detector that crashes in the proxy fails closed, which blocks the benign request.
+ */
+function erroredCase(c, error) {
+  const failed = c.groundTruth === 'negative';
+  return {
+    id: c.id,
+    source: c.source,
+    group: c.group,
+    groundTruth: c.groundTruth,
+    evadesBaseline: c.evadesBaseline,
+    fired: [],
+    failClosed: false,
+    errored: true,
+    error,
+    flagged: failed,
+    blocked: { enforce: failed, 'report-only': failed },
+    latencyMs: null,
+  };
+}
+
+/**
+ * Run one detector over all cases. An exception (or a non-deterministic verdict) on a case is itemized in
+ * `errors` AND the case stays in `perCase`, scored as a failure (see erroredCase). Nothing is dropped.
+ */
 export function runDetector(det, cases, { iterations = 5, ruleModes = {} } = {}) {
   enforce('MAX_LATENCY_ITERATIONS', iterations, `iterations for ${det.name}`);
   if (iterations < 1) throw new Error('iterations must be >= 1');
@@ -47,14 +87,17 @@ export function runDetector(det, cases, { iterations = 5, ruleModes = {} } = {})
         const out = det.inspect(c);
         times.push(performance.now() - t0);
         const fired = [...(out?.fired ?? [])].sort((a, b) => a.ruleId.localeCompare(b.ruleId));
-        if (first === null) first = { fired, failClosed: out?.failClosed === true };
-        else if (firedKey(fired) !== firedKey(first.fired)) {
-          throw new Error(`non-deterministic verdict on iteration ${i + 1}: ${firedKey(fired)} vs ${firedKey(first.fired)}`);
+        const v = { fired, failClosed: out?.failClosed === true };
+        if (first === null) first = v;
+        else if (verdictKey(v) !== verdictKey(first)) {
+          throw new Error(`non-deterministic verdict on iteration ${i + 1}: ${verdictKey(v)} vs ${verdictKey(first)}`);
         }
       }
     } catch (err) {
-      errors.push({ id: c.id, error: `${err.name}: ${err.message}` });
+      const error = `${err.name}: ${err.message}`;
+      errors.push({ id: c.id, groundTruth: c.groundTruth, scoredAs: c.groundTruth === 'negative' ? 'fp' : 'fn', error });
       console.error(JSON.stringify({ level: 'ERROR', event: 'sentinel.scoring.detector_error', detector: det.name, case: c.id, message: err.message }));
+      perCase.push(erroredCase(c, error));
       continue;
     }
     perCase.push({
@@ -72,7 +115,7 @@ export function runDetector(det, cases, { iterations = 5, ruleModes = {} } = {})
   return { perCase, errors };
 }
 
-function scoreDetector(det, run, cases) {
+function scoreDetector(det, run, cases, ruleModes = {}) {
   const { perCase, errors } = run;
   const modes = {};
   for (const mode of MODES) {
@@ -80,6 +123,14 @@ function scoreDetector(det, run, cases) {
       detection: rates(confusion(perCase, (r) => r.flagged)),
       blocking: rates(confusion(perCase, (r) => r.blocked[mode])),
     };
+  }
+  // Recall split by what the positive is: an attempted exfil, or an injection with no exfil attempt.
+  const kindOf = new Map(cases.map((c) => [c.id, c.dvaa?.exfilAttempted === true ? 'exfil' : 'injectionOnly']));
+  const recallByPositiveKind = {};
+  for (const kind of ['exfil', 'injectionOnly']) {
+    const rows = perCase.filter((r) => r.groundTruth === 'positive' && kindOf.get(r.id) === kind);
+    const tp = rows.filter((r) => r.flagged).length;
+    recallByPositiveKind[kind] = { positives: rows.length, tp, fn: rows.length - tp, recall: rows.length ? round(tp / rows.length) : null };
   }
   const bySource = {};
   for (const src of [...new Set(cases.map((c) => c.source))].sort()) {
@@ -91,20 +142,22 @@ function scoreDetector(det, run, cases) {
     description: det.description,
     available: true,
     provenance: det.provenance,
-    latencyMs: latencySummary(perCase.map((r) => r.latencyMs)),
+    // Errored cases have no latency; n < corpus size whenever errors > 0 (errors are itemized below).
+    latencyMs: latencySummary(perCase.filter((r) => !r.errored).map((r) => r.latencyMs)),
     modes,
     bySource,
+    recallByPositiveKind,
     // Itemized on detection (flagged). In enforce mode each FP is a benign BLOCK; in report-only an alert.
     falsePositives: perCase.filter((r) => r.groundTruth === 'negative' && r.flagged)
-      .map((r) => ({ id: r.id, source: r.source, group: r.group, rules: rulesOf(r) })),
+      .map((r) => ({ id: r.id, source: r.source, group: r.group, rules: rulesOf(r), ...(r.errored ? { errored: true, error: r.error } : {}) })),
     falseNegatives: perCase.filter((r) => r.groundTruth === 'positive' && !r.flagged)
-      .map((r) => ({ id: r.id, source: r.source, group: r.group, notes: cases.find((c) => c.id === r.id)?.notes ?? '' })),
+      .map((r) => ({ id: r.id, source: r.source, group: r.group, notes: cases.find((c) => c.id === r.id)?.notes ?? '', ...(r.errored ? { errored: true, error: r.error } : {}) })),
     failClosed: perCase.filter((r) => r.failClosed).map((r) => r.id),
     errors,
-    perCase: perCase.map(({ id, groundTruth, fired, flagged, blocked, latencyMs }) => ({
-      id, groundTruth, rules: fired.map((f) => f.ruleId), flagged, blockedEnforce: blocked.enforce, latencyMs,
+    perCase: perCase.map(({ id, groundTruth, fired, flagged, blocked, latencyMs, errored }) => ({
+      id, groundTruth, rules: fired.map((f) => f.ruleId), flagged, blockedEnforce: blocked.enforce, latencyMs, ...(errored ? { errored: true } : {}),
     })),
-    overrides: { standIn: overrideStats(standInEvents(det.name, perCase)) },
+    overrides: { standIn: overrideStats(standInEvents(det.name, perCase, ruleModes)) },
   };
 }
 
@@ -123,6 +176,7 @@ function corpusSummary(cases, excluded) {
     positives: count((c) => c.groundTruth === 'positive'),
     negatives: count((c) => c.groundTruth === 'negative'),
     evadesBaseline: count((c) => c.evadesBaseline === true),
+    injectionOnlyPositives: cases.filter((c) => c.groundTruth === 'positive' && c.dvaa?.exfilAttempted !== true).map((c) => c.id),
     bySource,
     excluded,
     digest: `sha256:${digest}`,
@@ -163,20 +217,37 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
   if (!t6Present) warnings.push('T6 corpus (captures/variants/manifest.json) not found: scored T1 captures only');
   const scored = {};
   for (const det of detectors) {
+    const drift = det.available ? dvaaDrift(det.provenance) : null;
+    if (drift) {
+      console.error(JSON.stringify({ level: 'WARN', event: 'sentinel.scoring.dvaa_drift', detector: det.name, message: drift }));
+      warnings.push(drift);
+    }
     if (!det.available) {
       scored[det.name] = { kind: det.kind, description: det.description, available: false, unavailableReason: det.unavailableReason, provenance: det.provenance };
       continue;
     }
-    scored[det.name] = scoreDetector(det, runDetector(det, cases, { iterations, ruleModes }), cases);
+    scored[det.name] = scoreDetector(det, runDetector(det, cases, { iterations, ruleModes }), cases, ruleModes);
   }
   const bb = beatsBaseline(cases, scored);
   if (bb.baselineMismatch.length) warnings.push(`dvaa-baseline flagged case(s) T6 labels evadesBaseline=true: ${bb.baselineMismatch.join(', ')}`);
   const errorCount = Object.values(scored).reduce((n, s) => n + (s.errors?.length ?? 0), 0);
 
   const h = scored[headline];
-  const hm = h?.available ? h.modes.enforce.blocking : null;
-  const top = hm
-    ? {
+  const hErrors = h?.available ? h.errors.length : 0;
+  const hm = h?.available && hErrors === 0 ? h.modes.enforce.blocking : null;
+  const nullHeadline = (detector, status) => ({
+    // No invented numbers: the SentinelProxy headline stays empty unless its detector scored every case.
+    headline: { detector, mode: 'enforce', metric: 'blocking', status },
+    detectionRate: null,
+    recall: null,
+    precision: null,
+    falsePositiveRate: null,
+    latencyMs: { median: null, p95: null },
+    counts: null,
+  });
+  let top;
+  if (hm) {
+    top = {
       headline: { detector: headline, mode: 'enforce', metric: 'blocking', status: 'ok' },
       detectionRate: hm.recall,
       recall: hm.recall,
@@ -184,17 +255,15 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
       falsePositiveRate: hm.falsePositiveRate,
       latencyMs: { median: h.latencyMs.median, p95: h.latencyMs.p95 },
       counts: { attack: hm.positives, benign: hm.negatives, fp: hm.fp, fn: hm.fn },
-    }
-    : {
-      // No invented numbers: the SentinelProxy headline stays empty until its detector is scorable.
-      headline: { detector: null, mode: 'enforce', metric: 'blocking', status: `awaiting ${headline}: ${h?.unavailableReason ?? 'not configured'}` },
-      detectionRate: null,
-      recall: null,
-      precision: null,
-      falsePositiveRate: null,
-      latencyMs: { median: null, p95: null },
-      counts: null,
     };
+  } else if (hErrors > 0) {
+    // A detector that errored on any case gets no headline (T5 reads the file, not the exit code). Its
+    // per-detector numbers below still count each errored case as a failure.
+    top = nullHeadline(headline, `error: ${hErrors} of ${cases.length} cases errored in ${headline}`);
+    warnings.push(`headline detector ${headline} errored on ${hErrors} case(s): headline withheld`);
+  } else {
+    top = nullHeadline(null, `awaiting ${headline}: ${h?.unavailableReason ?? 'not configured'}`);
+  }
 
   return {
     schema: RESULTS_SCHEMA,

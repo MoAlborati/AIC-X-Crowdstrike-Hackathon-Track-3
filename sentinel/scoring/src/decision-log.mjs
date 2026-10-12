@@ -97,15 +97,19 @@ export function overrideStats(events) {
 
 /**
  * Stand-in events from a scored enforce-mode run (until S5): fire for every fired rule; for each rule that
- * would block, a hold, then a simulated human side-channel approve (benign case) or deny (attack case).
+ * actually holds in enforce mode, a hold, then a simulated human side-channel approve (benign case) or
+ * deny (attack case). A rule holds iff it is fail-closed (alwaysEnforce), or it would block and is not set
+ * report-only in `ruleModes` (the same rule the harness uses for enforce-mode blocking). A report-only
+ * rule only alerts, so it gets a fire and no hold/approve/deny.
  */
-export function standInEvents(detectorName, caseResults) {
+export function standInEvents(detectorName, caseResults, ruleModes = {}) {
   const out = [];
   for (const r of caseResults) {
     for (const f of r.fired) {
       const base = { ruleId: f.ruleId, caseId: r.id, detector: detectorName, simulated: true };
       out.push({ ...base, event: 'fire' });
-      if (!f.wouldBlock && !f.alwaysEnforce) continue;
+      const holds = f.alwaysEnforce || (f.wouldBlock && ruleModes[f.ruleId] !== 'report-only');
+      if (!holds) continue;
       out.push({ ...base, event: 'hold' });
       out.push({
         ...base,
