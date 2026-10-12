@@ -178,7 +178,7 @@ headline_cmd() {
   jq -r '
     def pct: (. * 1000 | round) as $x | "\($x / 10 | floor).\($x % 10)%";
     .detectors as $d | .headlineLenses as $h | .counts as $c |
-    "corpus: \($c.attack) attack + \($c.benign) benign cases, scored against DVAA ground-truth labels",
+    "corpus: \($c.attack) attack + \($c.benign) benign cases, labelled by DVAA ground truth (T1 captures) and the published benchmarks (T6)",
     "",
     "                         T3 (SentinelProxy)          DVAA baseline",
     "  detection (any finding)  recall \($h.detection.recall|pct)  FP \($h.detection.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.anyFinding.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate|pct)",
@@ -189,7 +189,8 @@ headline_cmd() {
   # Every number AND every comparison in the static Beat 7 spoken line, asserted against the file it comes from,
   # so the line can never go false silently (it FAILS this row instead). One check per claim, named on failure.
   local claims=(
-    '189 attacks and 164 benign runs|.counts.attack == 189 and .counts.benign == 164'
+    '189 attacks and 164 benign cases|.counts.attack == 189 and .counts.benign == 164'
+    'labelled by DVAA ground truth and the published benchmarks|(.corpus.bySource | has("t1-capture") and has("t6-variant"))'
     'we detect more than DVAA (detection recall)|.headlineLenses.detection.recall > $b.anyFinding.recall'
     '"slightly" more: lead under 5 points|(.headlineLenses.detection.recall - $b.anyFinding.recall) < 0.05'
     'zero false alarms (detection + prevention)|.headlineLenses.detection.fp == 0 and .headlineLenses.prevention.fp == 0'
@@ -630,7 +631,7 @@ advance
 # ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
-  say "From the committed scoring run, against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+  say "From the committed scoring run, on 189 attacks and 164 benign cases, labelled by DVAA's ground truth and the published benchmarks. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
   say "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
   say "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data. SentinelProxy is an exfil-focused guardrail for tool-using agents. Thank you."

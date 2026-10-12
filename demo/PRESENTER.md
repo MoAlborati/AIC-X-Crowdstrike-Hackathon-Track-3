@@ -93,14 +93,14 @@ Screen: `false` + the AIM denial reason.
 
 **2:05 · Beat 6 How it works** · slide 7 (field → mechanism → rule) · cut this first if you're running long
 > "We borrowed two controls from fields that already solved the confused deputy. Banks check the payee before money
-> moves, so we block any destination that came only from untrusted content. And a dead-man switch fails closed: if our
+> moves, so our egress guard denies any destination that isn't on the allowlist. And a dead-man switch fails closed: if our
 > scanner times out or the input is too big, egress is denied and we raise an alert."
 
 **2:20 · Beat 7 Outcome + "we attacked ourselves" + close** · **Enter**, then slides 8 → 10 · fallback: read the numbers off the slide
 
 The terminal prints the T3 vs DVAA table: detection recall 67.7% vs 65.6%, prevention 41.8% vs 63.0%, benign FP 0/164 vs 21/164,
 `8KB evasion: 2/2`, latency median 0.082 ms / p95 ~0.4 ms.
-> "From the committed scoring run, against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "From the committed scoring run, on 189 attacks and 164 benign cases, labelled by DVAA's ground truth and the published benchmarks. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
 
@@ -124,7 +124,7 @@ Running long? Cut the benign pass in Beat 4 first, then Beat 6, then shrink 3b. 
 - **3A OpsBot (Path A).** Run `node track3a/run-demo.mjs` (about 2 s). It prints the layering table: Undefended
   LEAKED ×2 … Hardened + proxy + egress all blocked, benign OK. Fallback: `open track3a/RESULTS.md` (the committed table).
 - **Live egress.** `scripts/egress-demo.sh both` takes about a minute and runs on its own compose stack.
-- **SOC handoff (optional, if available).** This is open PR #86, `soc-handoff`. If it has merged, `scripts/soc-handoff.sh`
+- **SOC handoff (optional).** PR #86 (`soc-handoff`) is merged: `scripts/soc-handoff.sh`
   sends the Track 3 alerts to Track 1's SOC Brief, which turns them into a plain-English analyst brief (offline, no
   LLM key). It prints the brief and also writes `.eval/soc-handoff/brief.md`. If it hasn't merged, skip it.
 

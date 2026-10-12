@@ -139,7 +139,7 @@ and response-side tripwires are alert-only for prevention (the reply is withheld
 
 | Field | Control it already uses | Our rule |
 |---|---|---|
-| Payments fraud | Confirmation of Payee: check the payee before money moves | **Destination provenance:** a destination that appears only in untrusted tool output → BLOCK `payee_not_confirmed` |
+| Payments fraud | Confirmation of Payee: check the payee before money moves | **Destination provenance + egress allowlist:** a destination that appears only in untrusted content raises `payee_not_confirmed` (blocks request-side only together with `injection_markers` or a staged secret); the egress guard denies any non-allowlisted host |
 | Agency law / OAuth | Limited power of attorney: the agent can't exceed what the principal granted | **User-turn mandate:** `{tool, destination, max_amount, expires}` derived only from the user's turn, and content can't widen it |
 | Counterintelligence / reliability engineering | Dead-man switch: silence means stop | **Fail-closed:** timeout, crash or oversize input → deny egress + ALERT. Full-payload scan, never truncated |
 
@@ -161,17 +161,17 @@ DVAA's 8KB head+tail baseline.
 
 | | T3 (SentinelProxy) | DVAA baseline |
 |---|---|---|
-| Detection recall (any finding) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
-| Prevention recall (pre-forward) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
-| Prevention where data actually leaves (exfil positives) | `<<METRIC>>` (57/71 as of RESULTS.md now) | `<<METRIC>>` (64/71) |
-| 8KB evasion | `<<METRIC>>`/2 fixtures | — |
-| Corpus | `<<METRIC: N attack + M benign cases>>` | |
+| Detection recall (any finding) · benign FP | 67.7% · 0.0% | 65.6% · 12.8% |
+| Prevention recall (pre-forward, detector only; egress not in the harness) · benign FP | 41.8% · 0.0% | 63.0% · 12.8% |
+| Prevention where data actually leaves (exfil positives) · benign blocked | 57/71 · 0/164 | 64/71 · 21/164 |
+| 8KB evasion | 2/2 fixtures | 0/2 |
+| Corpus | 189 attack + 164 benign cases | |
 | In-detector latency | median under a tenth of a millisecond, p95 around half a millisecond | |
 
 Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `sentinel/scoring/RESULTS.md`) after the
 15:00 rescore. Beat 7 of `run-demo.sh` prints them.
 
-- Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment. Benign FP is measured on the
+- Caption: "Labels: DVAA's `dvaa{}` ground truth for the 11 T1 captures, the published benchmarks' labels for the other 342, not our own judgment. Benign FP is measured on the
   164-case benign corpus."
 
 **Speaker notes**
@@ -188,7 +188,7 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 ---
 
-**Scope (say it if asked about generalization):** "SentinelProxy stops prompt-injection-driven exfiltration and tool misuse. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
+**Scope (say it if asked about generalization):** "SentinelProxy is designed to stop prompt-injection-driven exfiltration and tool misuse; it prevents 57 of 71 exfil attempts in our corpus. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
 
 ---
 

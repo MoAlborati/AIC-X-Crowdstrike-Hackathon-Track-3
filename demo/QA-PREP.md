@@ -62,8 +62,9 @@ the "False negatives" list. PR #46 has the before/after rescore table.
 **2. "The document arrived in the user turn. Isn't this just an input filter?"**
 "No. We decide on provenance, not keywords. The mandate is derived only from the principal's own words, and any
 document pasted inside that turn is treated as untrusted content. If that content asks to send data to a
-destination the user never named, it's `payee_not_confirmed`: Confirmation of Payee for agents. Replace the canary URL
-with any other host and the request is still blocked before it's forwarded. When the agent reads the document
+destination the user never named, it raises `payee_not_confirmed`: Confirmation of Payee for agents. On its own that
+raises risk and never blocks; request-side, it blocks only together with `injection_markers` or a staged secret (PR #46).
+The unconditional destination block is the egress allowlist. When the agent reads the document
 inside its own process, the block happens at the egress guard on the tool boundary, which never sees the prompt."
 **Proof:** `sentinel/detectors/src/mandate.js` (header: "principal turns, excluding untrusted segments embedded in
 them"). `test/taint.test.js` RAGBot test (reason codes `injection_markers` and `payee_not_confirmed`, with no
@@ -71,6 +72,13 @@ honeytoken needed). `test/mandate.test.js` ("content can never widen the grant")
 *Honest edge case:* if every destination is removed, there's nowhere to exfiltrate to, so the request only raises an
 alert. The recorded contrast block came from the shipped T3 detector, not a simplified inspector
 (`captures/contrast/runs/run-meta.json`: `inspector: detector:sentinel-t3`, `inspector_config_is_standin: false`).
+
+**2b. "So is it just keyword matching?"**
+"At the request proxy, mostly yes, and we won't pretend otherwise. One phrasing rule carries all 79 scored
+preventions, and when a teammate rewrote an exfil instruction 22 plain ways, the proxy blocked 1 of 22. 'Destination,
+not wording' holds only at the egress guard: it decides on the destination host, so wording, spacing and homoglyphs
+don't matter there. The residual risk is a host the operator allowlisted."
+**Proof:** `results.json` perCase (all 79 fire `inbound.exfil_instruction`); creative pass 2 on #105; issue #112 (critic B).
 
 **3. "The dashboard says Blocked, but the canary got the data?"**
 "Those are two different runs. In the unprotected run SentinelProxy only observes. DVAA runs tools inside its own
@@ -113,7 +121,7 @@ alerts. Nothing is ever forwarded unscanned. At
 egress, an oversized payload, too many layers of encoding, or a scan timeout gets denied, even in observe mode. We
 scan the full payload, so no limit ever leads to a decision made on partial data."
 **Proof:** the proxy's `maxRequestBytes` of 1 MiB (`sentinel/proxy/README.md`). The egress limits `MAX_EGRESS_BYTES=65536`
-and `SCAN_BUDGET_MS=250`. The 40 ms detector budget (PR #42). The "Bounds" section of `docs/ARCHITECTURE.md` (PR #47).
+and `SCAN_BUDGET_MS=250`. The detector's fail-closed time budget is 4000 ms (`sentinel/detectors/src/bounds.js`); 40 ms is only a performance-test target (PR #42). The "Bounds" section of `docs/ARCHITECTURE.md` (PR #47).
 
 **8. "How would you deploy this for real?"**
 "In two places. A sidecar reverse proxy goes in front of the agent's chat endpoint, and an egress forward proxy is
@@ -140,8 +148,8 @@ Finally, there's no live LLM in the demo, and no Falcon API integration."
 **11. "Your prevention recall is 41.8% and DVAA's is 63.0%. Isn't theirs just better at stopping attacks?"**
 "On that number, yes, theirs is higher, and we say so. (On detection we're now slightly ahead.) But the two figures count different things. DVAA's
 'prevention' is a scanner hit on the request, and it comes with a 12.8% benign false-positive rate. Ours counts only
-what is actually stopped before the agent acts: a pre-forward block or an egress deny, plus a withheld reply in block
-mode. Alert-only findings count as detection, never as prevention. On the 164-case benign corpus that number carries
+what the detector stops before the agent acts: a pre-forward block, plus a withheld reply in block mode. The egress
+guard isn't in the scoring harness, so egress denies are not in the 41.8%; they're shown by the live egress check. Alert-only findings count as detection, never as prevention. On the 164-case benign corpus that number carries
 0 false positives."
 **Proof:** RESULTS.md headline table (both lenses, both detectors) and the "Honest lenses" paragraph. Re-read the
 figures after the 15:00 rescore.
@@ -158,7 +166,7 @@ LLM in the loop, so a real model call dwarfs them."
 memo quoting an injection phrase, the same as before #46.
 4 of the 32 raise an alert, not a block. On 16 paraphrased held-out attacks, we detect 14 and block 1. PR #46 raised detection from 2 to 14 with alert-only structural signals; it
 did not add blocks. That 14 of 16 is optimistic: on an independent reviewer's 6 further paraphrases, 1 was detected,
-so recall on novel phrasings is limited. A larger held-out set from public data is still pending, so we don't quote it."
+so recall on novel phrasings is limited. On the larger public held-out set (600 attacks, 400 benign) we detect 28.5% and prevent 0%: see #16."
 **Proof:** PR #46, "Held-out (hand-written, not corpus)" table, with no post-hoc tuning.
 
 **14. "What about streaming responses and multi-turn conversations?"**
@@ -198,4 +206,4 @@ classifier such as Prompt Guard."
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md, and we attacked ourselves:** 0% held-out prevention, spaced-IBAN bypass. Default-deny egress is the control that blocks.
-6. **Scope:** we stop injection-driven exfiltration and tool misuse; generic jailbreaks are for a classifier such as Prompt Guard.
+6. **Scope:** we are designed to stop injection-driven exfiltration and tool misuse (57 of 71 exfil attempts prevented in our corpus); generic jailbreaks are for a classifier such as Prompt Guard.

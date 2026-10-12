@@ -255,10 +255,11 @@ block mode they **withhold the reply** (T3-fix #56), so the secret never reaches
 ### Beat 6 — How it works (2:05–2:20) · Slide 7
 
 > "We borrowed two controls from fields that already solved the confused deputy. Banks check the payee before money
-> moves, so we block any destination that came only from untrusted content. And a dead-man switch fails closed: if our
+> moves, so our egress guard denies any destination that isn't on the allowlist. And a dead-man switch fails closed: if our
 > scanner times out or the input is too big, egress is denied and we raise an alert."
 
-*Honest framing if asked:* one pre-forward rule (`inbound.exfil_instruction`) carries all 79 scored preventions; the
+*Honest framing if asked:* request-side, `payee_not_confirmed` raises risk but never blocks alone (it blocks only with
+`injection_markers` or a staged secret, PR #46); the only unconditional destination block is the egress allowlist. One pre-forward rule (`inbound.exfil_instruction`) carries all 79 scored preventions; the
 honeytoken, provenance and taint layers are tripwires and alerts. The honeytokens are DVAA's own known secrets, so call
 them a "known-secret tripwire".
 
@@ -277,14 +278,14 @@ plus the evasion result. Every number is read from the committed `sentinel/scori
   in-detector latency: median 0.082 ms, p95 0.42 ms over 353 cases
 ```
 
-(Values above are as of `results.json` on origin/main `a37e430` (after T3-recall #46): 189 attack + 164 benign cases.
+(Values above are as of `results.json` built at t3 `2976fed`, 20:10:38Z (after T3-recall #46): 189 attack + 164 benign cases.
 The spoken line is static, so the presenter can read it here word for word. **Every number and every comparison in
 it** ("we detect slightly more", "zero false alarms … versus its 21", "DVAA prevents more, 63 versus 42", "12.8
 percent", "57 of 71" vs DVAA "64 of 71" exfil prevented, "0 of 164" vs "21 of 164" legitimate requests blocked, "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
 Beat 7 FAILS naming the claim if the file no longer supports it. The held-out "600 ... prevent zero" line is checked
 against `captures/holdout-hf/RESULTS.md`. Then update the line in `run-demo.sh` and here together.)
 
-> "From the committed scoring run, against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "From the committed scoring run, on 189 attacks and 164 benign cases, labelled by DVAA's ground truth and the published benchmarks. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
 

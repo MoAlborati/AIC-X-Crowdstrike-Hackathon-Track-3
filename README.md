@@ -4,14 +4,15 @@
 
 CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
 model and tools. It turns an indirect prompt injection that tries to exfiltrate data or misuse a tool into an AIDR-shaped alert, mapped to MITRE
-ATLAS and OWASP, and it blocks the attacks it catches before forwarding or at egress. We complement Falcon AIDR at the tool
+ATLAS and OWASP, and it is designed to block exfil before forwarding or at egress. It does not block everything it catches: in our
+corpus it detects 128 of 189 attacks and prevents 79, including 57 of 71 exfil attempts. We complement Falcon AIDR at the tool
 boundary; we have not integrated with it. Our target is **DVAA** (Damn
 Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox, run offline on
 `127.0.0.1`. **Deterministic sandbox, no LLM:** DVAA answers with canned responses, so nothing here has been tested
 against a live model that paraphrases, splits or encodes its exfil. This is an authorized hackathon project, and all
 of the work is defensive.
 
-**Scope.** SentinelProxy stops prompt-injection-driven *exfiltration and tool misuse*. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
+**Scope.** SentinelProxy is designed to stop prompt-injection-driven *exfiltration and tool misuse*; it prevents 57 of 71 exfil attempts in our corpus. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
 
 ## The problem
 
@@ -86,7 +87,7 @@ More detail is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart
 
-You need Node 22 or newer (24 preferred), Docker with compose v2, git, curl and python3. No API keys are
+You need Node 22 or newer (24 preferred; Path A, `track3a/`, needs Node 24 or newer and exits 2 on older Node), Docker with compose v2, git, curl and python3. No API keys are
 needed and no LLM is called.
 
 ```bash
