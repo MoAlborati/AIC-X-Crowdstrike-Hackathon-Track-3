@@ -8,6 +8,6 @@
   "scripts": {
     "start": "node server.mjs",
     "fixtures": "node fixtures/make-placeholders.mjs",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   }
 }

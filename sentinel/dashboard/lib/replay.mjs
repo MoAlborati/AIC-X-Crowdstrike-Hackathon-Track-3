@@ -157,10 +157,11 @@ export function buildReplay(capture, alerts, extra = {}) {
       toolResultNode.set(tr.toolCallId, id);
       if (toolCallNode.has(tr.toolCallId)) e.push(addEdge(toolCallNode.get(tr.toolCallId), id));
     }
-    // A result feeds the agent turn after the one that requested it.
+    // A result feeds the agent turn after the one that requested it. If the capture recorded no later
+    // turn, there is no consumer to draw. (Drawing it back into the requesting turn made a loop per
+    // result, which for a 200-call chain buried the graph in 199 backward arcs.)
     const exIdx = tr.toolCallId != null && toolCallExchange.has(tr.toolCallId) ? toolCallExchange.get(tr.toolCallId) : -1;
-    const next = nodeById.has(`assistant:${exIdx + 1}`) ? `assistant:${exIdx + 1}` : `assistant:${Math.max(0, exIdx)}`;
-    e.push(addEdge(id, next));
+    if (nodeById.has(`assistant:${exIdx + 1}`)) e.push(addEdge(id, `assistant:${exIdx + 1}`));
     step('tool_result', `${n.label} · ${n.bytes.toLocaleString('en-US')} B`, [id], e);
   }
 
