@@ -5,6 +5,7 @@
 // MITRE ATT&CK technique per activity. Agent alerts carry their own ATLAS id instead.
 const ATTACK = {
   phishing: 'T1566',
+  account_lure: 'T1566',
   malware_lure: 'T1204',
   webshell: 'T1505.003',
   privilege_escalation: 'T1548',
@@ -19,6 +20,7 @@ const STAGE = {
   recon_scan: 'recon',
   web_scan: 'recon',
   phishing: 'initial-access',
+  account_lure: 'initial-access',
   malware_lure: 'initial-access',
   auth_failure: 'credential-access',
   webshell: 'persistence',
@@ -30,6 +32,7 @@ const STAGE = {
 // One extra "what it means" tag for activities whose name alone undersells them.
 const EXTRA = {
   phishing: 'credential-theft',
+  account_lure: 'credential-theft',
   malware_lure: 'malware',
   ai_agent_exfil: 'prompt-injection',
   routine_maintenance: 'noise',
