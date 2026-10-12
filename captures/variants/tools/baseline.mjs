@@ -1,36 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Portions of this file (DETECTION_EDGE, WORD_CHAR, detectionTextReplica, the
+// ATTACK_PATTERNS_REPLICA regexes, and detectAttacksReplica) are copied from
+// damn-vulnerable-ai-agent (DVAA), src/core/vulnerabilities.js, at commit
+// 57918267d8d529ceec6d40fc9836ab09d128eee4.
+//   Copyright OpenA2A (https://github.com/opena2a-org/damn-vulnerable-ai-agent)
+//   Licensed under the Apache License, Version 2.0 (the "License"); you may not
+//   use this file except in compliance with the License. You may obtain a copy
+//   of the License at http://www.apache.org/licenses/LICENSE-2.0
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+//   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// MODIFICATIONS (Apache-2.0 §4(b)): this is a SUBSET of DVAA's ATTACK_PATTERNS
+// (only the promptInjection and dataExfiltration categories); identifiers were
+// renamed with a "Replica" suffix; the loader, scanFull(), and the parity
+// helpers below are new code written for this repo.
 /**
- * DVAA 8KB head/tail baseline bridge — REAL SEAM for T6 evasion proof.
+ * DVAA 8KB head/tail baseline bridge — REAL SEAM for the T6 evasion proof.
  *
  * SentinelProxy is a DEFENSIVE detector. This module lets the T6 corpus prove,
  * against DVAA's own baseline scanner, that an evasion variant slips past the
- * 8KB head/tail window while still carrying a live exfil signal (the thing our
+ * 8KB head/tail window while still carrying an exfil signal (the thing our
  * full-payload detector, T3, must catch).
  *
- * Primary path (real seam): dynamically import DVAA's shipped
- * `src/core/vulnerabilities.js` — `detectAttacks()` and `detectionText()` — from
- * a real DVAA checkout. Resolution order:
- *   1. $DVAA_SRC               (explicit override: path to DVAA repo root)
- *   2. the pinned clone recorded by T1 (scratchpad), if present
- * Fallback path (offline/CI, no DVAA checkout): a faithful, attributed replica
- * of DETECTION_EDGE + detectionText + the two ATTACK_PATTERNS categories the
- * corpus exercises (promptInjection, dataExfiltration). The replica is a subset
- * and is clearly labelled as such in `source`.
+ * Real path: dynamically import DVAA's shipped `src/core/vulnerabilities.js`
+ * from a DVAA checkout. Resolution order (first hit wins):
+ *   1. $DVAA_SRC                       explicit path to a DVAA repo root
+ *   2. $DVAA_DIR                       the dir scripts/setup-dvaa.sh clones into
+ *   3. ${TMPDIR:-/tmp}/dvaa-target     setup-dvaa.sh's default clone dir
+ * Get a checkout with:  scripts/setup-dvaa.sh clone
  *
- * Provenance of the replica: copied verbatim from
- *   damn-vulnerable-ai-agent @ 57918267d8d529ceec6d40fc9836ab09d128eee4
- *   src/core/vulnerabilities.js  (DETECTION_EDGE, detectionText, ATTACK_PATTERNS)
- * DVAA is the organizer-provided, intentionally-vulnerable training sandbox.
+ * Fallback (no checkout): an attributed replica subset (above). It is never
+ * used silently: `source` is "replica-subset", tests print an explicit
+ * "SKIPPED real-DVAA" line, and DVAA_REQUIRE_REAL=1 turns a missing checkout
+ * into a thrown error (use it in CI / on the demo machine).
+ * DVAA_SRC=replica forces the fallback (parity checks).
  */
 
 import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
-const PINNED_CLONE =
-  '/tmp/claude-1000/-home-gingy-crowdstrike/8b7285cd-421f-4ce5-bd06-21e5e39a65eb/scratchpad/dvaa';
+export const DVAA_PIN = '57918267d8d529ceec6d40fc9836ab09d128eee4';
+const VULN_REL = 'src/core/vulnerabilities.js';
 
-// --- Faithful replica (subset) ------------------------------------------------
-// Verbatim from DVAA src/core/vulnerabilities.js @ 5791826.
+// --- Replica (subset), copied from DVAA src/core/vulnerabilities.js @ 5791826 ---
 const DETECTION_EDGE = 8 * 1024;
 const WORD_CHAR = /\w/;
 
@@ -44,9 +60,8 @@ function detectionTextReplica(input) {
   return `${text.slice(0, headEnd)}\n\u0000\n${text.slice(tailStart)}`;
 }
 
-// Subset of ATTACK_PATTERNS the corpus exercises (promptInjection + dataExfiltration),
-// copied verbatim. Other categories are omitted in the replica only.
-const ATTACK_PATTERNS_REPLICA = {
+// Subset of ATTACK_PATTERNS (promptInjection + dataExfiltration), copied verbatim.
+export const ATTACK_PATTERNS_REPLICA = {
   promptInjection: [
     /ignore.{0,200}(?:previous|above|prior|all).{0,200}instruction/i,
     /disregard.{0,200}(?:previous|system|safety)/i,
@@ -70,50 +85,107 @@ const ATTACK_PATTERNS_REPLICA = {
   ],
 };
 
-function detectAttacksReplica(input) {
-  const detected = {};
-  const text = detectionTextReplica(input);
-  for (const [category, patterns] of Object.entries(ATTACK_PATTERNS_REPLICA)) {
-    detected[category] = patterns.some((p) => p.test(text));
-  }
-  return {
-    ...detected,
-    hasAttack: Object.values(detected).some((v) => v),
-    categories: Object.entries(detected).filter(([, v]) => v).map(([k]) => k),
+function makeDetect(patterns, cut) {
+  return (input) => {
+    const detected = {};
+    const text = cut(input);
+    for (const [category, list] of Object.entries(patterns)) {
+      detected[category] = list.some((p) => p.test(text));
+    }
+    return {
+      ...detected,
+      hasAttack: Object.values(detected).some((v) => v),
+      categories: Object.entries(detected).filter(([, v]) => v).map(([k]) => k),
+    };
   };
 }
 
+const detectAttacksReplica = makeDetect(ATTACK_PATTERNS_REPLICA, detectionTextReplica);
+const asText = (input) => (typeof input === 'string' ? input : String(input ?? ''));
+
 // --- Loader -------------------------------------------------------------------
-function dvaaRoot() {
-  const env = process.env.DVAA_SRC;
-  if (env === 'replica') return null; // force the offline fallback (used by CI parity checks)
-  if (env && fs.existsSync(path.join(env, 'src/core/vulnerabilities.js'))) return env;
-  if (fs.existsSync(path.join(PINNED_CLONE, 'src/core/vulnerabilities.js'))) return PINNED_CLONE;
-  return null;
+/** Candidate DVAA roots in resolution order (no hardcoded machine paths). */
+export function dvaaCandidates(env = process.env) {
+  // An explicit $DVAA_SRC is the ONLY candidate: a bad path must fail, not fall through to a default.
+  if (env.DVAA_SRC && env.DVAA_SRC !== 'replica') return [{ from: '$DVAA_SRC', root: env.DVAA_SRC }];
+  const out = [];
+  if (env.DVAA_DIR) out.push({ from: '$DVAA_DIR', root: env.DVAA_DIR });
+  out.push({ from: 'setup-dvaa.sh default', root: path.join(env.TMPDIR || os.tmpdir() || '/tmp', 'dvaa-target') });
+  if (!env.TMPDIR) out.push({ from: 'setup-dvaa.sh default', root: '/tmp/dvaa-target' });
+  return out;
+}
+
+function gitHead(root) {
+  try {
+    return execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function resolveRoot(env) {
+  if (env.DVAA_SRC === 'replica') return { root: null, reason: 'DVAA_SRC=replica forces the replica' };
+  const tried = [];
+  for (const c of dvaaCandidates(env)) {
+    if (fs.existsSync(path.join(c.root, VULN_REL))) return { root: c.root, from: c.from };
+    tried.push(`${c.from}=${c.root}`);
+  }
+  if (env.DVAA_SRC) {
+    // An explicit path that does not resolve is an error, never a quiet fallback.
+    throw new Error(`DVAA_SRC=${env.DVAA_SRC} has no ${VULN_REL}`);
+  }
+  return { root: null, reason: `no DVAA checkout found (tried ${tried.join(', ')}); run scripts/setup-dvaa.sh clone or set DVAA_SRC` };
 }
 
 /**
- * Returns { detectAttacks, detectionText, DETECTION_EDGE, source }.
- * `source` is "dvaa-real" (real seam) or "replica-subset" (offline fallback).
+ * Returns { detectAttacks, detectionText, scanFull, DETECTION_EDGE, ATTACK_PATTERNS,
+ *           source, root, commit, pinMatch, reason }.
+ * `source` is "dvaa-real" (real seam) or "replica-subset" (fallback).
+ * `scanFull(text)` applies the same patterns to the WHOLE text (no head/tail cut).
+ * Throws when DVAA_REQUIRE_REAL=1 and no real checkout at the pinned commit is found.
  */
-export async function loadBaseline() {
-  const root = dvaaRoot();
+export async function loadBaseline(env = process.env) {
+  const requireReal = env.DVAA_REQUIRE_REAL === '1';
+  const { root, from, reason } = resolveRoot(env);
   if (root) {
-    const mod = await import(pathToFileURL(path.join(root, 'src/core/vulnerabilities.js')).href);
+    const mod = await import(pathToFileURL(path.join(root, VULN_REL)).href);
+    const commit = gitHead(root);
+    const pinMatch = commit === DVAA_PIN;
+    if (requireReal && !pinMatch) {
+      throw new Error(`DVAA_REQUIRE_REAL=1 but ${root} is at ${commit ?? 'unknown commit'}, expected ${DVAA_PIN}`);
+    }
     return {
       detectAttacks: mod.detectAttacks,
       detectionText: mod.detectionText,
+      scanFull: makeDetect(mod.ATTACK_PATTERNS, asText),
       DETECTION_EDGE: mod.DETECTION_EDGE,
+      ATTACK_PATTERNS: mod.ATTACK_PATTERNS,
       source: 'dvaa-real',
       root,
+      from,
+      commit,
+      pinMatch,
+      reason: null,
     };
   }
+  if (requireReal) throw new Error(`DVAA_REQUIRE_REAL=1 but ${reason}`);
+  return replicaBaseline(reason);
+}
+
+/** The replica, independent of environment (used by the generator for byte-stable output). */
+export function replicaBaseline(reason = 'replica requested') {
   return {
     detectAttacks: detectAttacksReplica,
     detectionText: detectionTextReplica,
+    scanFull: makeDetect(ATTACK_PATTERNS_REPLICA, asText),
     DETECTION_EDGE,
+    ATTACK_PATTERNS: ATTACK_PATTERNS_REPLICA,
     source: 'replica-subset',
     root: null,
+    from: null,
+    commit: null,
+    pinMatch: null,
+    reason,
   };
 }
 

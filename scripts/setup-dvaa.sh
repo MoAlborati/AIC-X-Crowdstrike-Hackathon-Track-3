@@ -12,6 +12,9 @@
 # path on this machine (Dockerfile pins node:24-alpine by digest).
 #
 # Usage:
+#   scripts/setup-dvaa.sh clone   # clone/checkout the pinned source only (no Docker); used by the
+#                                 # T6 corpus tests' real-DVAA seam (captures/variants/tools/baseline.mjs
+#                                 # finds it at $DVAA_DIR, default ${TMPDIR:-/tmp}/dvaa-target)
 #   scripts/setup-dvaa.sh up      # clone (if needed), build, start, health-check
 #   scripts/setup-dvaa.sh down    # stop + remove the fleet
 #   scripts/setup-dvaa.sh health  # health-check the running fleet
@@ -38,6 +41,7 @@ clone() {
   git -C "$DVAA_DIR" fetch --all --tags
   git -C "$DVAA_DIR" checkout "$DVAA_PIN"
   echo "DVAA checked out at $(git -C "$DVAA_DIR" rev-parse --short HEAD)"
+  echo "Corpus tests: DVAA_SRC=$DVAA_DIR DVAA_REQUIRE_REAL=1 node --test captures/variants/tests/*.test.mjs"
 }
 
 up() {
@@ -70,8 +74,9 @@ down() {
 }
 
 case "${1:-up}" in
+  clone) clone ;;
   up) up ;;
   down) down ;;
   health) health ;;
-  *) echo "usage: $0 {up|down|health}" >&2; exit 2 ;;
+  *) echo "usage: $0 {clone|up|down|health}" >&2; exit 2 ;;
 esac

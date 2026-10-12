@@ -24,10 +24,15 @@ for (const group of fs.readdirSync(FIX).sort()) {
       scenario: doc.scenario,
       benchmark: doc.source?.benchmark ?? null,
       license: doc.source?.license ?? null,
+      fidelity: doc.source?.fidelity ?? null,
+      caseRef: doc.source?.caseRef ?? null,
+      upstreamSha256: doc.source?.upstream?.sha256 ?? null,
       channel: doc.channel ?? null,
+      payloadRole: doc.channel === 'user_message' ? 'user' : 'tool',
       groundTruth: doc.label.groundTruth,
       expectedVerdict: doc.label.expectedVerdict,
       category: doc.label.category,
+      frameworks: doc.label.frameworks,
       exfilTargetUrl: doc.label.dvaa?.exfilTargetUrl ?? null,
       evadesBaseline: doc.baseline8kb?.evadesBaseline ?? null,
     });
@@ -44,6 +49,14 @@ const manifest = {
     positive: rows.filter((r) => r.groundTruth === 'positive').length,
     negative: rows.filter((r) => r.groundTruth === 'negative').length,
     evasionMiddle: rows.filter((r) => r.evadesBaseline === true).length,
+    byChannel: Object.fromEntries(
+      ['user_message', 'tool_output', 'rag_document'].map((c) => [c, rows.filter((r) => r.channel === c).length]),
+    ),
+  },
+  frameworks: {
+    atlas: 'MITRE ATLAS technique IDs',
+    owaspLlm: 'OWASP Top 10 for LLM Applications 2025',
+    owaspAgentic: 'OWASP Top 10 for Agentic Applications (ASI, Dec 2025)',
   },
   cases: rows,
 };
