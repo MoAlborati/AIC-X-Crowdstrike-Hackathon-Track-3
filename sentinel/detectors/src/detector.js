@@ -21,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveBounds, SentinelBoundError, DetectorOverflowError, ScannerTimeoutError, PolicyError } from './bounds.js';
 import { HoneytokenRegistry } from './honeytokens.js';
 import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './policy.js';
-import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
+import { SessionStore, deriveGrant, verifyGrant, narrowGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
   findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables,
@@ -220,7 +220,10 @@ export function createDetector(opts = {}) {
       u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
-    const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
+    // #126 finding 2 (forged history): the mandate grant comes from clean USER turns only. A client-sent
+    // `system`/`developer` turn is attacker-writable through the proxy (DVAA itself reads only the latest
+    // user turn), so it can never authorize a destination. Those turns are still scanned as principal text.
+    const principalText = principal.filter((p) => p.role === 'user' && !p.suspect).map((p) => p.text).join('\n');
     const shingles = buildShingleIndex(untrusted, bounds.shingleChars);
     ctx.layerMs.taint += performance.now() - ts;
 
@@ -228,6 +231,17 @@ export function createDetector(opts = {}) {
     ts = performance.now();
     session.grant = deriveGrant({ principalText, policy, session, maxGrantEntries: bounds.maxGrantEntries, now: now() });
     if (!verifyGrant(session.grant, session.key)) throw new Error('mandate grant failed HMAC verification');
+    // #126 finding 2: if the LATEST user turn is suspect (injection phrases), every destination it names is
+    // unconfirmed, even when an earlier (possibly forged) turn named it too: the grant is narrowed to drop
+    // them (intersect-only, re-signed). Request-side destination checks and response-side tool calls both
+    // read this grant.
+    const latestUser = principal.findLast((p) => p.role === 'user');
+    if (latestUser?.suspect && session.grant.destinations.length) {
+      const revoked = namedDestinations(latestUser.text);
+      if (session.grant.destinations.some((d) => revoked.has(d))) {
+        session.grant = narrowGrant(session.grant, { destinations: session.grant.destinations.filter((d) => !revoked.has(d)) }, session.key);
+      }
+    }
     const grant = session.grant;
     ctx.layerMs.mandate += performance.now() - ts;
     checkBudget(ctx, 'history');
@@ -868,6 +882,19 @@ function metaTexts(meta) {
   const lines = [];
   for (const [k, v] of Object.entries(meta.headers ?? {})) lines.push(`${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
   if (lines.length) out.push({ label: `${direction} headers`, text: lines.join('\n'), direction });
+  return out;
+}
+
+/** Every destination a text names (URL host, email, IBAN), in raw, homoglyph-folded and spaced-out spellings. */
+function namedDestinations(text) {
+  const out = new Set();
+  const texts = [text, foldConfusables(text)];
+  for (const t of [...texts]) for (const run of findSpacedRuns(t)) texts.push(run.keep, run.compact);
+  for (const t of texts) {
+    for (const x of extractUrls(t)) out.add(x.host);
+    for (const x of extractEmails(t)) out.add(x.email);
+    for (const x of findIbans(t)) out.add(x.iban);
+  }
   return out;
 }
 
