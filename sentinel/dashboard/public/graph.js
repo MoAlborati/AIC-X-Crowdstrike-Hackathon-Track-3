@@ -88,6 +88,16 @@ function fit(label, w) {
 const ICON = { malicious: '⚠', truncated: '⋯', unresolved: '?', not_recorded: '∅', denied: '⛔', exfil_received: '⇥' };
 
 /**
+ * Visible node label (display only). A T4 truncation marker gets a short dedicated label that is
+ * never cut by fit(), so "N omitted" stays readable at the 100 px column width; its full text
+ * ("… N hops omitted (T4 TaintPath cap)") remains in <title> and the detail pane.
+ */
+export function displayLabel(n, w, icon) {
+  if (n.kind === 'truncation_marker' && n.omittedHops != null) return `⋯ ${n.omittedHops} omitted`;
+  return fit(`${icon ? `${ICON[icon]} ` : ''}${n.label}`, w);
+}
+
+/**
  * @param {SVGSVGElement} svg
  * @param {object} replay   /api/replay body
  * @param {{revealed:Set<string>, focus:Set<string>, onSelect:(node)=>void, selected?:string}} view
@@ -172,7 +182,7 @@ export function renderGraph(svg, replay, view) {
     el('rect', { width: p.w, height: p.h, rx: 7, class: 'node-box', filter: flags.has('taint') && shown ? 'url(#taint-glow)' : null }, g);
     const icon = ['malicious', 'truncated', 'unresolved', 'denied', 'exfil_received', 'not_recorded'].find(f => flags.has(f));
     const label = el('text', { x: 8, y: 19, class: 'node-label' }, g);
-    label.textContent = fit(`${icon ? `${ICON[icon]} ` : ''}${n.label}`, p.w);
+    label.textContent = displayLabel(n, p.w, icon);
     const sub = el('text', { x: 8, y: 36, class: 'node-sub' }, g);
     sub.textContent = fit(nodeSubtitle(n), p.w);
     const title = el('title', {}, g);

@@ -1,7 +1,8 @@
 // Dashboard controller. Fetches /api/* and drives the replay player.
 // All capture/alert text is inserted as DOM text nodes (textContent); no data is ever parsed as markup.
 import { renderGraph, fmtBytes, nodeSubtitle } from './graph.js';
-import { viewAt, twinPair, pct } from './replay-view.js';
+import { viewAt, twinPair, latestGate } from './replay-view.js';
+import { headlineView } from './headline-view.js';
 
 const $ = (id) => document.getElementById(id);
 const h = (tag, attrs = {}, ...kids) => {
@@ -17,6 +18,8 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 
 const state = { captures: [], replay: null, step: -1, timer: null, selected: null };
+// Rapid capture switches race their /api/replay fetches; only the newest request may render.
+const replayGate = latestGate();
 
 // ---- theme ------------------------------------------------------------------------------------
 try {
@@ -103,29 +106,24 @@ $('run').addEventListener('change', () => loadReplay());
 
 async function loadScoring() {
   const r = await getJson('/api/scoring');
-  const s = r.body;
-  if (s.available) {
-    $('det-rate').textContent = pct(s.detectionRate);
-    $('fp-rate').textContent = pct(s.fpRate);
-    $('scoring-note').textContent = `T7 scoring · ${s.file}${s.counts ? ` · ${JSON.stringify(s.counts)}` : ''}`;
-  } else {
-    $('det-rate').textContent = 'awaiting T7';
-    $('fp-rate').textContent = 'awaiting T7';
-    $('det-rate').classList.add('pending');
-    $('fp-rate').classList.add('pending');
-    const c = s.corpus ?? {};
-    $('scoring-note').textContent = `${s.error ? `ERROR ${s.error}. ` : 'No scoring results yet; rates are not estimated. '}Corpus on disk: ${c.attack ?? 0} attack, ${c.benign ?? 0} benign, ${c.placeholder ?? 0} placeholder.`;
-  }
+  const v = headlineView(r.body);
+  $('det-rate').textContent = v.det;
+  $('fp-rate').textContent = v.fp;
+  $('det-rate').classList.toggle('pending', v.pending);
+  $('fp-rate').classList.toggle('pending', v.pending);
+  $('scoring-note').textContent = v.note;
 }
 
 // ---- replay -----------------------------------------------------------------------------------
 async function loadReplay(initialStep = 0) {
+  const token = replayGate.begin();
   stop();
   clearBanners();
   const id = $('capture').value;
   const run = $('run').value;
   history.replaceState(null, '', `?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}`);
   const r = await getJson(`/api/replay?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}`);
+  if (!replayGate.isCurrent(token)) return; // a newer loadReplay superseded this one
   if (!r.ok) {
     state.replay = null;
     banner('error', `Replay refused (HTTP ${r.status}).`, boundText(r.body) + (r.body.error ?? ''));

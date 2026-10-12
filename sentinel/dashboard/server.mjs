@@ -24,7 +24,38 @@ const STATIC = new Map([
   ['/graph.js', ['graph.js', 'text/javascript; charset=utf-8']],
   ['/replay-view.js', ['replay-view.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
+  ['/headline-view.js', ['headline-view.js', 'text/javascript; charset=utf-8']],
 ]);
+
+// ---- DNS-rebinding defense -------------------------------------------------------------------
+// The dashboard is loopback-only. Binding 127.0.0.1 alone does not stop DNS rebinding: a page on
+// evil.example can re-point its name at 127.0.0.1 and read /api/* same-origin. The browser still
+// sends `Host: evil.example:<port>`, so every request whose Host is not a loopback name on our own
+// port is refused with 421 before routing. Missing Host (HTTP/1.0 tools) is refused too.
+export const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+/** True iff `hostHeader` names a loopback host on exactly `port` (port may be omitted only for 80). */
+export function isAllowedHost(hostHeader, port) {
+  if (typeof hostHeader !== 'string' || !hostHeader) return false;
+  const m = hostHeader.toLowerCase().match(/^(\[::1\]|[^:\[\]]+)(?::(\d{1,5}))?$/);
+  if (!m) return false;
+  const name = m[1] === '[::1]' ? '::1' : m[1];
+  if (!LOOPBACK_HOSTS.has(name)) return false;
+  const p = m[2] === undefined ? 80 : Number(m[2]);
+  return p === port;
+}
+
+/**
+ * Refuse a non-loopback bind. With the Host allowlist above, a LAN bind could only ever answer 421,
+ * and without it the replay data would be exposed to the network, so there is no useful override.
+ * Throws with a loud message; the CLI prints it and exits 2.
+ */
+export function assertLoopbackBind(host) {
+  if (!LOOPBACK_HOSTS.has(String(host).toLowerCase())) {
+    throw new Error(`refusing to bind --host ${host}: the dashboard is loopback-only (allowed: ${[...LOOPBACK_HOSTS].join(', ')}). ` +
+      'Binding a non-loopback address would expose replay data to the network.');
+  }
+}
 
 /** Build the full replay payload for one capture run. Exported for tests and the CLI. */
 export async function replayPayload(index, id, runKey) {
@@ -89,10 +120,17 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
 }
 
 export function createServer({ roots = defaultRoots() } = {}) {
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     try {
+      const port = server.address()?.port;
+      if (!isAllowedHost(req.headers.host, port)) {
+        console.warn(`[sentinel-dashboard] ALERT refused request with Host ${JSON.stringify(req.headers.host ?? null)} (allowed: loopback:${port}); possible DNS rebinding`);
+        return send(res, 421, { error: 'misdirected request: Host must be 127.0.0.1, localhost or [::1] on this port' });
+      }
       if (req.method !== 'GET') return send(res, 405, { error: 'GET only' });
       const url = new URL(req.url, 'http://localhost');
+      // No favicon asset; answer 204 so the browser console stays clean (index.html also sets data:,).
+      if (url.pathname === '/favicon.ico') return send(res, 204, '');
       if (STATIC.has(url.pathname)) {
         const [file, type] = STATIC.get(url.pathname);
         return send(res, 200, await readFile(path.join(PUBLIC, file)), type);
@@ -119,6 +157,7 @@ export function createServer({ roots = defaultRoots() } = {}) {
       return send(res, 500, { error: err.message });
     }
   });
+  return server;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -128,5 +167,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   };
   const port = Number(arg('--port', process.env.PORT ?? 9100));
   const host = arg('--host', '127.0.0.1');
+  try {
+    assertLoopbackBind(host);
+  } catch (err) {
+    console.error(`[sentinel-dashboard] ERROR ${err.message}`);
+    process.exit(2);
+  }
   createServer().listen(port, host, () => console.log(`SentinelProxy dashboard → http://${host}:${port}`));
 }

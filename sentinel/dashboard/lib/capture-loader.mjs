@@ -19,7 +19,7 @@
 // Text that the capture did NOT record (e.g. the body of the poisoned RAG doc in aim-ab) is never
 // invented. Those nodes carry `recorded:false` and a descriptor naming what is missing.
 
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { enforce } from './bounds.mjs';
@@ -61,11 +61,25 @@ async function manifestCases(dir) {
     throw new CaptureFormatError(path.join(dir, 'manifest.json'), `invalid JSON: ${err.message}`);
   }
   if (!Array.isArray(m?.cases) || !m.cases.every(c => typeof c?.path === 'string')) return null;
-  return m.cases.map(c => {
+  // Containment is checked on real paths, not lexically: a symlink inside the tree that points
+  // outside it counts as an escape, and a relative SENTINEL_CAPTURES_DIR still resolves correctly.
+  const realDir = await realpath(path.resolve(dir));
+  const out = [];
+  for (const c of m.cases) {
     const file = path.resolve(dir, c.path);
-    const inside = file.startsWith(dir + path.sep);
-    return { file, manifestCase: c, error: inside ? null : `manifest path escapes ${dir}: ${c.path}` };
-  });
+    let real;
+    try {
+      real = await realpath(file);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      // Missing target (or dangling symlink): check the lexical path against the real dir, and
+      // leave the "missing" error to the indexer's stat.
+      real = path.resolve(realDir, path.relative(path.resolve(dir), file));
+    }
+    const inside = real.startsWith(realDir + path.sep);
+    out.push({ file, manifestCase: c, error: inside ? null : `manifest path escapes ${dir}: ${c.path}` });
+  }
+  return out;
 }
 
 async function jsonFilesIn(dir, depth) {

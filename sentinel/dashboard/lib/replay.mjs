@@ -309,8 +309,8 @@ export function buildReplay(capture, alerts, extra = {}) {
 
 /**
  * Trust score, documented formula: start at 100 and subtract the highest Severity (0-100, T4)
- * among alerts revealed so far, floor 0. A single Critical (90) leaves 10. `trustAfterStep` gives the
- * gauge value at each timeline step, so the replay animates the drop when the alert lands.
+ * among alerts revealed so far, floor 0. A single Critical (90) leaves 10. `trustAt` in public/replay-view.js
+ * gives the gauge value at each timeline step, so the replay animates the drop when the alert lands.
  */
 export function trustScore(alerts) {
   const max = alerts.reduce((m, a) => Math.max(m, a.severity ?? 0), 0);

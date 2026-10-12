@@ -13,9 +13,10 @@ import { indexCaptures, loadCapture, normalizeCapture, defaultRoots, REPO_ROOT }
 import { adaptAlerts } from '../lib/alert-adapter.mjs';
 import { buildReplay } from '../lib/replay.mjs';
 import { BOUNDS, BoundExceededError } from '../lib/bounds.mjs';
-import { replayPayload, createServer } from '../server.mjs';
-import { layoutGraph } from '../public/graph.js';
-import { viewAt } from '../public/replay-view.js';
+import { replayPayload, createServer, isAllowedHost, assertLoopbackBind } from '../server.mjs';
+import { layoutGraph, displayLabel } from '../public/graph.js';
+import { viewAt, latestGate } from '../public/replay-view.js';
+import { headlineView } from '../public/headline-view.js';
 import { generate, DATA_RICH_ROWS, LONG_PATH_HOPS, policyDocument } from '../fixtures/make-placeholders.mjs';
 import { buildAlert } from '../../alerts/index.js';
 
@@ -381,3 +382,195 @@ test('a manifest case that is missing stays in the capture list with its error (
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ---- PR #11 review follow-ups -----------------------------------------------------------------
+import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { symlink } from 'node:fs/promises';
+
+/** Raw GET with an explicit (or absent) Host header; fetch() does not let us set Host. */
+function rawGet(base, pathname, host) {
+  const { port } = new URL(base);
+  return new Promise((resolve, reject) => {
+    const headers = host === undefined ? {} : { host };
+    const req = http.request({ host: '127.0.0.1', port, path: pathname, method: 'GET', headers, setHost: false }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { body += d; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('DNS rebinding: any Host other than loopback:<port> gets 421 on every route and leaks no capture data', async () => {
+  await withServer(defaultRoots(), async (base) => {
+    const port = Number(new URL(base).port);
+    for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `LOCALHOST:${port}`, `[::1]:${port}`]) {
+      assert.equal((await rawGet(base, '/api/captures', host)).status, 200, host);
+    }
+    const bad = ['evil.example', `evil.example:${port}`, `127.0.0.1.evil.example:${port}`, `localhost.evil.example:${port}`,
+      `127.0.0.1:${port + 1}`, '127.0.0.1', `0.0.0.0:${port}`, `192.168.1.10:${port}`, `127.0.0.1:${port}@evil.example`, ''];
+    for (const host of bad) {
+      for (const p of ['/api/captures', `/api/replay?id=attack/aim-ab.demo`, '/api/scoring', '/', '/app.js', '/health']) {
+        const r = await rawGet(base, p, host);
+        assert.equal(r.status, 421, `${JSON.stringify(host)} ${p}`);
+        assert.doesNotMatch(r.body, /aim-ab|canary|captures/i, 'refusal body carries no capture data');
+      }
+    }
+    // No Host at all on HTTP/1.1: node:http itself refuses with 400 before our handler runs.
+    const none = await rawGet(base, '/api/captures', undefined);
+    assert.equal(none.status, 400);
+    assert.doesNotMatch(none.body, /aim-ab|canary/i);
+  });
+  assert.equal(isAllowedHost(undefined, 9100), false);
+  assert.equal(isAllowedHost('localhost', 80), true, 'port may be omitted only for :80');
+  assert.equal(isAllowedHost('localhost', 9100), false);
+});
+
+test('non-loopback --host is refused: the CLI exits 2 with a loud error and never listens', async () => {
+  for (const h of ['127.0.0.1', 'localhost', '::1']) assert.doesNotThrow(() => assertLoopbackBind(h), h);
+  for (const h of ['0.0.0.0', '::', '192.168.1.10', 'example.com']) assert.throws(() => assertLoopbackBind(h), /refusing to bind/, h);
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const child = spawn(process.execPath, [path.join(DASH, 'server.mjs'), '--host', '0.0.0.0', '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  let stdout = '';
+  child.stderr.on('data', (d) => { stderr += d; });
+  child.stdout.on('data', (d) => { stdout += d; });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
+  const code = await new Promise((r) => child.on('exit', r));
+  clearTimeout(timer);
+  assert.equal(code, 2, `exit code (stdout: ${stdout})`);
+  assert.match(stderr, /ERROR refusing to bind --host 0\.0\.0\.0/);
+  assert.doesNotMatch(stdout, /dashboard →/);
+});
+
+test('favicon request is answered (204), not a console 404', async () => {
+  await withServer(defaultRoots(), async (base) => {
+    assert.equal((await fetch(`${base}/favicon.ico`)).status, 204);
+  });
+  assert.match(await readFile(path.join(DASH, 'public', 'index.html'), 'utf8'), /rel="icon" href="data:,"/);
+});
+
+test('manifest escape guard uses real paths: a symlink out of the tree is an escape; a relative captures dir works', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-dash-'));
+  const outside = await mkdtemp(path.join(os.tmpdir(), 'sentinel-outside-'));
+  const cwd = process.cwd();
+  try {
+    await mkdir(path.join(dir, 'variants', 'fixtures'), { recursive: true });
+    const ok = { id: 'A', request: { messages: [{ role: 'user', content: 'hello' }] }, label: { groundTruth: 'negative' } };
+    await writeFile(path.join(dir, 'variants', 'fixtures', 'a.json'), JSON.stringify(ok));
+    await writeFile(path.join(outside, 'secret.json'), JSON.stringify({ ...ok, id: 'S' }));
+    await symlink(path.join(outside, 'secret.json'), path.join(dir, 'variants', 'fixtures', 'link.json'));
+    await writeFile(path.join(dir, 'variants', 'manifest.json'), JSON.stringify({ cases: [
+      { id: 'A', path: 'fixtures/a.json', groundTruth: 'negative' },
+      { id: 'L', path: 'fixtures/link.json', groundTruth: 'negative' },
+    ] }));
+    const index = await indexCaptures([{ dir, source: 'captures' }]);
+    assert.equal(index.get('variants/fixtures/a').error, undefined);
+    assert.match(index.get('variants/fixtures/link').error, /escapes/);
+    assert.equal((await replayPayload(index, 'variants/fixtures/link', 'run').catch(e => e)).name, 'CaptureFormatError');
+
+    // Relative SENTINEL_CAPTURES_DIR: previously every manifest case read as "escapes".
+    process.chdir(path.dirname(dir));
+    const rel = await indexCaptures(defaultRoots({ SENTINEL_CAPTURES_DIR: path.basename(dir), SENTINEL_HIDE_PLACEHOLDERS: '1' }));
+    assert.equal(rel.get('variants/fixtures/a').error, undefined, 'relative dir: in-tree case is not an escape');
+    assert.equal((await replayPayload(rel, 'variants/fixtures/a', 'run')).status, 200);
+    assert.match(rel.get('variants/fixtures/link').error, /escapes/);
+  } finally {
+    process.chdir(cwd);
+    await rm(dir, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('a malformed alert sidecar is a 422 naming the sidecar, not a generic 500', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-alerts-'));
+  const prev = process.env.SENTINEL_ALERTS_DIR;
+  try {
+    process.env.SENTINEL_ALERTS_DIR = dir;
+    await writeFile(path.join(dir, 'attack__aim-ab.demo.alerts.json'), '{"runs": {"runA": [');
+    await withServer(defaultRoots(), async (base) => {
+      const r = await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runA`);
+      assert.equal(r.status, 422);
+      assert.match((await r.json()).error, /alert sidecar .*attack__aim-ab\.demo\.alerts\.json: invalid JSON/);
+      await writeFile(path.join(dir, 'attack__aim-ab.demo.alerts.json'), JSON.stringify({ runs: { runA: { not: 'an array' } } }));
+      const r2 = await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runA`);
+      assert.equal(r2.status, 422);
+      assert.match((await r2.json()).error, /runs\.runA is not an array/);
+    });
+  } finally {
+    if (prev === undefined) delete process.env.SENTINEL_ALERTS_DIR;
+    else process.env.SENTINEL_ALERTS_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('long-path truncation marker keeps "N omitted" visible at the narrowest column width', async () => {
+  const index = await indexCaptures();
+  const { body } = await replayPayload(index, 'placeholder/long-taint-path', 'run');
+  const marker = body.graph.nodes.find(n => n.kind === 'truncation_marker');
+  const { positions } = layoutGraph(body.graph);
+  const w = positions.get(marker.id).w;
+  const shown = displayLabel(marker, w, 'truncated');
+  assert.equal(shown, `⋯ ${LONG_PATH_HOPS - 63} omitted`);
+  assert.ok(!shown.endsWith('…'), 'marker label is not cut by fit()');
+  // Ordinary labels are still fitted for display (full text stays in <title> / detail pane).
+  const long = body.graph.nodes.find(n => n.kind !== 'truncation_marker' && n.label.length > 40);
+  if (long) assert.match(displayLabel(long, w, null), /…$/);
+});
+
+test('rapid capture switching: a stale replay response cannot overwrite a newer one', async () => {
+  const gate = latestGate();
+  const rendered = [];
+  const load = async (id, delayMs) => {
+    const t = gate.begin();
+    await new Promise(r => setTimeout(r, delayMs));
+    if (gate.isCurrent(t)) rendered.push(id);
+  };
+  await Promise.all([load('slow-old', 40), load('fast-new', 5)]);
+  assert.deepEqual(rendered, ['fast-new']);
+  const src = await readFile(path.join(DASH, 'public', 'app.js'), 'utf8');
+  assert.match(src, /replayGate\.begin\(\)[\s\S]*await getJson\(`\/api\/replay[\s\S]*if \(!replayGate\.isCurrent\(token\)\) return;/, 'loadReplay checks the gate after its fetch');
+});
+
+test('headline shows T7 headline.status ("awaiting t3", "error: …") instead of a bare "—", and never a rate beside a non-ok status', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-scoring-'));
+  try {
+    const index = await indexCaptures();
+    const file = path.join(dir, 'results.json');
+    const t7 = (over) => ({
+      schema: 'sentinel-scoring/v1', headline: { detector: null, mode: 'enforce', metric: 'blocking', status: 'awaiting t3: T3 detector not present at sentinel/detectors/index.js (T3 not merged)' },
+      detectionRate: null, recall: null, precision: null, falsePositiveRate: null, latencyMs: { median: null, p95: null }, counts: null, ...over,
+    });
+    await writeFile(file, JSON.stringify(t7({})));
+    let s = await loadScoringFrom(index, file);
+    assert.equal(s.status, t7({}).headline.status);
+    let v = headlineView(s);
+    assert.equal(v.det, 'awaiting t3');
+    assert.equal(v.fp, 'awaiting t3');
+    assert.ok(v.pending);
+    assert.match(v.note, /T3 detector not present/);
+
+    // T7 review finding 1: an errored run must not read as 100% even if rates are present.
+    await writeFile(file, JSON.stringify(t7({ headline: { status: 'error: 15 cases errored' }, recall: 1, falsePositiveRate: 1, counts: { attack: 2, benign: 12, fp: 12, fn: 0 } })));
+    v = headlineView(await loadScoringFrom(index, file));
+    assert.equal(v.det, 'error');
+    assert.doesNotMatch(`${v.det} ${v.fp}`, /%/);
+    assert.match(v.note, /15 cases errored/);
+
+    await writeFile(file, JSON.stringify(t7({ headline: { status: 'ok' }, recall: 0.825, falsePositiveRate: 0 })));
+    v = headlineView(await loadScoringFrom(index, file));
+    assert.deepEqual([v.det, v.fp, v.pending], ['82.5%', '0.0%', false]);
+
+    assert.equal(headlineView({ available: false, corpus: { attack: 3, benign: 9 } }).det, 'awaiting T7');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function loadScoringFrom(index, file) {
+  const { loadScoring } = await import('../lib/scoring.mjs');
+  return loadScoring(index, { SENTINEL_SCORING_FILE: file });
+}

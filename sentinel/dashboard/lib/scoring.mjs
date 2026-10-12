@@ -3,6 +3,8 @@
 // (first match wins):
 //   detectionRate | recall,  falsePositiveRate | fpRate,  precision,
 //   latencyMs: {median, p95} | medianLatencyMs/p95LatencyMs,  counts: {attack, benign, fp, fn}
+//   headline: {status}   (T7: "ok" | "awaiting t3: <why>" | "error: <why>"; any non-ok status is shown
+//                         in place of the rates, never a bare "—")
 // When the file is absent the dashboard shows the slot as "awaiting T7". It does NOT invent rates.
 // It reports only the real corpus composition (attack vs benign captures found).
 
@@ -37,5 +39,7 @@ export async function loadScoring(index, env = process.env) {
     precision: first(raw.precision),
     latencyMs: { median: first(raw.latencyMs?.median, raw.medianLatencyMs), p95: first(raw.latencyMs?.p95, raw.p95LatencyMs) },
     counts: raw.counts ?? null,
+    // T7 `headline.status` ("ok" | "awaiting t3: …" | "error: …"). The UI shows it instead of a bare "—".
+    status: typeof raw.headline?.status === 'string' ? raw.headline.status : null,
   };
 }

@@ -48,3 +48,12 @@ export function twinPair(runs) {
 export function pct(x) {
   return Number.isFinite(x) ? `${(x * 100).toFixed(1)}%` : '—';
 }
+
+/**
+ * Latest-request-wins gate. begin() returns a token; isCurrent(token) is false once a newer begin()
+ * has happened, so a slow stale response is discarded instead of overwriting a newer one.
+ */
+export function latestGate() {
+  let seq = 0;
+  return { begin: () => ++seq, isCurrent: (token) => token === seq };
+}

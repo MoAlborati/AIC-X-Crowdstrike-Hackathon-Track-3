@@ -10,7 +10,7 @@
 
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { DASHBOARD_DIR, REPO_ROOT } from './capture-loader.mjs';
+import { DASHBOARD_DIR, REPO_ROOT, CaptureFormatError } from './capture-loader.mjs';
 import { enforce } from './bounds.mjs';
 
 export function alertDirs(env = process.env) {
@@ -38,10 +38,18 @@ export async function alertsFor(capture, runKey, dirs = alertDirs()) {
       throw err;
     }
     enforce('MAX_CAPTURE_BYTES', st.size, `alert sidecar ${file}`);
-    const doc = JSON.parse(await readFile(file, 'utf8'));
+    const rel = path.relative(REPO_ROOT, file);
+    let doc;
+    try {
+      doc = JSON.parse(await readFile(file, 'utf8'));
+    } catch (err) {
+      if (!(err instanceof SyntaxError)) throw err;
+      // Same contract as a malformed capture: 422 naming the file, never a generic 500.
+      throw new CaptureFormatError(capture.id, `alert sidecar ${rel}: invalid JSON: ${err.message}`);
+    }
     const list = doc?.runs?.[runKey];
     if (list === undefined) continue; // sidecar exists but has nothing for this run
-    if (!Array.isArray(list)) throw new Error(`alert sidecar ${file}: runs.${runKey} is not an array`);
+    if (!Array.isArray(list)) throw new CaptureFormatError(capture.id, `alert sidecar ${rel}: runs.${runKey} is not an array`);
     return {
       alerts: list,
       origin: path.relative(REPO_ROOT, file),
