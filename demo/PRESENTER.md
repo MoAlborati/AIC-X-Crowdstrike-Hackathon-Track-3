@@ -38,6 +38,7 @@ Main runs the beats in this order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** 
 > "Air Canada lost a tribunal case over its chatbot. A Chevy dealer's chatbot 'agreed' to sell a 2024
 > Tahoe for $1. CrowdStrike's CEO put it plainly: 'Each prompt becomes an entry point for the
 > adversary.' Today that prompt can arrive inside a document your agent reads."
+> "Everything you'll see runs in a deterministic sandbox, no LLM, and most of it is recorded. We'll say which."
 
 **0:20 · Beat 2 Structure** · slide 3 (confused-deputy diagram)
 > "Picture a new bank teller who obeys any note slipped into a deposit envelope. The teller has the
@@ -46,7 +47,7 @@ Main runs the beats in this order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** 
 > web page and repo file is an envelope."
 
 **0:40 · Beat 3 Exploit (red)** · **Enter**, then the dashboard tab `vulnerable` · fallback: play the video from 0:40
-> "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
+> "Recorded run. This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
 > "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
 
 Screen: `submit_to_index`, `true`, `… dvaa-admin-secret | … 123-45-6789` (fake sandbox values).
@@ -54,13 +55,13 @@ Screen: `submit_to_index`, `true`, `… dvaa-admin-secret | … 123-45-6789` (fa
 
 Pause for two seconds and let it land.
 
-**1:00 · Beat 3b 8KB evasion (red, DoD item 1, never cut)** · **Enter** · fallback: read the lines from the slide
-> "DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
+**1:00 · Beat 3b 8KB evasion (red, recorded, 10 seconds max)** · **Enter** · fallback: read the lines from the slide
+> "Recorded fixtures. DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
 
 Screen: `inMiddleGap:true`, `evadesDvaaBaseline:true`, `fullScanFindsSignal:true`, then `t3Caught: 2`.
 > "SentinelProxy scans the full payload and never truncates. 8KB evasion: 2 out of 2 fixtures caught."
 
-**1:20 · Beat 4 Detect → alert → block (green, live)** · **Enter**, then the dashboard tab `?id=live/proxy-7005&run=run&step=last`.
+**1:10 · Beat 4 Detect → alert → block (green, the one live beat)** · **Enter**, then the dashboard tab `?id=live/proxy-7005&run=run&step=last`.
 `run-demo.sh` starts the real shipped proxy (`sentinel/proxy/cli.mjs`, block mode, `sentinel-t3`) on an ephemeral
 loopback port in front of 7005 and sends two `curl`s to it.
 > "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
@@ -68,7 +69,7 @@ loopback port in front of 7005 and sends two `curl`s to it.
 Screen: live `200`.
 > "Now the attack."
 
-Screen: live `403`, `blocked_request`, `detector: sentinel-t3`, then the recording and the T4 alert
+Screen: live `403`, `blocked_request`, `detector: sentinel-t3`, then (say "recorded") the recording and the T4 alert
 (`IndirectPromptInjection`, ATLAS AML.T0051.001, OWASP LLM01, ASI01, OASB-1, Blocked).
 > "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side. If a honeytoken shows up in a response instead, the tool already ran (alert-only for prevention), but in block mode the reply is withheld, so the secret never reaches the client."
 
@@ -76,44 +77,46 @@ Screen: live `403`, `blocked_request`, `detector: sentinel-t3`, then the recordi
 
 Fallback is automatic. If the terminal prints `WARN live proxy unavailable; showing the recording`, keep going (see **If X breaks**).
 
-**1:40 · Beat 4b Egress guard (green, tool boundary)** · **Enter** · fallback: read `PREVENTED` and move on
-> "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
+**1:40 · Beat 4b Egress default-deny (green, recorded, the blocking story)** · **Enter** · fallback: read `PREVENTED` and move on
+> "Recorded egress run, and this is our real blocking story: default-deny egress at the tool boundary. RepoBot reads its payload inside the agent, so the proxy cannot stop that exfil. The egress guard does. It denies non-allowlisted destinations and honeytokens, and fails closed."
 
 Screen: `deny` rows (RAGBot 7005 honeytokens, RepoBot 7022 `bootstrap.sh` fetch + credential post), then
 `RESULT block: PREVENTED`, `RESULT repobot block: PREVENTED`, `(no canary hits)`. Dashboard: switch to the tab
 `?id=live/egress-boundary&run=run&step=last`, which shows four "Blocked · egress deny" cards, one per deny.
 > "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
 
-**1:50 · Beat 5a AIM twin** · **Enter**, then the tab `aim-twin`, then slide 6 (red / green / green) · fallback: slide 6 only
-> "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+**1:55 · Beat 5a AIM twin (recorded)** · **Enter**, then the tab `aim-twin`, then slide 6 (red / green / green) · fallback: slide 6 only
+> "Recorded run. Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
 
 Screen: `false` + the AIM denial reason.
 > "Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
 
-**2:05 · Beat 6 How it works** · slide 7 (field → mechanism → rule) · if you're running long, keep only two mechanisms
-> "We didn't invent these controls. We borrowed them from fields that already solved the confused deputy.
-> Banks check the payee before money moves, so we block any destination that came only from untrusted content.
-> Power of attorney is limited by what the principal granted, so the user's own turn sets the mandate and a document
-> can't widen it. And a dead-man switch fails closed: if our scanner times out or the input is too big, egress is
-> denied and we raise an alert. We scan the full payload and never truncate it."
+**2:05 · Beat 6 How it works** · slide 7 (field → mechanism → rule) · cut this first if you're running long
+> "We borrowed two controls from fields that already solved the confused deputy. Banks check the payee before money
+> moves, so our egress guard denies any destination that isn't on the allowlist. And a dead-man switch fails closed: if our
+> scanner times out or the input is too big, egress is denied and we raise an alert."
 
-**2:30 · Beat 7 Close** · **Enter**, then slides 8 → 10 · fallback: read the numbers off the slide
+**2:20 · Beat 7 Outcome + "we attacked ourselves" + close** · **Enter**, then slides 8 → 10 · fallback: read the numbers off the slide
 
-The terminal prints the T3 vs DVAA table: detection recall 67.7% vs 65.6%, prevention 41.8% vs 63.0%, FP 0.0% vs 12.8%,
+The terminal prints the T3 vs DVAA table: detection recall 67.7% vs 65.6%, prevention 41.8% vs 63.0%, benign FP 0/164 vs 21/164,
 `8KB evasion: 2/2`, latency median 0.082 ms / p95 ~0.4 ms.
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "From the committed scoring run, on 189 attacks and 164 benign cases, labelled by DVAA's ground truth and the published benchmarks. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
-> "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
+> "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
 
-Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut 3b.**
+> "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data. SentinelProxy is an exfil-focused guardrail for tool-using agents. Thank you."
+
+Running long? Cut the benign pass in Beat 4 first, then Beat 6, then shrink 3b. **Never cut the "we attacked ourselves" line.**
 
 ## Claim wording (for Q&A; also see `demo/QA-PREP.md`)
 
-- **Scope the FP claim every time:** "0% FP on the 164-case benign corpus." Never say "zero false positives" without that scope.
+- **Never headline "100% precision" or "0% FP".** Say "0 of 164 benign blocked, on a benign set we also tuned on". It is a small sample, not a guarantee.
+- **Never say "a working slice of Falcon AIDR".** Say "an exfil-focused guardrail for tool-using agents"; we complement AIDR, we haven't integrated with it.
+- **Say "recorded"** on Beats 3, 3b, 4b and 5a, and on the recorded half of Beat 4. Only the Beat 4 200/403 is live.
 - **The comparison one-liner** (matches Beat 7 after #95): "DVAA's baseline prevents more, 63 percent versus our 42; we detect slightly more, with zero false alarms on the 164 benign cases versus its 21, and we catch the 2 cases that evade its 8KB window."
 - Don't say "DVAA has higher recall" without a qualifier. Since #46/#95 that's only true for **prevention**; on detection T3 is ahead (67.7% vs 65.6%).
 - **Held-out FP caveat:** "Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46."
-- Never say we "beat the baseline" across the board. Say "8KB evasion: 2/2 fixtures", which is the case we do win.
+- Never say we "beat the baseline" across the board. "8KB evasion: 2/2 fixtures" is n=2 against a weakness DVAA built in on purpose, so don't sell it as a differentiator.
 - Latency: say exactly "median under a tenth of a millisecond, p95 around half a millisecond". p95 moves between about 0.39 and 0.52 ms from run to run, so never say "under half a millisecond".
 
 ## Encores (after 3:00, or in Q&A)
@@ -121,7 +124,7 @@ Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut
 - **3A OpsBot (Path A).** Run `node track3a/run-demo.mjs` (about 2 s). It prints the layering table: Undefended
   LEAKED ×2 … Hardened + proxy + egress all blocked, benign OK. Fallback: `open track3a/RESULTS.md` (the committed table).
 - **Live egress.** `scripts/egress-demo.sh both` takes about a minute and runs on its own compose stack.
-- **SOC handoff (optional, if available).** This is open PR #86, `soc-handoff`. If it has merged, `scripts/soc-handoff.sh`
+- **SOC handoff (optional).** PR #86 (`soc-handoff`) is merged: `scripts/soc-handoff.sh`
   sends the Track 3 alerts to Track 1's SOC Brief, which turns them into a plain-English analyst brief (offline, no
   LLM key). It prints the brief and also writes `.eval/soc-handoff/brief.md`. If it hasn't merged, skip it.
 

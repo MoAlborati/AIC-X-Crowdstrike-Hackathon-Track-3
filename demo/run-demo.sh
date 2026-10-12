@@ -178,7 +178,7 @@ headline_cmd() {
   jq -r '
     def pct: (. * 1000 | round) as $x | "\($x / 10 | floor).\($x % 10)%";
     .detectors as $d | .headlineLenses as $h | .counts as $c |
-    "corpus: \($c.attack) attack + \($c.benign) benign cases, scored against DVAA ground-truth labels",
+    "corpus: \($c.attack) attack + \($c.benign) benign cases, labelled by DVAA ground truth (T1 captures) and the published benchmarks (T6)",
     "",
     "                         T3 (SentinelProxy)          DVAA baseline",
     "  detection (any finding)  recall \($h.detection.recall|pct)  FP \($h.detection.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.anyFinding.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate|pct)",
@@ -189,7 +189,8 @@ headline_cmd() {
   # Every number AND every comparison in the static Beat 7 spoken line, asserted against the file it comes from,
   # so the line can never go false silently (it FAILS this row instead). One check per claim, named on failure.
   local claims=(
-    '189 attacks and 164 benign runs|.counts.attack == 189 and .counts.benign == 164'
+    '189 attacks and 164 benign cases|.counts.attack == 189 and .counts.benign == 164'
+    'labelled by DVAA ground truth and the published benchmarks|(.corpus.bySource | has("t1-capture") and has("t6-variant"))'
     'we detect more than DVAA (detection recall)|.headlineLenses.detection.recall > $b.anyFinding.recall'
     '"slightly" more: lead under 5 points|(.headlineLenses.detection.recall - $b.anyFinding.recall) < 0.05'
     'zero false alarms (detection + prevention)|.headlineLenses.detection.fp == 0 and .headlineLenses.prevention.fp == 0'
@@ -200,6 +201,10 @@ headline_cmd() {
     'versus our 42 (T3 prevention recall)|(.headlineLenses.prevention.recall * 100 | round) == 42'
     'its scanner also blocks benign traffic|$b.prevention.fp > 0'
     'blocks 12.8 percent of benign traffic (DVAA prevention FP)|($b.prevention.falsePositiveRate * 1000 | round) == 128'
+    'we prevent 57 of 71 exfil attempts|.detectors.t3.recallByPositiveKindPrevention.exfil | .tp == 57 and .positives == 71'
+    'with 0 of 164 legitimate requests blocked (T3 prevention FP)|.headlineLenses.prevention.fp == 0 and .headlineLenses.prevention.tn == 164'
+    'DVAA prevents 64 of 71 exfil attempts|.detectors["dvaa-baseline"].recallByPositiveKindPrevention.exfil | .tp == 64 and .positives == 71'
+    'but blocks 21 of 164 legitimate requests (DVAA prevention FP)|$b.prevention.fp == 21 and $b.prevention.negatives == 164'
     '8KB evasion 2 out of 2|(.beatsBaseline.eligible | length) == 2 and .beatsBaseline.byDetector.t3.beaten == 2'
     'median under a tenth of a millisecond|.detectors.t3.latencyMs.median < 0.1'
     'p95 around half a millisecond (0.25 to under 1 ms)|.detectors.t3.latencyMs.p95 >= 0.25 and .detectors.t3.latencyMs.p95 < 1'
@@ -210,6 +215,10 @@ headline_cmd() {
       echo "Beat 7 spoken claim no longer true in results.json: ${c%%|*}"; bad=1
     fi
   done
+  # Held-out admission line: "600 held-out ... we prevent zero" comes from captures/holdout-hf/RESULTS.md.
+  grep -q 'Prevention recall' "$REPO/captures/holdout-hf/RESULTS.md" \
+    && grep -q '\*\*0.000\*\* (0/600)' "$REPO/captures/holdout-hf/RESULTS.md" \
+    || { echo "Beat 7 spoken claim no longer true in captures/holdout-hf/RESULTS.md: 600 held-out, prevent zero"; bad=1; }
   [ "$bad" = 0 ] || { echo "update the Beat 7 say line in run-demo.sh and demo/SCRIPT.md together"; return 1; }
   echo "spoken Beat 7 numbers match results.json"
 }
@@ -526,7 +535,7 @@ advance
 
 # ---- Beat 3 — EXPLOIT, red (RAGBot 7005) --------------------------------------
 hdr "Beat 3 — EXPLOIT (red) · RAGBot 7005"
-say "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
+say "Recorded run. This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
 say "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
 if [ -f "$CAP_ATTACK" ]; then
   run_cmd "exploit: tool call + exfil executed" \
@@ -542,7 +551,7 @@ advance
 
 # ---- Beat 3b — 8KB-evasion (DoD item 1, REQUIRED) -----------------------------
 hdr "Beat 3b — 8KB evasion · hide in the middle, DVAA's scanner sees nothing"
-say "DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
+say "Recorded fixtures. DVAA's own scanner only looks at the first and last 8KB. This one hides in the middle, so the scanner sees nothing."
 if [ -f "${EVASION_MID[0]}" ] && [ -f "${EVASION_MID[1]}" ] && [ -f "$SCORE_JSON" ]; then
   run_cmd "evasion: injection sits between the 8KB head/tail windows (DVAA misses; full scan finds)" evasion_proof_cmd
   run_cmd "evasion: 8KB evasion 2/2 fixtures caught by T3 (sentinel/scoring/results.json)" evasion_t3_cmd
@@ -593,7 +602,7 @@ advance
 
 # ---- Beat 4b — egress guard BLOCK (T12, sentinel/egress/, PR #45) --------------
 hdr "Beat 4b — tool-boundary EGRESS GUARD · fail-closed on exfil"
-say "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
+say "Recorded egress run, and this is our real blocking story: default-deny egress at the tool boundary. RepoBot reads its payload inside the agent, so the proxy cannot stop that exfil. The egress guard does. It denies non-allowlisted destinations and honeytokens, and fails closed."
 if [ -f "$EGRESS_BLOCK_JSONL" ] && [ -f "$EGRESS_GROUND_TRUTH" ]; then
   run_cmd "egress guard: deny decisions at the tool boundary (sentinel/egress/evidence-block.jsonl)" egress_block_cmd
   say "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
@@ -607,7 +616,7 @@ advance
 
 # ---- Beat 5a — the AIM twin (RAGBot-AIM 7014) ---------------------------------
 hdr "Beat 5a — secure-by-design twin · RAGBot-AIM 7014"
-say "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+say "Recorded run. Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
 if [ -f "$CAP_ATTACK" ]; then
   # runB has no exfilExecuted key (AIM denies before execution); default to false for a clean readout.
   run_cmd "AIM twin: exfil executed? + denial reason" \
@@ -622,9 +631,10 @@ advance
 # ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
-  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+  say "From the committed scoring run, on 189 attacks and 164 benign cases, labelled by DVAA's ground truth and the published benchmarks. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+  say "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
-  say "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
+  say "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data. SentinelProxy is an exfil-focused guardrail for tool-using agents. Thank you."
 else
   nym "T7 results (sentinel/scoring/results.json)"
   record "Beat 7 headline" "NOT YET MERGED" "results absent"
