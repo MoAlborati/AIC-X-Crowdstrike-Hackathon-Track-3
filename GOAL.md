@@ -8,8 +8,37 @@ alerts mapped to MITRE ATLAS + OWASP.
 
 Full rationale: `planning/STRATEGY.md`. Evidence/citations: `planning/RESEARCH.md`.
 
+## Official brief (verbatim — the judging source of truth)
+Source: organizers' slides, transcribed verbatim by @c-awad in issue #128 (2026-10-12). These replace the earlier "AgentWorks
+hackathon rules" proxy criteria (now superseded; see `planning/RESEARCH.md` §B).
+
+### Track 3 (official text)
+> **CrowdStrike, Track 3: Secure: Attack & Defend the Agent.** Teams either build an AI agent and demonstrate how they'd defend it against prompt injection, tool misuse, or data exfiltration, or attack a provided model/agent with adversarial inputs and build a detector for the exploit. The most advanced track, and the one that maps most directly to what CrowdStrike is building with AgentWorks. Realistic scope for 8 hours: one clear exploit or defense, demoed live rather than a fully hardened system.
+> 1st $800 · 2nd $200 · 3rd Prize Box
+
+### Ciocca Venture Award (separate award, official text)
+> The Ciocca Venture Award, presented in partnership with SCU's Ciocca Center for Innovation and Entrepreneurship, recognizes the team whose AI-powered cyber defense solution shows the strongest potential to become a real product or venture. Teams are judged on the clarity of the problem they're solving, who would use and pay for their solution, how it stands apart from existing tools, and a credible path from prototype to launch, alongside a working demo.
+> 1st $1000 · 2nd $500 · 3rd Prize Box
+
+## How we map to the brief (honest)
+- **"One clear exploit or defense, demoed live"** maps to one defense: SentinelProxy at the tool boundary.
+  - **Live:** the only live beat is the proxy's benign **HTTP 200** (forwarded untouched), then DVAA's aim-ab request
+    **HTTP 403**, blocked pre-forward.
+  - **Recorded:** default-deny egress at the tool boundary is the control that actually stops data leaving (RepoBot/RAGBot
+    exfil, attacker server received nothing). On stage we say "recorded" for it.
+- **"Attack a provided model/agent … and build a detector"** is Path B (DVAA), our main demo.
+- **"Build an AI agent and demonstrate how they'd defend it against prompt injection, tool misuse, or data
+  exfiltration"** is Path A: OpsBot (`track3a/`), our own agent with all three risks, defended by the same unmodified
+  proxy. It also fits the brief.
+- **"Rather than a fully hardened system"** supports our honest-scope framing (#123). We list our misses in RESULTS.md.
+- **Not in the brief:** DVAA's 22 CTF challenges. Solving them is not judged.
+- **Ciocca:** no extra build. If the team targets it (#128, default YES), the deck adds one venture slide covering
+  problem, who uses and pays, differentiation vs Falcon AIDR / NeMo Guardrails / Lakera, and path to launch.
+  Open: is a separate submission/form needed, and can one project win both?
+
 ## Locked decisions (do not relitigate)
-- **Path B:** attack the provided DVAA agent + build a detector. Not building our own victim.
+- **Path B (main demo):** attack the provided DVAA agent + build a detector. Path A (OpsBot, `track3a/`) is a
+  bounded add-on that reuses the same proxy, not a second product.
 - **Product:** reverse-proxy guardrail in front of DVAA's OpenAI-compatible `/v1/chat/completions`.
 - **Stack:** Node.js (match DVAA, Node >=24), vanilla-JS dashboard. Zero heavy deps unless a ticket says so.
 - **Target runs OFFLINE** (deterministic canned responses, no API key). Dashboard :9000, agents 7001-7023.
