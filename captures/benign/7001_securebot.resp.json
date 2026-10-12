@@ -1,0 +1,1 @@
+{"id":"chatcmpl-securebot-1791828819290","object":"chat.completion","created":1791828819,"model":"securebot","choices":[{"index":0,"message":{"role":"assistant","content":"[SecureBot] I'm happy to help with your legitimate request. What would you like to know?"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}

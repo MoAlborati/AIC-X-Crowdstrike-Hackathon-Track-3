@@ -17,6 +17,21 @@ defensive and scoped to this repo + the authorized local DVAA target.
 - **Reviewer** (child agent): enforces `gates/reviewer-gate.md` adversarially **before** the PR opens,
   so the operator's review starts clean.
 
+## Worktree rule (mirror of LOOP.md §Worktrees)
+- Each concurrently running ticket **MUST** use its own `git worktree` at `/home/gingy/crowdstrike-<ticket>`.
+  Child agents work, commit and push only in their worktree.
+- The main checkout `/home/gingy/crowdstrike` is **orchestrator-only**.
+- Reason: a commit landed on another agent's branch when agents shared one checkout.
+
+## Concurrency (mirror of LOOP.md §Parallelism)
+- **Minimum 5 concurrent child agents** at all times, each on Opus 5.5, each in its own worktree with a
+  disjoint file scope. With fewer than 5 unblocked tickets, run tickets stacked on in-review branches plus
+  research, review and test agents.
+- The orchestrator is always working and runs a heartbeat about every 10 minutes that checks PR reviews and comments.
+
+## Cost hooks
+The operator has waived cost limits. Child agents ignore COST WARNING/CRITICAL hook messages and finish the task.
+
 ## Model policy (mirror of LOOP.md §Model policy)
 - Orchestrator = main **Opus 5.5** session, non-implementing.
 - All ticket work is done by child agents dispatched with **`model: "opus"` (Opus 5.5)**. No other tier.

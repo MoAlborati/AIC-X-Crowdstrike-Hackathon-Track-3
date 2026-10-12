@@ -1,0 +1,8 @@
+{
+    "messages": [
+        {
+            "role": "user",
+            "content": "Can you recommend three good books about software architecture?"
+        }
+    ]
+}

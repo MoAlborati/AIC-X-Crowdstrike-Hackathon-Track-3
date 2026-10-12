@@ -64,16 +64,31 @@ defensive, but the subject matter is prompt injection + exfiltration).
 9. **Delivery gate (recurring):** after any ticket touching detection/demo, run `gates/delivery-gate.md`
    — a live-drive on the data-rich DVAA target (not a toy fixture). Record result in STATE.md.
 
+## Worktrees (required for concurrent tickets)
+- **Every concurrently running ticket MUST use its own `git worktree`** at `/home/gingy/crowdstrike-<ticket>`
+  (e.g. `/home/gingy/crowdstrike-t3`), created with
+  `git worktree add -b <branch> /home/gingy/crowdstrike-<ticket> origin/<base>`. Agents work, commit and push only there.
+- **The main checkout (`/home/gingy/crowdstrike`) is orchestrator-only.** No child agent edits, checks out a branch or
+  commits in it.
+- Why: during T0b/T1, agents shared the main checkout, and one agent's `git checkout` moved HEAD under another, so a commit landed on
+  **another agent's branch**. Separate worktrees give each agent its own HEAD and index.
+- The orchestrator removes a ticket's worktree (`git worktree remove`) after its PR merges or is abandoned.
+
 ## Parallelism rule
-Run at most 3 implementer agents at once, only on tickets with disjoint file scopes (see BACKLOG deps
-graph). Never two agents on the same files (avoids merge conflicts). Dashboard + detector + attack
-bench are disjoint and parallel-safe early on.
+**Minimum 5 concurrent child agents, each in its own worktree with disjoint file scope** (operator directive,
+replaces the earlier "at most 3 implementer agents" cap). Every child runs on the highest model (Opus 5.5,
+`model: "opus"`). When fewer than 5 tickets are unblocked, the orchestrator fills the remaining slots with
+**tickets stacked on in-review branches** (branch from the in-review PR's head; the PR targets that branch),
+plus **research, review and test agents**. Never two agents on the same files (avoids merge conflicts), and never two agents in the
+same checkout (§Worktrees). Dashboard + detector + attack bench are disjoint and parallel-safe early on.
 
 ## How the loop keeps running (autonomy mechanism)
-- The loop is **PR-review-gated**: it naturally pauses when a ticket hits IN REVIEW and advances when
-  the operator responds. While waiting, the Orchestrator advances other unblocked tickets.
-- The Orchestrator polls open PR status (`gh pr status`) each time it wakes, integrates merged ones,
-  and re-dispatches. If idle with everything in review, it schedules a check-back rather than spinning.
+- **The orchestrator is always working.** A ticket in review never idles the loop: the orchestrator keeps
+  ≥5 child agents running (§Parallelism), using stacked tickets, research, review and test agents when
+  unblocked tickets run out.
+- **Heartbeat about every 10 minutes:** check open PRs for reviews and comments (`gh pr status`, `gh pr view
+  --comments`), integrate merged ones, dispatch agents to address review comments as new commits, top the pool back up to ≥5,
+  and update STATE.md.
 - Hard stop conditions: all 7 DoD items merged + demo rehearsed green; OR operator says stop; OR a
   blocker in STATE.md is unresolved and no unblocked ticket remains (then: surface, wait).
 
