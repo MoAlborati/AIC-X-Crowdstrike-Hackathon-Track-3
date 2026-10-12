@@ -360,7 +360,7 @@ cmd_down() {
 # Test suites. Discovery is by glob: every directory under SUITE_ROOTS that holds a
 # *.test.js or *.test.mjs file is a suite, so a new suite is picked up without editing this script.
 # The ticket list below only labels suites and turns a component that is absent into NOT YET MERGED.
-SUITE_ROOTS=(sentinel captures track3a track1 scripts)
+SUITE_ROOTS=(sentinel captures track3a track1 scripts demo)
 KNOWN_SUITES=(
   "T2|sentinel/proxy"
   "T3|sentinel/detectors"
