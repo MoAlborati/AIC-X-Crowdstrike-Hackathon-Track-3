@@ -7,6 +7,7 @@
 > software injection, BEC / social engineering, counterintelligence, fraud / AML, safety engineering /
 > aviation, HACCP / food safety, and immunology. This file follows the theory report's framing. The
 > mechanism catalog (§6) feeds the T3/T4/T5/T7 acceptance criteria and the stretch tickets in BACKLOG.md.
+> **Round 2 (T0c, §10)** adds eight more domains and an empirical revision of the transfer framing (§10.1).
 
 ---
 
@@ -30,13 +31,14 @@ data and control are mixed together. The harm happens through the deputy's **leg
 This is the principal-agent problem with a third party who manipulates the agent's *information*
 instead of its *incentives*.
 
-**Is knowledge transferable based on the actor?** Partly. No single dimension decides it:
-- **Actor triad + shared channel** decide whether a field is *relevant*, i.e. whether its threat model applies.
-- **Adversary adaptivity** decides whether the field's defenses *survive* contact with a prompt injector
-  who reads our detector.
-- **Choke point + ground-truth feedback** decide whether a defense is *buildable* in our setting.
+**Is knowledge transferable based on the actor?** Mostly not. Round 2's empirical study (§10.1) found that
+matching actor roles is **neither necessary nor sufficient** for a transfer to work:
+- **Comparable choke point (D4)** and **adversary adaptivity relative to the feedback available (D5 vs D7)**
+  are the best predictors of whether a defense *survives* contact with a prompt injector who reads our detector.
+- **Actor triad + shared channel** mainly tell us *where the choke point should sit* (between the deputy and its
+  tools) and whether the field's threat model applies.
 
-So the actor structure is the entry ticket. Whether a given defense transfers is a separate question,
+So the actor structure locates the choke point but doesn't predict success. Whether a given defense transfers is
 answered per mechanism (§4).
 
 ## 2. Scoring rubric (0 = absent, 1 = partial, 2 = full)
@@ -68,7 +70,8 @@ supply *engineering patterns*, but only where **D4 + D7 ≥ 3**.
 | 7 | Immunology | 0,1,1,1,1,1,1,0 | 6 | narrative only | Adaptation is co-evolutionary but there is no principal. Fails both filter gates, so it is mostly metaphor. |
 
 Counterintelligence ranks above AML despite the lower total, because the D1/D2 gate comes first and
-AML's triad is weaker. **Treat totals as a guide, not as the rank.**
+AML's triad is weaker. **Treat totals as a guide, not as the rank.** Totals measure *relevance*. To predict
+whether a mechanism will survive, weight D4 and D5-vs-D7 (§10.1).
 
 ## 4. Per-mechanism precondition test
 
@@ -281,3 +284,230 @@ a slide.**
 - ⚠ Aickelin & Cayzer (2002), Danger Theory and AIS. https://arxiv.org/abs/0801.3549
 - ⚠ Greensmith, Aickelin, Cayzer (2005), Dendritic Cells. https://arxiv.org/abs/0910.3117
 - ⚠ CDC ILINet sentinel providers (path may have moved): https://www.cdc.gov/fluview/overview/index.html
+
+---
+
+## 10. Round 2 (T0c)
+
+> Sources: nine more parallel research reports. Eight are domain reports: algorithmic trading, voice
+> assistants, medication safety, military order authentication, software supply chain, OAuth / delegated
+> authorization, agency law and newsroom source verification. The ninth is an empirical study of past
+> cross-domain transfers, and it **revises** the round-1 framing (§10.1, reflected in §1). Most round-2 reports
+> stopped early after a cost hook fired, so several were written from memory. Their unverified flags are kept in §10.7.
+
+### 10.1 Empirical revision: what actually predicts transfer
+
+The transfer-cases report looked at eight historical borrowings: aviation checklists → surgery, artificial
+immune systems → IDS, epidemic models → worms, Bayesian filtering → spam, crypto → email (PGP vs
+DKIM/DMARC), andon → CI gates, fraud scoring → ATO detection, and HACCP → food/software. Findings:
+
+- **Matching actor roles is neither necessary nor sufficient.** It is not necessary, because epidemic models and
+  HACCP transferred with no principal/deputy/adversary match. It is not sufficient, because spam filtering
+  matched the roles exactly (the adversary acts only through content) and still eroded once spammers adapted.
+- **The best predictors are (a) a comparable choke point (D4), and (b) how fast the adversary adapts (D5)
+  relative to the ground-truth feedback available (D7).** Choke-point enforcement survived (DKIM/DMARC, CI
+  merge gates). Defenses that relied on vigilance decayed (PGP, the mandated checklists in Ontario). Content scoring held only
+  while labels kept arriving faster than the attacker adapted (ATO fraud scoring held; naive-Bayes spam and AIS-IDS did not).
+- **Actor roles mainly tell you *where the choke point should sit*.** In a confused-deputy setup it goes
+  between the deputy and its tools, not on the deputy's input.
+
+**What this changes for us**
+1. The rubric totals in §3 and §10.2 measure *relevance*. They do not predict that a defense will survive.
+   Rank mechanisms by **D4**, and by **D5 vs D7**: where adaptation outruns feedback, use only structural
+   checks (provenance, flow, capability scope) and never content scoring as the gate.
+2. Prompt-injection classifiers have the same structure as spam filters, so they stay **secondary signals**
+   (this already matched §6c; it is now backed by evidence).
+3. We can't get fast labels in a hackathon, so every proxy decision is logged with its outcome (T7, plus
+   override-rate tracking in §10.3) to build what feedback we can.
+4. Name the assumption about the adversary that would break each borrowed mechanism (the epidemic-model lesson).
+
+### 10.2 Rubric scores (8 new domains)
+
+Same D1–D8 rubric as §2. **Caveat:** these domains were *picked* because their triad matched, so D1–D3 are
+uniformly 2 and the totals cluster at 13–15. Per §10.1, read the **D4** and **D5/D7** columns.
+
+| Domain | D1–D8 | Total | D4 choke point | D5 vs D7 (adapt vs feedback) | Supplies |
+|---|---|---|---|---|---|
+| Newsroom source verification | 2,2,2,2,2,2,1,2 | 15 | publish decision | adaptive (2) > feedback (1): structural checks only | provenance grading, corroboration, callback, ablation test |
+| Voice assistants (Alexa / Google Home) | 2,2,2,2,2,1,1,2 | 14 | wake-word + purchase gate | adaptive (2) > feedback (1): signature blocking lost in hours | consequence tiers, out-of-band PIN, cross-session simultaneity |
+| Medication safety (Rx, CPOE, BCMA) | 2,2,2,2,1,2,1,2 | 14 | pharmacy verify + bedside scan | mostly non-adaptive error | hard/soft stops, scan-vs-order, override-rate evidence |
+| Military / emergency order authentication | 2,2,2,2,1,2,1,2 | 14 | launch console / alert-origination software | mostly accidents | chain of command, challenge-reply, ROE manifest, two-key |
+| Software supply chain | 2,2,2,2,2,1,1,2 | 14 | install/resolve time, registry | adaptive (2) > feedback (1): xz was found by accident | lockfile pinning, capability diff, name-shadowing |
+| Algorithmic trading (SEC 15c3-5) | 2,2,2,2,1,1,2,1 | 13 | pre-trade risk gate | feedback (2) ≥ adaptation (1): best D7 in round 2 | typed per-tool limits, throttles, kill switch |
+| OAuth / delegated authorization | 2,1,2,2,1,2,1,2 | 13¹ | token endpoint + resource-server validation | protocol attacks don't change much | per-call grants (RAR), audience binding, narrowing exchange |
+| Agency law | 2,2,2,1,1,2,1,2 | 13 | weak (loss assigned after the fact) | slow on both | mandate (limited POA), apparent vs actual authority, ratification, liability framing |
+
+¹ The OAuth report states "14/16", but its per-dimension scores add up to 13. This table uses the per-dimension scores.
+
+**Round-2 convergence.** Five of the eight domains independently arrived at the same control. A **principal-signed,
+pre-declared mandate** that content cannot widen: OAuth RAR (RFC 9396), the limited power of attorney,
+rules of engagement, the BCMA scan against the order, and 15c3-5 pre-set limits. The other strong
+convergence is **callback on an independently sourced channel**: pharmacist, newsroom, agency law
+(payee change), voice PIN and military challenge-reply. It extends round-1 BEC callback and §6b S5.
+Both fit §10.1 because they are structural checks at the choke point and not content scoring.
+
+### 10.3 Mechanism catalog (round 2)
+
+Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch tickets.
+
+#### 10.3a Folded into the deterministic core (T3/T7)
+
+| Source domain(s) | Mechanism | Our feature | Ticket | Preconditions hold? |
+|---|---|---|---|---|
+| OAuth (RAR RFC 9396, incremental auth); agency law (limited POA, actual authority); military (positive control, ROE); medication (BCMA scan vs order); trading (15c3-5 pre-set limits) | Authority is pre-declared by the principal on a trusted channel. Content can request more but never grant it | **User-turn mandate:** a signed per-session grant `{tool, destination, max_amount, expires}` derived **only** from principal (user/system) turns. Calls outside it → deny (enforce) or hold. Content never widens it, and grants can only narrow (RFC 8693 `act` chain). Merged with destination provenance and per-tool policy into **one** `policy.json` evaluation (BACKLOG T3) | T3 | **Yes** for tool/destination/amount fields, which are structured. **Partial** for deriving the grant from free-text user turns, so it falls back to an operator template per task and ambiguity resolves to *narrower*. Per-session key, never a default secret (2013 EAS lesson). |
+| Agency law (actual vs apparent authority); trading (fat-finger check); voice (speaker ID → provenance ID); military (tool output is intelligence, not orders) | A sensitive argument that traces only to untrusted content is "apparent-only" | Already T3 **destination provenance** and **source→sink**. Round 2 widens the extracted fields from destinations to **amounts and file paths** | T3 | **Yes**, same as §6a. |
+| Medication (CPOE hard/soft stops; override rates 49–96%) | Hard-block a narrow tier, keep warnings rare, and track overrides per rule | **Per-rule override-rate tracking:** every hold/warn the human approves or denies is logged per rule. Rules overridden >90% are flagged to retire or tighten. Only a human can override, never the agent (an LLM's "reason" can be written by the injection) | T7 | **Yes.** Deterministic logging. Real override data needs S5's approval channel, and until then the benign corpus (T7 FP itemization) stands in for it. |
+| Trading (order-rate throttles, Knight kill switch) | Velocity limits plus a halt | Already T3 **cumulative caps**. The kill switch = S6 breaker OPEN with a human reset | T3 / S6 | **Yes.** |
+| Medication (tall-man lettering); supply chain (typosquatting) | Lookalike detection | Homoglyph / confusable + Levenshtein ≤2 check on destination hosts and tool names, as a T3 egress heuristic | T3 (heuristic) | **Partial.** A tripwire, not a boundary. |
+
+#### 10.3b Stretch
+
+| Source domain(s) | Mechanism | Our feature | Ticket | Preconditions hold? |
+|---|---|---|---|---|
+| Supply chain (lockfile/hash pinning, Socket capability diff, dependency confusion, xz tarball-vs-git gap) | Pin what you install, and diff capabilities rather than code | **Tool-manifest lockfile + capability diff:** `sentinel.lock.json` holds a sha256 per canonical `{name, description, inputSchema}`. A mismatch on `tools/list` → block or re-approve (rug pull). Capability tags (network, fs-write, shell, secrets, "instructs the model" phrases), with alerts only on *new* capabilities. Name-shadowing registry (same or near name from a second server, descriptions that mention another server's tools). Strip invisible Unicode/HTML comments | S10 (extends S9) | **Yes** for pinning and diffing. **Partial** for capability tags, which come from pattern-matching NL descriptions and can't be proven. Provenance proves the publisher, not runtime output. |
+| Newsroom (CIA ACH: disconfirm, don't confirm); MELON (Zhu et al., ICML 2025) | Counterfactual test of whether untrusted content steered the call | **Counterfactual re-plan / masked re-execution as a *blocked-call explainer*:** for high-risk tools only, re-plan with untrusted chunks masked. If the call disappears, it was steered, and the case card says so. MELON is the published version, with masking in the **opposite** direction: it masks the *user prompt* and flags when the tool call survives, i.e. the call doesn't depend on the user | S11 | **Partial.** It needs the agent's planner to be replayable (DVAA canned responses may make this trivial or useless), costs an extra LLM call, and is an explainer and secondary signal only, never the gate (§10.1). |
+| Voice assistants (cloud simultaneity detection, ≥3 households) | The same content triggering many principals at once is a broadcast/campaign | **Cross-session campaign correlation:** hash normalized imperative spans from tool outputs into a bounded counter. ≥K distinct sessions within T minutes → quarantine the span + alert | S12 | **Partial.** Needs fleet fan-out (fits Falcon's telemetry story). A one-off targeted injection never correlates. The counter is bounded and fails loud. |
+| Newsroom (Admiralty grading; two independent sources / circular reporting) | Grade source reliability separately from claim credibility; corroborate from independent origins | Folded into S8/S11 as a risk input: a high-impact argument whose only origins are E/F-grade chunks escalates | (S8 input) | **Partial.** Web chunks have no reputation history, and grading must gate imperatives, not facts. |
+| Military (challenge-reply nonce); medication (read-back); voice (approval card that echoes the intent) | The out-of-band confirmation restates the action and its source | Adds to **S5**: the approval card renders a canonical sentence ("send $400 to X, introduced by email from Y"). An optional one-time code is shown only in the operator terminal | S5 | **Yes.** Never in-band: an injected "user confirmed" spoofs a chat yes/no. |
+| Military (two-person concept); medication (ISMP independent double-check) | A second, independent key for irreversible actions | Already S5 + S8's context-stripped judge. Round 2 adds that the second key should be a **human or a deterministic rule**, because two LLMs share failure modes | S5 / S8 | **Partial**, same as §6b. |
+
+#### 10.3c Excluded or narrative only
+
+| Source domain(s) | Mechanism | Why |
+|---|---|---|
+| Voice (static ad fingerprints) | Broadcast-fingerprint suppression: drop text matching known injection corpora | **Burger King re-dubbed within hours.** Text paraphrase costs less than re-dubbing audio. At most a telemetry signal (adds to the §6d SimHash exclusion) |
+| Trading (LULD price bands) | Deviation band from a reference price | Agents have no reference price. The "baseline from the stated task" form is the S8 / mandate idea, not a learned band (the §6d exclusion still stands) |
+| Agency law (liability allocation) | Who pays | Narrative and business framing only (§10.4). The law acts months later, and the proxy has milliseconds |
+| Supply chain (reproducible builds, SBOM) | Rebuild-and-compare; inventories | LLM output is non-deterministic. An SBOM doesn't stop injection (audit only) |
+
+### 10.4 New pitch lines
+
+- **Trading:** "Wall Street learned in 2010 that every order passes a broker's risk gate before it reaches the
+  market. SentinelProxy is that gate for AI agents."
+- **Voice:** "In 2017 a TV anchor said 'Alexa, order me a dollhouse' and the living rooms of San Diego went
+  shopping. Today every web page your agent reads is that anchor. SentinelProxy is the purchase PIN."
+- **Medication:** "Pharmacies stopped forged prescriptions by never trusting the paper, only the callback.
+  Content can request an action; only the principal's own channel can authorize it."
+- **Military:** "Militaries never let a radio message launch a missile. Orders come from the authenticated
+  chain of command; everything else is intelligence."
+- **Supply chain:** "npm has a lockfile. Your agent's tools don't."
+- **OAuth:** "OAuth solved the confused deputy for apps by making authority explicit, scoped, audience-bound
+  and consented on a trusted channel. SentinelProxy does the same for every tool call."
+- **Agency law (business framing):** "Your AI agent holds your power of attorney. The law already says the
+  principal pays (*Moffatt v. Air Canada*), so SentinelProxy limits what it can be talked into doing."
+- **Newsroom:** "Sources inform, they never assign."
+- **Empirical (for a judge who asks "why not a classifier?"):** "Spam filters lost to spammers because the
+  attacker wrote the content being scored. DKIM won because the mail server enforced it. We enforce at the boundary."
+
+### 10.5 What doesn't transfer (round 2)
+
+- **Numeric risk.** Trading limits sum notional value. Agent harm is semantic, so limits need **typed per-tool
+  schemas**, and free-text args only get provenance checks (trading).
+- **Coarse, session-level grants.** An OAuth scope, once granted, can be used by any instruction. The mandate must be checked **per call** and
+  argument-level (OAuth).
+- **Self-reported provenance.** An LLM can't reliably say which span caused an action, so provenance is
+  computed by the proxy, never asked of the model (OAuth `sourceArn`, newsroom).
+- **Biometrics and physical labels.** Agents have no voice to enroll and no barcode, so provenance is tracked, not
+  sensed (voice, medication).
+- **In-band confirmation.** A spoken yes/no or a "user confirmed" in the chat is spoofable (voice, military).
+- **Trained, accountable humans.** Licensure, liability and discipline deter human deputies. An LLM has none of them, so
+  enforcement lives in the proxy (medication, military, agency law, newsroom).
+- **Two-LLM two-key.** The two models share failure modes, so the second key should be a human or a deterministic rule (military, medication).
+- **Fixed order vocabulary.** Military read-back works on a small lexicon. Agent tasks are open-ended, so fuzzy
+  matching produces false positives (military).
+- **Simultaneity against targeted attacks.** A single poisoned email never correlates across sessions (voice).
+- **Human timescales.** Newsroom verification, legal remedy and registry quarantine take hours to months (newsroom, agency law,
+  supply chain).
+- **Warn-everything designs.** 49–96% of CPOE alerts are overridden, so warnings alone protect almost nothing (medication).
+
+### 10.6 Mapping back to BACKLOG
+
+- T3: the **user-turn mandate** is merged with destination provenance and per-tool policy into one config.
+- T7: **per-rule override-rate tracking**.
+- S10 tool-manifest lockfile + capability diff, S11 counterfactual re-plan explainer, S12 cross-session
+  campaign correlation. S5 gets the read-back card. S8's deterministic map is subsumed by the mandate's `tool` field.
+
+### 10.7 Citations (round 2)
+
+**⚠ = the source report flagged this as unverified, written from memory, or seen only in a search snippet. Check it before it goes on a slide.**
+
+**Empirical transfer cases** (4 web searches; the rest from memory)
+- Haynes 2009 (NEJM), surgical checklist: https://news.harvard.edu/gazette/story/2009/01/surgical-safety-checklist-drops-deaths-and-complications-by-more-than-one-third/
+- Urbach 2014, Ontario: https://psnet.ahrq.gov/issue/introduction-surgical-safety-checklists-ontario-canada
+- Kim et al. 2007, AIS for IDS: https://arxiv.org/pdf/0804.1266
+- Staniford, Paxson, Weaver 2002 (related Code Red paper): https://www.cs.ucf.edu/~czou/research/codered.pdf (⚠ original USENIX URL unverified)
+- Lowd & Meek 2005 (secondary source): https://en.wikipedia.org/wiki/Bayesian_poisoning
+- Whitten & Tygar 1999: https://www.usenix.org/conference/8th-usenix-security-symposium/why-johnny-cant-encrypt-usability-evaluation-pgp-50
+- DMARC after the 2024 bulk-sender rules: https://betanews.com/2025/02/05/rate-of-dmarc-adoption-doubles-thanks-to-bulk-sender-requirements/
+- ⚠ Graham, "A Plan for Spam": http://www.paulgraham.com/spam.html
+- ⚠ Freeman et al., NDSS 2016, "Who Are You?"
+- ⚠ DORA / Accelerate: https://dora.dev
+- ⚠ HACCP history: https://www.fda.gov/food/hazard-analysis-critical-control-point-haccp
+
+**Algorithmic trading** (3 searches)
+- AP hack, 23 Apr 2013 (verified via search): https://www.csmonitor.com/layout/set/amphtml/USA/2013/0423/Hackers-compromise-Associated-Press-Twitter-account-tweet-false-report-of-White-House-attack
+- Knight Capital 15c3-5 settlement, $12M (verified via search): https://www.wilmerhale.com/insights/client-alerts/knight-capital-settles-rule-15c3-5-violations-with-sec-agrees-to-pay-12-million
+- FINRA, Market Access Rule (verified via search): https://www.finra.org/rules-guidance/guidance/reports/2022-finras-examination-and-risk-monitoring-program/market-access-rule
+- ⚠ SEC Release 34-70694: https://www.sec.gov/litigation/admin/2013/34-70694.pdf
+- ⚠ LULD plan: https://www.luldplan.com
+
+**Voice assistants**
+- The Register, dollhouse: https://www.theregister.co.uk/2017/01/07/tv_anchor_says_alexa_buy_me_a_dollhouse_and_she_does/ (reports describe *attempted* orders; no confirmed completed-order count)
+- Snopes, dollhouse: https://www.snopes.com/alexa-orders-dollhouse-and-cookies/
+- Burger King re-dubs: https://adland.tv/burger-king-redubs-connected-whopper-ad-triggers-google-devices-again
+- DolphinAttack (CCS 2017): https://arxiv.org/abs/1708.09537
+- ⚠ Amazon Science, two-tier fingerprinting / 3-household rule (search summary only, page not opened; the "80–90%" figure is from it): https://amazon.science/blog/why-alexa-wont-wake-up-when-she-hears-her-name-in-amazons-super-bowl-ad
+- ⚠ Amazon help, voice code (odd survey subdomain): https://digprjsurvey.amazon.com/csad/help/node/GAA2RYUEDNT5ZSNK
+
+**Medication safety** (no searches run; **all ⚠**, including the override-rate figures)
+- ⚠ van der Sijs et al., JAMIA 2006 (49–96% overrides): https://pubmed.ncbi.nlm.nih.gov/16357358/
+- ⚠ Isaac et al., Arch Intern Med 2009 (~90% high-severity overridden): https://pubmed.ncbi.nlm.nih.gov/19204211/
+- ⚠ Nanji et al., JAMIA 2018 (~73% overridden): https://academic.oup.com/jamia/article/25/5/476/4705617
+- ⚠ Koppel et al., JAMIA 2008 (BCMA workarounds): https://pubmed.ncbi.nlm.nih.gov/18436903/
+- ⚠ ISMP high-alert medications: https://www.ismp.org/recommendations/high-alert-medications-acute-list
+- ⚠ CDC on PDMPs: https://www.cdc.gov/overdose-prevention/hcp/clinical-guidance/prescription-drug-monitoring-programs.html
+
+**Military / emergency order authentication** (3 searches; all ⚠ *seen in search results, not opened*; the authenticator-table and read-back descriptions are general knowledge without a citation)
+- ⚠ FCC Hawaii false-alert report (via NPSTC): https://blog.npstc.org/?p=6859
+- ⚠ NPR, "don't say 'this is not a drill'": https://www.npr.org/sections/thetwo-way/2018/04/11/601394064/federal-communications-commission-dont-say-this-is-not-a-drill-during-drills
+- ⚠ CSM, EAS zombie hack: https://www.csmonitor.com/USA/2013/0214/Why-zombie-cyberattack-is-a-real-concern-for-Emergency-Alert-System
+- ⚠ The Register, EAS vulnerabilities: https://www.theregister.com/2013/02/18/eas_vulns/
+- ⚠ AFGSC, positive control: https://www.afgsc.af.mil/News/Features/Display/Article/629957/the-myth-of-the-big-red-button-how-the-icbm-force-maintains-positive-control-nu
+- ⚠ DOE, Two-Person Concept: https://www.directives.doe.gov/terms_definitions/two-person-concept-tpc
+
+**Software supply chain** (no fetches; **all ⚠**)
+- ⚠ CISA AA20-352A (SolarWinds): https://www.cisa.gov/news-events/cybersecurity-advisories/aa20-352a
+- ⚠ CrowdStrike SUNSPOT analysis (exact path unverified): https://www.crowdstrike.com/blog/sunspot-malware-technical-analysis/
+- ⚠ Freund's xz disclosure: https://www.openwall.com/lists/oss-security/2024/03/29/4
+- ⚠ Birsan, Dependency Confusion: https://medium.com/@alex.birsan/dependency-confusion-4a5d60fec610
+- ⚠ SLSA v1.0 levels: https://slsa.dev/spec/v1.0/levels
+- ⚠ npm provenance: https://docs.npmjs.com/generating-provenance-statements; Socket: https://socket.dev (feature details unverified)
+
+**OAuth / delegated authorization**
+- MCP Authorization spec 2025-06-18 (verified): https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
+- AWS IAM confused deputy, ExternalId/SourceArn (verified): https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
+- ⚠ IETF draft, agent on-behalf-of (verified via search; the "expired Feb 2026" and "OAuth WG rechartered Jun 2026" claims were not opened): https://datatracker.ietf.org/doc/html/draft-oauth-ai-agents-on-behalf-of-user-02
+- ⚠ RFC 9396 (RAR), not fetched: https://www.rfc-editor.org/rfc/rfc9396
+- ⚠ RFC 8693 (Token Exchange), not fetched: https://www.rfc-editor.org/rfc/rfc8693
+- ⚠ Microsoft, illicit consent grants: https://learn.microsoft.com/en-us/defender-office-365/detect-and-remediate-illicit-consent-grants
+
+**Agency law** (Restatement §§2.01–2.03, 4.01, 8.01 cited from memory ⚠)
+- ⚠ *Moffatt v. Air Canada*, 2024 BCCRT 149 (search result, not opened): https://www.dww.com/articles/bc-tribunal-finds-air-canada-liable-for-inaccurate-advice-given-by-website-chatbot
+- ⚠ UCC §3-404 (search result, not opened): https://www.law.cornell.edu/ucc/3/3-404
+- ⚠ EU Directive 2024/2853 (the 9 Dec 2026 date comes from secondary summaries): https://eur-lex.europa.eu/EN/legal-content/summary/defective-products-liability.html
+- ⚠ Venable, "Rogue AI Agents Won't Be Testifying — You Will" (Apr 2026, snippet only): https://www.venable.com/insights/publications/2026/04/rogue-ai-agents-wont-be-testifying-you-will
+- ⚠ Restatement §2.03 applied to AI agents (blog, not primary): https://blog.promise.legal/ai-agent-legal-liability-contracting-authority/
+- ⚠ Baker McKenzie, US accountability for AI agents (Jun 2026): URL malformed, unverified
+
+**Newsroom source verification** (no searches; **all ⚠**)
+- ⚠ Heuer, *Psychology of Intelligence Analysis* (1999): https://www.cia.gov/resources/csi/books-monographs/psychology-of-intelligence-analysis-2/
+- ⚠ Thornburgh–Boccardi report (CBS, 2005): https://www.cbsnews.com/htdocs/pdf/complete_report/CBS_Report.pdf
+- ⚠ Admiralty code: https://en.wikipedia.org/wiki/Admiralty_code
+- ⚠ Syrian Electronic Army / AP hack: https://en.wikipedia.org/wiki/Syrian_Electronic_Army (the "$136B" figure is unverified)
+- ⚠ *Verification Handbook*: https://datajournalism.com/read/handbook/verification-3
+- ⚠ Curveball / circular reporting: https://en.wikipedia.org/wiki/Curveball_(informant)
+
+**Added by T0c (verified 2026-10-12 via web search)**
+- Zhu, Yang, Wang, Guo, Wang, "MELON: Provable Defense Against Indirect Prompt Injection Attacks in AI Agents",
+  ICML 2025 (PMLR 267). https://arxiv.org/abs/2502.05174, https://proceedings.mlr.press/v267/zhu25z.html.
+  It masks the user prompt, re-executes, and flags an attack when the masked and original runs produce similar tool calls. Evaluated on AgentDojo.
