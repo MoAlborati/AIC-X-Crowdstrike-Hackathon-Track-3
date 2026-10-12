@@ -31,5 +31,14 @@ path → NEEDS_WORK); correctness vs acceptance; detection keys on robust signal
 not one brittle string; framework tags accurate per RESEARCH.md; no real secrets (only DVAA fakes); no
 outward action beyond repo + authorized local target; tests are real-seam.
 
-Verdict **APPROVE** or **NEEDS_WORK** with a findings list. Do not merge. End with `STATUS: DONE`
+Verdict **APPROVE** or **NEEDS_WORK** with a findings list.
+
+**Merge policy (operator, 2026-10-12 11:58 PDT; LOOP.md §Endgame policies):**
+- A reviewer or merge-steward agent **may merge** the PR once the verdict is **APPROVE** and **tests are green**.
+- A PR with a **NEEDS_WORK** verdict is **never merged**.
+- **At most 2 fix rounds per PR.** If findings are still open after round 2, record them under
+  **"Known limitations"** in the PR body, re-review, and merge once the verdict is APPROVE and tests are green.
+- Humans can review at any time. Address their comments as new commits.
+
+End with `STATUS: DONE`
 (verdict given), `DEGRADED`, or `BLOCKED`.

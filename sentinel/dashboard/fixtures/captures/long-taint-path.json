@@ -1,0 +1,3621 @@
+{
+  "placeholder": true,
+  "placeholderNote": "Long-path PLACEHOLDER: 200 neutral tool hops (step_1 … step_200). T4 caps TaintPath at 64 hops and inserts a truncation marker; the dashboard must render that marker as a node.",
+  "title": "Long taint path · 200 hops (T4 truncation marker)",
+  "scenario": "long-path",
+  "expectedLabel": "attack",
+  "role": "single",
+  "agent": {
+    "name": "ChainBot",
+    "port": null
+  },
+  "exchanges": [
+    {
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Run the nightly data pipeline."
+          }
+        ]
+      },
+      "response": {
+        "choices": [
+          {
+            "message": {
+              "role": "assistant",
+              "content": "running 200 pipeline steps",
+              "tool_calls": [
+                {
+                  "id": "step_1",
+                  "type": "function",
+                  "function": {
+                    "name": "step_1",
+                    "arguments": "{\"n\":1}"
+                  }
+                },
+                {
+                  "id": "step_2",
+                  "type": "function",
+                  "function": {
+                    "name": "step_2",
+                    "arguments": "{\"n\":2}"
+                  }
+                },
+                {
+                  "id": "step_3",
+                  "type": "function",
+                  "function": {
+                    "name": "step_3",
+                    "arguments": "{\"n\":3}"
+                  }
+                },
+                {
+                  "id": "step_4",
+                  "type": "function",
+                  "function": {
+                    "name": "step_4",
+                    "arguments": "{\"n\":4}"
+                  }
+                },
+                {
+                  "id": "step_5",
+                  "type": "function",
+                  "function": {
+                    "name": "step_5",
+                    "arguments": "{\"n\":5}"
+                  }
+                },
+                {
+                  "id": "step_6",
+                  "type": "function",
+                  "function": {
+                    "name": "step_6",
+                    "arguments": "{\"n\":6}"
+                  }
+                },
+                {
+                  "id": "step_7",
+                  "type": "function",
+                  "function": {
+                    "name": "step_7",
+                    "arguments": "{\"n\":7}"
+                  }
+                },
+                {
+                  "id": "step_8",
+                  "type": "function",
+                  "function": {
+                    "name": "step_8",
+                    "arguments": "{\"n\":8}"
+                  }
+                },
+                {
+                  "id": "step_9",
+                  "type": "function",
+                  "function": {
+                    "name": "step_9",
+                    "arguments": "{\"n\":9}"
+                  }
+                },
+                {
+                  "id": "step_10",
+                  "type": "function",
+                  "function": {
+                    "name": "step_10",
+                    "arguments": "{\"n\":10}"
+                  }
+                },
+                {
+                  "id": "step_11",
+                  "type": "function",
+                  "function": {
+                    "name": "step_11",
+                    "arguments": "{\"n\":11}"
+                  }
+                },
+                {
+                  "id": "step_12",
+                  "type": "function",
+                  "function": {
+                    "name": "step_12",
+                    "arguments": "{\"n\":12}"
+                  }
+                },
+                {
+                  "id": "step_13",
+                  "type": "function",
+                  "function": {
+                    "name": "step_13",
+                    "arguments": "{\"n\":13}"
+                  }
+                },
+                {
+                  "id": "step_14",
+                  "type": "function",
+                  "function": {
+                    "name": "step_14",
+                    "arguments": "{\"n\":14}"
+                  }
+                },
+                {
+                  "id": "step_15",
+                  "type": "function",
+                  "function": {
+                    "name": "step_15",
+                    "arguments": "{\"n\":15}"
+                  }
+                },
+                {
+                  "id": "step_16",
+                  "type": "function",
+                  "function": {
+                    "name": "step_16",
+                    "arguments": "{\"n\":16}"
+                  }
+                },
+                {
+                  "id": "step_17",
+                  "type": "function",
+                  "function": {
+                    "name": "step_17",
+                    "arguments": "{\"n\":17}"
+                  }
+                },
+                {
+                  "id": "step_18",
+                  "type": "function",
+                  "function": {
+                    "name": "step_18",
+                    "arguments": "{\"n\":18}"
+                  }
+                },
+                {
+                  "id": "step_19",
+                  "type": "function",
+                  "function": {
+                    "name": "step_19",
+                    "arguments": "{\"n\":19}"
+                  }
+                },
+                {
+                  "id": "step_20",
+                  "type": "function",
+                  "function": {
+                    "name": "step_20",
+                    "arguments": "{\"n\":20}"
+                  }
+                },
+                {
+                  "id": "step_21",
+                  "type": "function",
+                  "function": {
+                    "name": "step_21",
+                    "arguments": "{\"n\":21}"
+                  }
+                },
+                {
+                  "id": "step_22",
+                  "type": "function",
+                  "function": {
+                    "name": "step_22",
+                    "arguments": "{\"n\":22}"
+                  }
+                },
+                {
+                  "id": "step_23",
+                  "type": "function",
+                  "function": {
+                    "name": "step_23",
+                    "arguments": "{\"n\":23}"
+                  }
+                },
+                {
+                  "id": "step_24",
+                  "type": "function",
+                  "function": {
+                    "name": "step_24",
+                    "arguments": "{\"n\":24}"
+                  }
+                },
+                {
+                  "id": "step_25",
+                  "type": "function",
+                  "function": {
+                    "name": "step_25",
+                    "arguments": "{\"n\":25}"
+                  }
+                },
+                {
+                  "id": "step_26",
+                  "type": "function",
+                  "function": {
+                    "name": "step_26",
+                    "arguments": "{\"n\":26}"
+                  }
+                },
+                {
+                  "id": "step_27",
+                  "type": "function",
+                  "function": {
+                    "name": "step_27",
+                    "arguments": "{\"n\":27}"
+                  }
+                },
+                {
+                  "id": "step_28",
+                  "type": "function",
+                  "function": {
+                    "name": "step_28",
+                    "arguments": "{\"n\":28}"
+                  }
+                },
+                {
+                  "id": "step_29",
+                  "type": "function",
+                  "function": {
+                    "name": "step_29",
+                    "arguments": "{\"n\":29}"
+                  }
+                },
+                {
+                  "id": "step_30",
+                  "type": "function",
+                  "function": {
+                    "name": "step_30",
+                    "arguments": "{\"n\":30}"
+                  }
+                },
+                {
+                  "id": "step_31",
+                  "type": "function",
+                  "function": {
+                    "name": "step_31",
+                    "arguments": "{\"n\":31}"
+                  }
+                },
+                {
+                  "id": "step_32",
+                  "type": "function",
+                  "function": {
+                    "name": "step_32",
+                    "arguments": "{\"n\":32}"
+                  }
+                },
+                {
+                  "id": "step_33",
+                  "type": "function",
+                  "function": {
+                    "name": "step_33",
+                    "arguments": "{\"n\":33}"
+                  }
+                },
+                {
+                  "id": "step_34",
+                  "type": "function",
+                  "function": {
+                    "name": "step_34",
+                    "arguments": "{\"n\":34}"
+                  }
+                },
+                {
+                  "id": "step_35",
+                  "type": "function",
+                  "function": {
+                    "name": "step_35",
+                    "arguments": "{\"n\":35}"
+                  }
+                },
+                {
+                  "id": "step_36",
+                  "type": "function",
+                  "function": {
+                    "name": "step_36",
+                    "arguments": "{\"n\":36}"
+                  }
+                },
+                {
+                  "id": "step_37",
+                  "type": "function",
+                  "function": {
+                    "name": "step_37",
+                    "arguments": "{\"n\":37}"
+                  }
+                },
+                {
+                  "id": "step_38",
+                  "type": "function",
+                  "function": {
+                    "name": "step_38",
+                    "arguments": "{\"n\":38}"
+                  }
+                },
+                {
+                  "id": "step_39",
+                  "type": "function",
+                  "function": {
+                    "name": "step_39",
+                    "arguments": "{\"n\":39}"
+                  }
+                },
+                {
+                  "id": "step_40",
+                  "type": "function",
+                  "function": {
+                    "name": "step_40",
+                    "arguments": "{\"n\":40}"
+                  }
+                },
+                {
+                  "id": "step_41",
+                  "type": "function",
+                  "function": {
+                    "name": "step_41",
+                    "arguments": "{\"n\":41}"
+                  }
+                },
+                {
+                  "id": "step_42",
+                  "type": "function",
+                  "function": {
+                    "name": "step_42",
+                    "arguments": "{\"n\":42}"
+                  }
+                },
+                {
+                  "id": "step_43",
+                  "type": "function",
+                  "function": {
+                    "name": "step_43",
+                    "arguments": "{\"n\":43}"
+                  }
+                },
+                {
+                  "id": "step_44",
+                  "type": "function",
+                  "function": {
+                    "name": "step_44",
+                    "arguments": "{\"n\":44}"
+                  }
+                },
+                {
+                  "id": "step_45",
+                  "type": "function",
+                  "function": {
+                    "name": "step_45",
+                    "arguments": "{\"n\":45}"
+                  }
+                },
+                {
+                  "id": "step_46",
+                  "type": "function",
+                  "function": {
+                    "name": "step_46",
+                    "arguments": "{\"n\":46}"
+                  }
+                },
+                {
+                  "id": "step_47",
+                  "type": "function",
+                  "function": {
+                    "name": "step_47",
+                    "arguments": "{\"n\":47}"
+                  }
+                },
+                {
+                  "id": "step_48",
+                  "type": "function",
+                  "function": {
+                    "name": "step_48",
+                    "arguments": "{\"n\":48}"
+                  }
+                },
+                {
+                  "id": "step_49",
+                  "type": "function",
+                  "function": {
+                    "name": "step_49",
+                    "arguments": "{\"n\":49}"
+                  }
+                },
+                {
+                  "id": "step_50",
+                  "type": "function",
+                  "function": {
+                    "name": "step_50",
+                    "arguments": "{\"n\":50}"
+                  }
+                },
+                {
+                  "id": "step_51",
+                  "type": "function",
+                  "function": {
+                    "name": "step_51",
+                    "arguments": "{\"n\":51}"
+                  }
+                },
+                {
+                  "id": "step_52",
+                  "type": "function",
+                  "function": {
+                    "name": "step_52",
+                    "arguments": "{\"n\":52}"
+                  }
+                },
+                {
+                  "id": "step_53",
+                  "type": "function",
+                  "function": {
+                    "name": "step_53",
+                    "arguments": "{\"n\":53}"
+                  }
+                },
+                {
+                  "id": "step_54",
+                  "type": "function",
+                  "function": {
+                    "name": "step_54",
+                    "arguments": "{\"n\":54}"
+                  }
+                },
+                {
+                  "id": "step_55",
+                  "type": "function",
+                  "function": {
+                    "name": "step_55",
+                    "arguments": "{\"n\":55}"
+                  }
+                },
+                {
+                  "id": "step_56",
+                  "type": "function",
+                  "function": {
+                    "name": "step_56",
+                    "arguments": "{\"n\":56}"
+                  }
+                },
+                {
+                  "id": "step_57",
+                  "type": "function",
+                  "function": {
+                    "name": "step_57",
+                    "arguments": "{\"n\":57}"
+                  }
+                },
+                {
+                  "id": "step_58",
+                  "type": "function",
+                  "function": {
+                    "name": "step_58",
+                    "arguments": "{\"n\":58}"
+                  }
+                },
+                {
+                  "id": "step_59",
+                  "type": "function",
+                  "function": {
+                    "name": "step_59",
+                    "arguments": "{\"n\":59}"
+                  }
+                },
+                {
+                  "id": "step_60",
+                  "type": "function",
+                  "function": {
+                    "name": "step_60",
+                    "arguments": "{\"n\":60}"
+                  }
+                },
+                {
+                  "id": "step_61",
+                  "type": "function",
+                  "function": {
+                    "name": "step_61",
+                    "arguments": "{\"n\":61}"
+                  }
+                },
+                {
+                  "id": "step_62",
+                  "type": "function",
+                  "function": {
+                    "name": "step_62",
+                    "arguments": "{\"n\":62}"
+                  }
+                },
+                {
+                  "id": "step_63",
+                  "type": "function",
+                  "function": {
+                    "name": "step_63",
+                    "arguments": "{\"n\":63}"
+                  }
+                },
+                {
+                  "id": "step_64",
+                  "type": "function",
+                  "function": {
+                    "name": "step_64",
+                    "arguments": "{\"n\":64}"
+                  }
+                },
+                {
+                  "id": "step_65",
+                  "type": "function",
+                  "function": {
+                    "name": "step_65",
+                    "arguments": "{\"n\":65}"
+                  }
+                },
+                {
+                  "id": "step_66",
+                  "type": "function",
+                  "function": {
+                    "name": "step_66",
+                    "arguments": "{\"n\":66}"
+                  }
+                },
+                {
+                  "id": "step_67",
+                  "type": "function",
+                  "function": {
+                    "name": "step_67",
+                    "arguments": "{\"n\":67}"
+                  }
+                },
+                {
+                  "id": "step_68",
+                  "type": "function",
+                  "function": {
+                    "name": "step_68",
+                    "arguments": "{\"n\":68}"
+                  }
+                },
+                {
+                  "id": "step_69",
+                  "type": "function",
+                  "function": {
+                    "name": "step_69",
+                    "arguments": "{\"n\":69}"
+                  }
+                },
+                {
+                  "id": "step_70",
+                  "type": "function",
+                  "function": {
+                    "name": "step_70",
+                    "arguments": "{\"n\":70}"
+                  }
+                },
+                {
+                  "id": "step_71",
+                  "type": "function",
+                  "function": {
+                    "name": "step_71",
+                    "arguments": "{\"n\":71}"
+                  }
+                },
+                {
+                  "id": "step_72",
+                  "type": "function",
+                  "function": {
+                    "name": "step_72",
+                    "arguments": "{\"n\":72}"
+                  }
+                },
+                {
+                  "id": "step_73",
+                  "type": "function",
+                  "function": {
+                    "name": "step_73",
+                    "arguments": "{\"n\":73}"
+                  }
+                },
+                {
+                  "id": "step_74",
+                  "type": "function",
+                  "function": {
+                    "name": "step_74",
+                    "arguments": "{\"n\":74}"
+                  }
+                },
+                {
+                  "id": "step_75",
+                  "type": "function",
+                  "function": {
+                    "name": "step_75",
+                    "arguments": "{\"n\":75}"
+                  }
+                },
+                {
+                  "id": "step_76",
+                  "type": "function",
+                  "function": {
+                    "name": "step_76",
+                    "arguments": "{\"n\":76}"
+                  }
+                },
+                {
+                  "id": "step_77",
+                  "type": "function",
+                  "function": {
+                    "name": "step_77",
+                    "arguments": "{\"n\":77}"
+                  }
+                },
+                {
+                  "id": "step_78",
+                  "type": "function",
+                  "function": {
+                    "name": "step_78",
+                    "arguments": "{\"n\":78}"
+                  }
+                },
+                {
+                  "id": "step_79",
+                  "type": "function",
+                  "function": {
+                    "name": "step_79",
+                    "arguments": "{\"n\":79}"
+                  }
+                },
+                {
+                  "id": "step_80",
+                  "type": "function",
+                  "function": {
+                    "name": "step_80",
+                    "arguments": "{\"n\":80}"
+                  }
+                },
+                {
+                  "id": "step_81",
+                  "type": "function",
+                  "function": {
+                    "name": "step_81",
+                    "arguments": "{\"n\":81}"
+                  }
+                },
+                {
+                  "id": "step_82",
+                  "type": "function",
+                  "function": {
+                    "name": "step_82",
+                    "arguments": "{\"n\":82}"
+                  }
+                },
+                {
+                  "id": "step_83",
+                  "type": "function",
+                  "function": {
+                    "name": "step_83",
+                    "arguments": "{\"n\":83}"
+                  }
+                },
+                {
+                  "id": "step_84",
+                  "type": "function",
+                  "function": {
+                    "name": "step_84",
+                    "arguments": "{\"n\":84}"
+                  }
+                },
+                {
+                  "id": "step_85",
+                  "type": "function",
+                  "function": {
+                    "name": "step_85",
+                    "arguments": "{\"n\":85}"
+                  }
+                },
+                {
+                  "id": "step_86",
+                  "type": "function",
+                  "function": {
+                    "name": "step_86",
+                    "arguments": "{\"n\":86}"
+                  }
+                },
+                {
+                  "id": "step_87",
+                  "type": "function",
+                  "function": {
+                    "name": "step_87",
+                    "arguments": "{\"n\":87}"
+                  }
+                },
+                {
+                  "id": "step_88",
+                  "type": "function",
+                  "function": {
+                    "name": "step_88",
+                    "arguments": "{\"n\":88}"
+                  }
+                },
+                {
+                  "id": "step_89",
+                  "type": "function",
+                  "function": {
+                    "name": "step_89",
+                    "arguments": "{\"n\":89}"
+                  }
+                },
+                {
+                  "id": "step_90",
+                  "type": "function",
+                  "function": {
+                    "name": "step_90",
+                    "arguments": "{\"n\":90}"
+                  }
+                },
+                {
+                  "id": "step_91",
+                  "type": "function",
+                  "function": {
+                    "name": "step_91",
+                    "arguments": "{\"n\":91}"
+                  }
+                },
+                {
+                  "id": "step_92",
+                  "type": "function",
+                  "function": {
+                    "name": "step_92",
+                    "arguments": "{\"n\":92}"
+                  }
+                },
+                {
+                  "id": "step_93",
+                  "type": "function",
+                  "function": {
+                    "name": "step_93",
+                    "arguments": "{\"n\":93}"
+                  }
+                },
+                {
+                  "id": "step_94",
+                  "type": "function",
+                  "function": {
+                    "name": "step_94",
+                    "arguments": "{\"n\":94}"
+                  }
+                },
+                {
+                  "id": "step_95",
+                  "type": "function",
+                  "function": {
+                    "name": "step_95",
+                    "arguments": "{\"n\":95}"
+                  }
+                },
+                {
+                  "id": "step_96",
+                  "type": "function",
+                  "function": {
+                    "name": "step_96",
+                    "arguments": "{\"n\":96}"
+                  }
+                },
+                {
+                  "id": "step_97",
+                  "type": "function",
+                  "function": {
+                    "name": "step_97",
+                    "arguments": "{\"n\":97}"
+                  }
+                },
+                {
+                  "id": "step_98",
+                  "type": "function",
+                  "function": {
+                    "name": "step_98",
+                    "arguments": "{\"n\":98}"
+                  }
+                },
+                {
+                  "id": "step_99",
+                  "type": "function",
+                  "function": {
+                    "name": "step_99",
+                    "arguments": "{\"n\":99}"
+                  }
+                },
+                {
+                  "id": "step_100",
+                  "type": "function",
+                  "function": {
+                    "name": "step_100",
+                    "arguments": "{\"n\":100}"
+                  }
+                },
+                {
+                  "id": "step_101",
+                  "type": "function",
+                  "function": {
+                    "name": "step_101",
+                    "arguments": "{\"n\":101}"
+                  }
+                },
+                {
+                  "id": "step_102",
+                  "type": "function",
+                  "function": {
+                    "name": "step_102",
+                    "arguments": "{\"n\":102}"
+                  }
+                },
+                {
+                  "id": "step_103",
+                  "type": "function",
+                  "function": {
+                    "name": "step_103",
+                    "arguments": "{\"n\":103}"
+                  }
+                },
+                {
+                  "id": "step_104",
+                  "type": "function",
+                  "function": {
+                    "name": "step_104",
+                    "arguments": "{\"n\":104}"
+                  }
+                },
+                {
+                  "id": "step_105",
+                  "type": "function",
+                  "function": {
+                    "name": "step_105",
+                    "arguments": "{\"n\":105}"
+                  }
+                },
+                {
+                  "id": "step_106",
+                  "type": "function",
+                  "function": {
+                    "name": "step_106",
+                    "arguments": "{\"n\":106}"
+                  }
+                },
+                {
+                  "id": "step_107",
+                  "type": "function",
+                  "function": {
+                    "name": "step_107",
+                    "arguments": "{\"n\":107}"
+                  }
+                },
+                {
+                  "id": "step_108",
+                  "type": "function",
+                  "function": {
+                    "name": "step_108",
+                    "arguments": "{\"n\":108}"
+                  }
+                },
+                {
+                  "id": "step_109",
+                  "type": "function",
+                  "function": {
+                    "name": "step_109",
+                    "arguments": "{\"n\":109}"
+                  }
+                },
+                {
+                  "id": "step_110",
+                  "type": "function",
+                  "function": {
+                    "name": "step_110",
+                    "arguments": "{\"n\":110}"
+                  }
+                },
+                {
+                  "id": "step_111",
+                  "type": "function",
+                  "function": {
+                    "name": "step_111",
+                    "arguments": "{\"n\":111}"
+                  }
+                },
+                {
+                  "id": "step_112",
+                  "type": "function",
+                  "function": {
+                    "name": "step_112",
+                    "arguments": "{\"n\":112}"
+                  }
+                },
+                {
+                  "id": "step_113",
+                  "type": "function",
+                  "function": {
+                    "name": "step_113",
+                    "arguments": "{\"n\":113}"
+                  }
+                },
+                {
+                  "id": "step_114",
+                  "type": "function",
+                  "function": {
+                    "name": "step_114",
+                    "arguments": "{\"n\":114}"
+                  }
+                },
+                {
+                  "id": "step_115",
+                  "type": "function",
+                  "function": {
+                    "name": "step_115",
+                    "arguments": "{\"n\":115}"
+                  }
+                },
+                {
+                  "id": "step_116",
+                  "type": "function",
+                  "function": {
+                    "name": "step_116",
+                    "arguments": "{\"n\":116}"
+                  }
+                },
+                {
+                  "id": "step_117",
+                  "type": "function",
+                  "function": {
+                    "name": "step_117",
+                    "arguments": "{\"n\":117}"
+                  }
+                },
+                {
+                  "id": "step_118",
+                  "type": "function",
+                  "function": {
+                    "name": "step_118",
+                    "arguments": "{\"n\":118}"
+                  }
+                },
+                {
+                  "id": "step_119",
+                  "type": "function",
+                  "function": {
+                    "name": "step_119",
+                    "arguments": "{\"n\":119}"
+                  }
+                },
+                {
+                  "id": "step_120",
+                  "type": "function",
+                  "function": {
+                    "name": "step_120",
+                    "arguments": "{\"n\":120}"
+                  }
+                },
+                {
+                  "id": "step_121",
+                  "type": "function",
+                  "function": {
+                    "name": "step_121",
+                    "arguments": "{\"n\":121}"
+                  }
+                },
+                {
+                  "id": "step_122",
+                  "type": "function",
+                  "function": {
+                    "name": "step_122",
+                    "arguments": "{\"n\":122}"
+                  }
+                },
+                {
+                  "id": "step_123",
+                  "type": "function",
+                  "function": {
+                    "name": "step_123",
+                    "arguments": "{\"n\":123}"
+                  }
+                },
+                {
+                  "id": "step_124",
+                  "type": "function",
+                  "function": {
+                    "name": "step_124",
+                    "arguments": "{\"n\":124}"
+                  }
+                },
+                {
+                  "id": "step_125",
+                  "type": "function",
+                  "function": {
+                    "name": "step_125",
+                    "arguments": "{\"n\":125}"
+                  }
+                },
+                {
+                  "id": "step_126",
+                  "type": "function",
+                  "function": {
+                    "name": "step_126",
+                    "arguments": "{\"n\":126}"
+                  }
+                },
+                {
+                  "id": "step_127",
+                  "type": "function",
+                  "function": {
+                    "name": "step_127",
+                    "arguments": "{\"n\":127}"
+                  }
+                },
+                {
+                  "id": "step_128",
+                  "type": "function",
+                  "function": {
+                    "name": "step_128",
+                    "arguments": "{\"n\":128}"
+                  }
+                },
+                {
+                  "id": "step_129",
+                  "type": "function",
+                  "function": {
+                    "name": "step_129",
+                    "arguments": "{\"n\":129}"
+                  }
+                },
+                {
+                  "id": "step_130",
+                  "type": "function",
+                  "function": {
+                    "name": "step_130",
+                    "arguments": "{\"n\":130}"
+                  }
+                },
+                {
+                  "id": "step_131",
+                  "type": "function",
+                  "function": {
+                    "name": "step_131",
+                    "arguments": "{\"n\":131}"
+                  }
+                },
+                {
+                  "id": "step_132",
+                  "type": "function",
+                  "function": {
+                    "name": "step_132",
+                    "arguments": "{\"n\":132}"
+                  }
+                },
+                {
+                  "id": "step_133",
+                  "type": "function",
+                  "function": {
+                    "name": "step_133",
+                    "arguments": "{\"n\":133}"
+                  }
+                },
+                {
+                  "id": "step_134",
+                  "type": "function",
+                  "function": {
+                    "name": "step_134",
+                    "arguments": "{\"n\":134}"
+                  }
+                },
+                {
+                  "id": "step_135",
+                  "type": "function",
+                  "function": {
+                    "name": "step_135",
+                    "arguments": "{\"n\":135}"
+                  }
+                },
+                {
+                  "id": "step_136",
+                  "type": "function",
+                  "function": {
+                    "name": "step_136",
+                    "arguments": "{\"n\":136}"
+                  }
+                },
+                {
+                  "id": "step_137",
+                  "type": "function",
+                  "function": {
+                    "name": "step_137",
+                    "arguments": "{\"n\":137}"
+                  }
+                },
+                {
+                  "id": "step_138",
+                  "type": "function",
+                  "function": {
+                    "name": "step_138",
+                    "arguments": "{\"n\":138}"
+                  }
+                },
+                {
+                  "id": "step_139",
+                  "type": "function",
+                  "function": {
+                    "name": "step_139",
+                    "arguments": "{\"n\":139}"
+                  }
+                },
+                {
+                  "id": "step_140",
+                  "type": "function",
+                  "function": {
+                    "name": "step_140",
+                    "arguments": "{\"n\":140}"
+                  }
+                },
+                {
+                  "id": "step_141",
+                  "type": "function",
+                  "function": {
+                    "name": "step_141",
+                    "arguments": "{\"n\":141}"
+                  }
+                },
+                {
+                  "id": "step_142",
+                  "type": "function",
+                  "function": {
+                    "name": "step_142",
+                    "arguments": "{\"n\":142}"
+                  }
+                },
+                {
+                  "id": "step_143",
+                  "type": "function",
+                  "function": {
+                    "name": "step_143",
+                    "arguments": "{\"n\":143}"
+                  }
+                },
+                {
+                  "id": "step_144",
+                  "type": "function",
+                  "function": {
+                    "name": "step_144",
+                    "arguments": "{\"n\":144}"
+                  }
+                },
+                {
+                  "id": "step_145",
+                  "type": "function",
+                  "function": {
+                    "name": "step_145",
+                    "arguments": "{\"n\":145}"
+                  }
+                },
+                {
+                  "id": "step_146",
+                  "type": "function",
+                  "function": {
+                    "name": "step_146",
+                    "arguments": "{\"n\":146}"
+                  }
+                },
+                {
+                  "id": "step_147",
+                  "type": "function",
+                  "function": {
+                    "name": "step_147",
+                    "arguments": "{\"n\":147}"
+                  }
+                },
+                {
+                  "id": "step_148",
+                  "type": "function",
+                  "function": {
+                    "name": "step_148",
+                    "arguments": "{\"n\":148}"
+                  }
+                },
+                {
+                  "id": "step_149",
+                  "type": "function",
+                  "function": {
+                    "name": "step_149",
+                    "arguments": "{\"n\":149}"
+                  }
+                },
+                {
+                  "id": "step_150",
+                  "type": "function",
+                  "function": {
+                    "name": "step_150",
+                    "arguments": "{\"n\":150}"
+                  }
+                },
+                {
+                  "id": "step_151",
+                  "type": "function",
+                  "function": {
+                    "name": "step_151",
+                    "arguments": "{\"n\":151}"
+                  }
+                },
+                {
+                  "id": "step_152",
+                  "type": "function",
+                  "function": {
+                    "name": "step_152",
+                    "arguments": "{\"n\":152}"
+                  }
+                },
+                {
+                  "id": "step_153",
+                  "type": "function",
+                  "function": {
+                    "name": "step_153",
+                    "arguments": "{\"n\":153}"
+                  }
+                },
+                {
+                  "id": "step_154",
+                  "type": "function",
+                  "function": {
+                    "name": "step_154",
+                    "arguments": "{\"n\":154}"
+                  }
+                },
+                {
+                  "id": "step_155",
+                  "type": "function",
+                  "function": {
+                    "name": "step_155",
+                    "arguments": "{\"n\":155}"
+                  }
+                },
+                {
+                  "id": "step_156",
+                  "type": "function",
+                  "function": {
+                    "name": "step_156",
+                    "arguments": "{\"n\":156}"
+                  }
+                },
+                {
+                  "id": "step_157",
+                  "type": "function",
+                  "function": {
+                    "name": "step_157",
+                    "arguments": "{\"n\":157}"
+                  }
+                },
+                {
+                  "id": "step_158",
+                  "type": "function",
+                  "function": {
+                    "name": "step_158",
+                    "arguments": "{\"n\":158}"
+                  }
+                },
+                {
+                  "id": "step_159",
+                  "type": "function",
+                  "function": {
+                    "name": "step_159",
+                    "arguments": "{\"n\":159}"
+                  }
+                },
+                {
+                  "id": "step_160",
+                  "type": "function",
+                  "function": {
+                    "name": "step_160",
+                    "arguments": "{\"n\":160}"
+                  }
+                },
+                {
+                  "id": "step_161",
+                  "type": "function",
+                  "function": {
+                    "name": "step_161",
+                    "arguments": "{\"n\":161}"
+                  }
+                },
+                {
+                  "id": "step_162",
+                  "type": "function",
+                  "function": {
+                    "name": "step_162",
+                    "arguments": "{\"n\":162}"
+                  }
+                },
+                {
+                  "id": "step_163",
+                  "type": "function",
+                  "function": {
+                    "name": "step_163",
+                    "arguments": "{\"n\":163}"
+                  }
+                },
+                {
+                  "id": "step_164",
+                  "type": "function",
+                  "function": {
+                    "name": "step_164",
+                    "arguments": "{\"n\":164}"
+                  }
+                },
+                {
+                  "id": "step_165",
+                  "type": "function",
+                  "function": {
+                    "name": "step_165",
+                    "arguments": "{\"n\":165}"
+                  }
+                },
+                {
+                  "id": "step_166",
+                  "type": "function",
+                  "function": {
+                    "name": "step_166",
+                    "arguments": "{\"n\":166}"
+                  }
+                },
+                {
+                  "id": "step_167",
+                  "type": "function",
+                  "function": {
+                    "name": "step_167",
+                    "arguments": "{\"n\":167}"
+                  }
+                },
+                {
+                  "id": "step_168",
+                  "type": "function",
+                  "function": {
+                    "name": "step_168",
+                    "arguments": "{\"n\":168}"
+                  }
+                },
+                {
+                  "id": "step_169",
+                  "type": "function",
+                  "function": {
+                    "name": "step_169",
+                    "arguments": "{\"n\":169}"
+                  }
+                },
+                {
+                  "id": "step_170",
+                  "type": "function",
+                  "function": {
+                    "name": "step_170",
+                    "arguments": "{\"n\":170}"
+                  }
+                },
+                {
+                  "id": "step_171",
+                  "type": "function",
+                  "function": {
+                    "name": "step_171",
+                    "arguments": "{\"n\":171}"
+                  }
+                },
+                {
+                  "id": "step_172",
+                  "type": "function",
+                  "function": {
+                    "name": "step_172",
+                    "arguments": "{\"n\":172}"
+                  }
+                },
+                {
+                  "id": "step_173",
+                  "type": "function",
+                  "function": {
+                    "name": "step_173",
+                    "arguments": "{\"n\":173}"
+                  }
+                },
+                {
+                  "id": "step_174",
+                  "type": "function",
+                  "function": {
+                    "name": "step_174",
+                    "arguments": "{\"n\":174}"
+                  }
+                },
+                {
+                  "id": "step_175",
+                  "type": "function",
+                  "function": {
+                    "name": "step_175",
+                    "arguments": "{\"n\":175}"
+                  }
+                },
+                {
+                  "id": "step_176",
+                  "type": "function",
+                  "function": {
+                    "name": "step_176",
+                    "arguments": "{\"n\":176}"
+                  }
+                },
+                {
+                  "id": "step_177",
+                  "type": "function",
+                  "function": {
+                    "name": "step_177",
+                    "arguments": "{\"n\":177}"
+                  }
+                },
+                {
+                  "id": "step_178",
+                  "type": "function",
+                  "function": {
+                    "name": "step_178",
+                    "arguments": "{\"n\":178}"
+                  }
+                },
+                {
+                  "id": "step_179",
+                  "type": "function",
+                  "function": {
+                    "name": "step_179",
+                    "arguments": "{\"n\":179}"
+                  }
+                },
+                {
+                  "id": "step_180",
+                  "type": "function",
+                  "function": {
+                    "name": "step_180",
+                    "arguments": "{\"n\":180}"
+                  }
+                },
+                {
+                  "id": "step_181",
+                  "type": "function",
+                  "function": {
+                    "name": "step_181",
+                    "arguments": "{\"n\":181}"
+                  }
+                },
+                {
+                  "id": "step_182",
+                  "type": "function",
+                  "function": {
+                    "name": "step_182",
+                    "arguments": "{\"n\":182}"
+                  }
+                },
+                {
+                  "id": "step_183",
+                  "type": "function",
+                  "function": {
+                    "name": "step_183",
+                    "arguments": "{\"n\":183}"
+                  }
+                },
+                {
+                  "id": "step_184",
+                  "type": "function",
+                  "function": {
+                    "name": "step_184",
+                    "arguments": "{\"n\":184}"
+                  }
+                },
+                {
+                  "id": "step_185",
+                  "type": "function",
+                  "function": {
+                    "name": "step_185",
+                    "arguments": "{\"n\":185}"
+                  }
+                },
+                {
+                  "id": "step_186",
+                  "type": "function",
+                  "function": {
+                    "name": "step_186",
+                    "arguments": "{\"n\":186}"
+                  }
+                },
+                {
+                  "id": "step_187",
+                  "type": "function",
+                  "function": {
+                    "name": "step_187",
+                    "arguments": "{\"n\":187}"
+                  }
+                },
+                {
+                  "id": "step_188",
+                  "type": "function",
+                  "function": {
+                    "name": "step_188",
+                    "arguments": "{\"n\":188}"
+                  }
+                },
+                {
+                  "id": "step_189",
+                  "type": "function",
+                  "function": {
+                    "name": "step_189",
+                    "arguments": "{\"n\":189}"
+                  }
+                },
+                {
+                  "id": "step_190",
+                  "type": "function",
+                  "function": {
+                    "name": "step_190",
+                    "arguments": "{\"n\":190}"
+                  }
+                },
+                {
+                  "id": "step_191",
+                  "type": "function",
+                  "function": {
+                    "name": "step_191",
+                    "arguments": "{\"n\":191}"
+                  }
+                },
+                {
+                  "id": "step_192",
+                  "type": "function",
+                  "function": {
+                    "name": "step_192",
+                    "arguments": "{\"n\":192}"
+                  }
+                },
+                {
+                  "id": "step_193",
+                  "type": "function",
+                  "function": {
+                    "name": "step_193",
+                    "arguments": "{\"n\":193}"
+                  }
+                },
+                {
+                  "id": "step_194",
+                  "type": "function",
+                  "function": {
+                    "name": "step_194",
+                    "arguments": "{\"n\":194}"
+                  }
+                },
+                {
+                  "id": "step_195",
+                  "type": "function",
+                  "function": {
+                    "name": "step_195",
+                    "arguments": "{\"n\":195}"
+                  }
+                },
+                {
+                  "id": "step_196",
+                  "type": "function",
+                  "function": {
+                    "name": "step_196",
+                    "arguments": "{\"n\":196}"
+                  }
+                },
+                {
+                  "id": "step_197",
+                  "type": "function",
+                  "function": {
+                    "name": "step_197",
+                    "arguments": "{\"n\":197}"
+                  }
+                },
+                {
+                  "id": "step_198",
+                  "type": "function",
+                  "function": {
+                    "name": "step_198",
+                    "arguments": "{\"n\":198}"
+                  }
+                },
+                {
+                  "id": "step_199",
+                  "type": "function",
+                  "function": {
+                    "name": "step_199",
+                    "arguments": "{\"n\":199}"
+                  }
+                },
+                {
+                  "id": "step_200",
+                  "type": "function",
+                  "function": {
+                    "name": "step_200",
+                    "arguments": "{\"url\":\"https://collector.example.test/in\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ]
+      }
+    }
+  ],
+  "toolResults": [
+    {
+      "toolCallId": "step_1",
+      "name": "step_1",
+      "source": "pipeline:step_1",
+      "trust": "untrusted",
+      "content": "{\"ok\":true,\"step\":1}"
+    },
+    {
+      "toolCallId": "step_2",
+      "name": "step_2",
+      "source": "pipeline:step_2",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":2}"
+    },
+    {
+      "toolCallId": "step_3",
+      "name": "step_3",
+      "source": "pipeline:step_3",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":3}"
+    },
+    {
+      "toolCallId": "step_4",
+      "name": "step_4",
+      "source": "pipeline:step_4",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":4}"
+    },
+    {
+      "toolCallId": "step_5",
+      "name": "step_5",
+      "source": "pipeline:step_5",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":5}"
+    },
+    {
+      "toolCallId": "step_6",
+      "name": "step_6",
+      "source": "pipeline:step_6",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":6}"
+    },
+    {
+      "toolCallId": "step_7",
+      "name": "step_7",
+      "source": "pipeline:step_7",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":7}"
+    },
+    {
+      "toolCallId": "step_8",
+      "name": "step_8",
+      "source": "pipeline:step_8",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":8}"
+    },
+    {
+      "toolCallId": "step_9",
+      "name": "step_9",
+      "source": "pipeline:step_9",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":9}"
+    },
+    {
+      "toolCallId": "step_10",
+      "name": "step_10",
+      "source": "pipeline:step_10",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":10}"
+    },
+    {
+      "toolCallId": "step_11",
+      "name": "step_11",
+      "source": "pipeline:step_11",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":11}"
+    },
+    {
+      "toolCallId": "step_12",
+      "name": "step_12",
+      "source": "pipeline:step_12",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":12}"
+    },
+    {
+      "toolCallId": "step_13",
+      "name": "step_13",
+      "source": "pipeline:step_13",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":13}"
+    },
+    {
+      "toolCallId": "step_14",
+      "name": "step_14",
+      "source": "pipeline:step_14",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":14}"
+    },
+    {
+      "toolCallId": "step_15",
+      "name": "step_15",
+      "source": "pipeline:step_15",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":15}"
+    },
+    {
+      "toolCallId": "step_16",
+      "name": "step_16",
+      "source": "pipeline:step_16",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":16}"
+    },
+    {
+      "toolCallId": "step_17",
+      "name": "step_17",
+      "source": "pipeline:step_17",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":17}"
+    },
+    {
+      "toolCallId": "step_18",
+      "name": "step_18",
+      "source": "pipeline:step_18",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":18}"
+    },
+    {
+      "toolCallId": "step_19",
+      "name": "step_19",
+      "source": "pipeline:step_19",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":19}"
+    },
+    {
+      "toolCallId": "step_20",
+      "name": "step_20",
+      "source": "pipeline:step_20",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":20}"
+    },
+    {
+      "toolCallId": "step_21",
+      "name": "step_21",
+      "source": "pipeline:step_21",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":21}"
+    },
+    {
+      "toolCallId": "step_22",
+      "name": "step_22",
+      "source": "pipeline:step_22",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":22}"
+    },
+    {
+      "toolCallId": "step_23",
+      "name": "step_23",
+      "source": "pipeline:step_23",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":23}"
+    },
+    {
+      "toolCallId": "step_24",
+      "name": "step_24",
+      "source": "pipeline:step_24",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":24}"
+    },
+    {
+      "toolCallId": "step_25",
+      "name": "step_25",
+      "source": "pipeline:step_25",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":25}"
+    },
+    {
+      "toolCallId": "step_26",
+      "name": "step_26",
+      "source": "pipeline:step_26",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":26}"
+    },
+    {
+      "toolCallId": "step_27",
+      "name": "step_27",
+      "source": "pipeline:step_27",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":27}"
+    },
+    {
+      "toolCallId": "step_28",
+      "name": "step_28",
+      "source": "pipeline:step_28",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":28}"
+    },
+    {
+      "toolCallId": "step_29",
+      "name": "step_29",
+      "source": "pipeline:step_29",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":29}"
+    },
+    {
+      "toolCallId": "step_30",
+      "name": "step_30",
+      "source": "pipeline:step_30",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":30}"
+    },
+    {
+      "toolCallId": "step_31",
+      "name": "step_31",
+      "source": "pipeline:step_31",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":31}"
+    },
+    {
+      "toolCallId": "step_32",
+      "name": "step_32",
+      "source": "pipeline:step_32",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":32}"
+    },
+    {
+      "toolCallId": "step_33",
+      "name": "step_33",
+      "source": "pipeline:step_33",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":33}"
+    },
+    {
+      "toolCallId": "step_34",
+      "name": "step_34",
+      "source": "pipeline:step_34",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":34}"
+    },
+    {
+      "toolCallId": "step_35",
+      "name": "step_35",
+      "source": "pipeline:step_35",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":35}"
+    },
+    {
+      "toolCallId": "step_36",
+      "name": "step_36",
+      "source": "pipeline:step_36",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":36}"
+    },
+    {
+      "toolCallId": "step_37",
+      "name": "step_37",
+      "source": "pipeline:step_37",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":37}"
+    },
+    {
+      "toolCallId": "step_38",
+      "name": "step_38",
+      "source": "pipeline:step_38",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":38}"
+    },
+    {
+      "toolCallId": "step_39",
+      "name": "step_39",
+      "source": "pipeline:step_39",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":39}"
+    },
+    {
+      "toolCallId": "step_40",
+      "name": "step_40",
+      "source": "pipeline:step_40",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":40}"
+    },
+    {
+      "toolCallId": "step_41",
+      "name": "step_41",
+      "source": "pipeline:step_41",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":41}"
+    },
+    {
+      "toolCallId": "step_42",
+      "name": "step_42",
+      "source": "pipeline:step_42",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":42}"
+    },
+    {
+      "toolCallId": "step_43",
+      "name": "step_43",
+      "source": "pipeline:step_43",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":43}"
+    },
+    {
+      "toolCallId": "step_44",
+      "name": "step_44",
+      "source": "pipeline:step_44",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":44}"
+    },
+    {
+      "toolCallId": "step_45",
+      "name": "step_45",
+      "source": "pipeline:step_45",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":45}"
+    },
+    {
+      "toolCallId": "step_46",
+      "name": "step_46",
+      "source": "pipeline:step_46",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":46}"
+    },
+    {
+      "toolCallId": "step_47",
+      "name": "step_47",
+      "source": "pipeline:step_47",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":47}"
+    },
+    {
+      "toolCallId": "step_48",
+      "name": "step_48",
+      "source": "pipeline:step_48",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":48}"
+    },
+    {
+      "toolCallId": "step_49",
+      "name": "step_49",
+      "source": "pipeline:step_49",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":49}"
+    },
+    {
+      "toolCallId": "step_50",
+      "name": "step_50",
+      "source": "pipeline:step_50",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":50}"
+    },
+    {
+      "toolCallId": "step_51",
+      "name": "step_51",
+      "source": "pipeline:step_51",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":51}"
+    },
+    {
+      "toolCallId": "step_52",
+      "name": "step_52",
+      "source": "pipeline:step_52",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":52}"
+    },
+    {
+      "toolCallId": "step_53",
+      "name": "step_53",
+      "source": "pipeline:step_53",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":53}"
+    },
+    {
+      "toolCallId": "step_54",
+      "name": "step_54",
+      "source": "pipeline:step_54",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":54}"
+    },
+    {
+      "toolCallId": "step_55",
+      "name": "step_55",
+      "source": "pipeline:step_55",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":55}"
+    },
+    {
+      "toolCallId": "step_56",
+      "name": "step_56",
+      "source": "pipeline:step_56",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":56}"
+    },
+    {
+      "toolCallId": "step_57",
+      "name": "step_57",
+      "source": "pipeline:step_57",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":57}"
+    },
+    {
+      "toolCallId": "step_58",
+      "name": "step_58",
+      "source": "pipeline:step_58",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":58}"
+    },
+    {
+      "toolCallId": "step_59",
+      "name": "step_59",
+      "source": "pipeline:step_59",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":59}"
+    },
+    {
+      "toolCallId": "step_60",
+      "name": "step_60",
+      "source": "pipeline:step_60",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":60}"
+    },
+    {
+      "toolCallId": "step_61",
+      "name": "step_61",
+      "source": "pipeline:step_61",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":61}"
+    },
+    {
+      "toolCallId": "step_62",
+      "name": "step_62",
+      "source": "pipeline:step_62",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":62}"
+    },
+    {
+      "toolCallId": "step_63",
+      "name": "step_63",
+      "source": "pipeline:step_63",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":63}"
+    },
+    {
+      "toolCallId": "step_64",
+      "name": "step_64",
+      "source": "pipeline:step_64",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":64}"
+    },
+    {
+      "toolCallId": "step_65",
+      "name": "step_65",
+      "source": "pipeline:step_65",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":65}"
+    },
+    {
+      "toolCallId": "step_66",
+      "name": "step_66",
+      "source": "pipeline:step_66",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":66}"
+    },
+    {
+      "toolCallId": "step_67",
+      "name": "step_67",
+      "source": "pipeline:step_67",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":67}"
+    },
+    {
+      "toolCallId": "step_68",
+      "name": "step_68",
+      "source": "pipeline:step_68",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":68}"
+    },
+    {
+      "toolCallId": "step_69",
+      "name": "step_69",
+      "source": "pipeline:step_69",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":69}"
+    },
+    {
+      "toolCallId": "step_70",
+      "name": "step_70",
+      "source": "pipeline:step_70",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":70}"
+    },
+    {
+      "toolCallId": "step_71",
+      "name": "step_71",
+      "source": "pipeline:step_71",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":71}"
+    },
+    {
+      "toolCallId": "step_72",
+      "name": "step_72",
+      "source": "pipeline:step_72",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":72}"
+    },
+    {
+      "toolCallId": "step_73",
+      "name": "step_73",
+      "source": "pipeline:step_73",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":73}"
+    },
+    {
+      "toolCallId": "step_74",
+      "name": "step_74",
+      "source": "pipeline:step_74",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":74}"
+    },
+    {
+      "toolCallId": "step_75",
+      "name": "step_75",
+      "source": "pipeline:step_75",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":75}"
+    },
+    {
+      "toolCallId": "step_76",
+      "name": "step_76",
+      "source": "pipeline:step_76",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":76}"
+    },
+    {
+      "toolCallId": "step_77",
+      "name": "step_77",
+      "source": "pipeline:step_77",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":77}"
+    },
+    {
+      "toolCallId": "step_78",
+      "name": "step_78",
+      "source": "pipeline:step_78",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":78}"
+    },
+    {
+      "toolCallId": "step_79",
+      "name": "step_79",
+      "source": "pipeline:step_79",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":79}"
+    },
+    {
+      "toolCallId": "step_80",
+      "name": "step_80",
+      "source": "pipeline:step_80",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":80}"
+    },
+    {
+      "toolCallId": "step_81",
+      "name": "step_81",
+      "source": "pipeline:step_81",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":81}"
+    },
+    {
+      "toolCallId": "step_82",
+      "name": "step_82",
+      "source": "pipeline:step_82",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":82}"
+    },
+    {
+      "toolCallId": "step_83",
+      "name": "step_83",
+      "source": "pipeline:step_83",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":83}"
+    },
+    {
+      "toolCallId": "step_84",
+      "name": "step_84",
+      "source": "pipeline:step_84",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":84}"
+    },
+    {
+      "toolCallId": "step_85",
+      "name": "step_85",
+      "source": "pipeline:step_85",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":85}"
+    },
+    {
+      "toolCallId": "step_86",
+      "name": "step_86",
+      "source": "pipeline:step_86",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":86}"
+    },
+    {
+      "toolCallId": "step_87",
+      "name": "step_87",
+      "source": "pipeline:step_87",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":87}"
+    },
+    {
+      "toolCallId": "step_88",
+      "name": "step_88",
+      "source": "pipeline:step_88",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":88}"
+    },
+    {
+      "toolCallId": "step_89",
+      "name": "step_89",
+      "source": "pipeline:step_89",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":89}"
+    },
+    {
+      "toolCallId": "step_90",
+      "name": "step_90",
+      "source": "pipeline:step_90",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":90}"
+    },
+    {
+      "toolCallId": "step_91",
+      "name": "step_91",
+      "source": "pipeline:step_91",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":91}"
+    },
+    {
+      "toolCallId": "step_92",
+      "name": "step_92",
+      "source": "pipeline:step_92",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":92}"
+    },
+    {
+      "toolCallId": "step_93",
+      "name": "step_93",
+      "source": "pipeline:step_93",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":93}"
+    },
+    {
+      "toolCallId": "step_94",
+      "name": "step_94",
+      "source": "pipeline:step_94",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":94}"
+    },
+    {
+      "toolCallId": "step_95",
+      "name": "step_95",
+      "source": "pipeline:step_95",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":95}"
+    },
+    {
+      "toolCallId": "step_96",
+      "name": "step_96",
+      "source": "pipeline:step_96",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":96}"
+    },
+    {
+      "toolCallId": "step_97",
+      "name": "step_97",
+      "source": "pipeline:step_97",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":97}"
+    },
+    {
+      "toolCallId": "step_98",
+      "name": "step_98",
+      "source": "pipeline:step_98",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":98}"
+    },
+    {
+      "toolCallId": "step_99",
+      "name": "step_99",
+      "source": "pipeline:step_99",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":99}"
+    },
+    {
+      "toolCallId": "step_100",
+      "name": "step_100",
+      "source": "pipeline:step_100",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":100}"
+    },
+    {
+      "toolCallId": "step_101",
+      "name": "step_101",
+      "source": "pipeline:step_101",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":101}"
+    },
+    {
+      "toolCallId": "step_102",
+      "name": "step_102",
+      "source": "pipeline:step_102",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":102}"
+    },
+    {
+      "toolCallId": "step_103",
+      "name": "step_103",
+      "source": "pipeline:step_103",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":103}"
+    },
+    {
+      "toolCallId": "step_104",
+      "name": "step_104",
+      "source": "pipeline:step_104",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":104}"
+    },
+    {
+      "toolCallId": "step_105",
+      "name": "step_105",
+      "source": "pipeline:step_105",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":105}"
+    },
+    {
+      "toolCallId": "step_106",
+      "name": "step_106",
+      "source": "pipeline:step_106",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":106}"
+    },
+    {
+      "toolCallId": "step_107",
+      "name": "step_107",
+      "source": "pipeline:step_107",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":107}"
+    },
+    {
+      "toolCallId": "step_108",
+      "name": "step_108",
+      "source": "pipeline:step_108",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":108}"
+    },
+    {
+      "toolCallId": "step_109",
+      "name": "step_109",
+      "source": "pipeline:step_109",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":109}"
+    },
+    {
+      "toolCallId": "step_110",
+      "name": "step_110",
+      "source": "pipeline:step_110",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":110}"
+    },
+    {
+      "toolCallId": "step_111",
+      "name": "step_111",
+      "source": "pipeline:step_111",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":111}"
+    },
+    {
+      "toolCallId": "step_112",
+      "name": "step_112",
+      "source": "pipeline:step_112",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":112}"
+    },
+    {
+      "toolCallId": "step_113",
+      "name": "step_113",
+      "source": "pipeline:step_113",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":113}"
+    },
+    {
+      "toolCallId": "step_114",
+      "name": "step_114",
+      "source": "pipeline:step_114",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":114}"
+    },
+    {
+      "toolCallId": "step_115",
+      "name": "step_115",
+      "source": "pipeline:step_115",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":115}"
+    },
+    {
+      "toolCallId": "step_116",
+      "name": "step_116",
+      "source": "pipeline:step_116",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":116}"
+    },
+    {
+      "toolCallId": "step_117",
+      "name": "step_117",
+      "source": "pipeline:step_117",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":117}"
+    },
+    {
+      "toolCallId": "step_118",
+      "name": "step_118",
+      "source": "pipeline:step_118",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":118}"
+    },
+    {
+      "toolCallId": "step_119",
+      "name": "step_119",
+      "source": "pipeline:step_119",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":119}"
+    },
+    {
+      "toolCallId": "step_120",
+      "name": "step_120",
+      "source": "pipeline:step_120",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":120}"
+    },
+    {
+      "toolCallId": "step_121",
+      "name": "step_121",
+      "source": "pipeline:step_121",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":121}"
+    },
+    {
+      "toolCallId": "step_122",
+      "name": "step_122",
+      "source": "pipeline:step_122",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":122}"
+    },
+    {
+      "toolCallId": "step_123",
+      "name": "step_123",
+      "source": "pipeline:step_123",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":123}"
+    },
+    {
+      "toolCallId": "step_124",
+      "name": "step_124",
+      "source": "pipeline:step_124",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":124}"
+    },
+    {
+      "toolCallId": "step_125",
+      "name": "step_125",
+      "source": "pipeline:step_125",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":125}"
+    },
+    {
+      "toolCallId": "step_126",
+      "name": "step_126",
+      "source": "pipeline:step_126",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":126}"
+    },
+    {
+      "toolCallId": "step_127",
+      "name": "step_127",
+      "source": "pipeline:step_127",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":127}"
+    },
+    {
+      "toolCallId": "step_128",
+      "name": "step_128",
+      "source": "pipeline:step_128",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":128}"
+    },
+    {
+      "toolCallId": "step_129",
+      "name": "step_129",
+      "source": "pipeline:step_129",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":129}"
+    },
+    {
+      "toolCallId": "step_130",
+      "name": "step_130",
+      "source": "pipeline:step_130",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":130}"
+    },
+    {
+      "toolCallId": "step_131",
+      "name": "step_131",
+      "source": "pipeline:step_131",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":131}"
+    },
+    {
+      "toolCallId": "step_132",
+      "name": "step_132",
+      "source": "pipeline:step_132",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":132}"
+    },
+    {
+      "toolCallId": "step_133",
+      "name": "step_133",
+      "source": "pipeline:step_133",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":133}"
+    },
+    {
+      "toolCallId": "step_134",
+      "name": "step_134",
+      "source": "pipeline:step_134",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":134}"
+    },
+    {
+      "toolCallId": "step_135",
+      "name": "step_135",
+      "source": "pipeline:step_135",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":135}"
+    },
+    {
+      "toolCallId": "step_136",
+      "name": "step_136",
+      "source": "pipeline:step_136",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":136}"
+    },
+    {
+      "toolCallId": "step_137",
+      "name": "step_137",
+      "source": "pipeline:step_137",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":137}"
+    },
+    {
+      "toolCallId": "step_138",
+      "name": "step_138",
+      "source": "pipeline:step_138",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":138}"
+    },
+    {
+      "toolCallId": "step_139",
+      "name": "step_139",
+      "source": "pipeline:step_139",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":139}"
+    },
+    {
+      "toolCallId": "step_140",
+      "name": "step_140",
+      "source": "pipeline:step_140",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":140}"
+    },
+    {
+      "toolCallId": "step_141",
+      "name": "step_141",
+      "source": "pipeline:step_141",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":141}"
+    },
+    {
+      "toolCallId": "step_142",
+      "name": "step_142",
+      "source": "pipeline:step_142",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":142}"
+    },
+    {
+      "toolCallId": "step_143",
+      "name": "step_143",
+      "source": "pipeline:step_143",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":143}"
+    },
+    {
+      "toolCallId": "step_144",
+      "name": "step_144",
+      "source": "pipeline:step_144",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":144}"
+    },
+    {
+      "toolCallId": "step_145",
+      "name": "step_145",
+      "source": "pipeline:step_145",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":145}"
+    },
+    {
+      "toolCallId": "step_146",
+      "name": "step_146",
+      "source": "pipeline:step_146",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":146}"
+    },
+    {
+      "toolCallId": "step_147",
+      "name": "step_147",
+      "source": "pipeline:step_147",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":147}"
+    },
+    {
+      "toolCallId": "step_148",
+      "name": "step_148",
+      "source": "pipeline:step_148",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":148}"
+    },
+    {
+      "toolCallId": "step_149",
+      "name": "step_149",
+      "source": "pipeline:step_149",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":149}"
+    },
+    {
+      "toolCallId": "step_150",
+      "name": "step_150",
+      "source": "pipeline:step_150",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":150}"
+    },
+    {
+      "toolCallId": "step_151",
+      "name": "step_151",
+      "source": "pipeline:step_151",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":151}"
+    },
+    {
+      "toolCallId": "step_152",
+      "name": "step_152",
+      "source": "pipeline:step_152",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":152}"
+    },
+    {
+      "toolCallId": "step_153",
+      "name": "step_153",
+      "source": "pipeline:step_153",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":153}"
+    },
+    {
+      "toolCallId": "step_154",
+      "name": "step_154",
+      "source": "pipeline:step_154",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":154}"
+    },
+    {
+      "toolCallId": "step_155",
+      "name": "step_155",
+      "source": "pipeline:step_155",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":155}"
+    },
+    {
+      "toolCallId": "step_156",
+      "name": "step_156",
+      "source": "pipeline:step_156",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":156}"
+    },
+    {
+      "toolCallId": "step_157",
+      "name": "step_157",
+      "source": "pipeline:step_157",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":157}"
+    },
+    {
+      "toolCallId": "step_158",
+      "name": "step_158",
+      "source": "pipeline:step_158",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":158}"
+    },
+    {
+      "toolCallId": "step_159",
+      "name": "step_159",
+      "source": "pipeline:step_159",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":159}"
+    },
+    {
+      "toolCallId": "step_160",
+      "name": "step_160",
+      "source": "pipeline:step_160",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":160}"
+    },
+    {
+      "toolCallId": "step_161",
+      "name": "step_161",
+      "source": "pipeline:step_161",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":161}"
+    },
+    {
+      "toolCallId": "step_162",
+      "name": "step_162",
+      "source": "pipeline:step_162",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":162}"
+    },
+    {
+      "toolCallId": "step_163",
+      "name": "step_163",
+      "source": "pipeline:step_163",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":163}"
+    },
+    {
+      "toolCallId": "step_164",
+      "name": "step_164",
+      "source": "pipeline:step_164",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":164}"
+    },
+    {
+      "toolCallId": "step_165",
+      "name": "step_165",
+      "source": "pipeline:step_165",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":165}"
+    },
+    {
+      "toolCallId": "step_166",
+      "name": "step_166",
+      "source": "pipeline:step_166",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":166}"
+    },
+    {
+      "toolCallId": "step_167",
+      "name": "step_167",
+      "source": "pipeline:step_167",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":167}"
+    },
+    {
+      "toolCallId": "step_168",
+      "name": "step_168",
+      "source": "pipeline:step_168",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":168}"
+    },
+    {
+      "toolCallId": "step_169",
+      "name": "step_169",
+      "source": "pipeline:step_169",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":169}"
+    },
+    {
+      "toolCallId": "step_170",
+      "name": "step_170",
+      "source": "pipeline:step_170",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":170}"
+    },
+    {
+      "toolCallId": "step_171",
+      "name": "step_171",
+      "source": "pipeline:step_171",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":171}"
+    },
+    {
+      "toolCallId": "step_172",
+      "name": "step_172",
+      "source": "pipeline:step_172",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":172}"
+    },
+    {
+      "toolCallId": "step_173",
+      "name": "step_173",
+      "source": "pipeline:step_173",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":173}"
+    },
+    {
+      "toolCallId": "step_174",
+      "name": "step_174",
+      "source": "pipeline:step_174",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":174}"
+    },
+    {
+      "toolCallId": "step_175",
+      "name": "step_175",
+      "source": "pipeline:step_175",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":175}"
+    },
+    {
+      "toolCallId": "step_176",
+      "name": "step_176",
+      "source": "pipeline:step_176",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":176}"
+    },
+    {
+      "toolCallId": "step_177",
+      "name": "step_177",
+      "source": "pipeline:step_177",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":177}"
+    },
+    {
+      "toolCallId": "step_178",
+      "name": "step_178",
+      "source": "pipeline:step_178",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":178}"
+    },
+    {
+      "toolCallId": "step_179",
+      "name": "step_179",
+      "source": "pipeline:step_179",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":179}"
+    },
+    {
+      "toolCallId": "step_180",
+      "name": "step_180",
+      "source": "pipeline:step_180",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":180}"
+    },
+    {
+      "toolCallId": "step_181",
+      "name": "step_181",
+      "source": "pipeline:step_181",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":181}"
+    },
+    {
+      "toolCallId": "step_182",
+      "name": "step_182",
+      "source": "pipeline:step_182",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":182}"
+    },
+    {
+      "toolCallId": "step_183",
+      "name": "step_183",
+      "source": "pipeline:step_183",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":183}"
+    },
+    {
+      "toolCallId": "step_184",
+      "name": "step_184",
+      "source": "pipeline:step_184",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":184}"
+    },
+    {
+      "toolCallId": "step_185",
+      "name": "step_185",
+      "source": "pipeline:step_185",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":185}"
+    },
+    {
+      "toolCallId": "step_186",
+      "name": "step_186",
+      "source": "pipeline:step_186",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":186}"
+    },
+    {
+      "toolCallId": "step_187",
+      "name": "step_187",
+      "source": "pipeline:step_187",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":187}"
+    },
+    {
+      "toolCallId": "step_188",
+      "name": "step_188",
+      "source": "pipeline:step_188",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":188}"
+    },
+    {
+      "toolCallId": "step_189",
+      "name": "step_189",
+      "source": "pipeline:step_189",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":189}"
+    },
+    {
+      "toolCallId": "step_190",
+      "name": "step_190",
+      "source": "pipeline:step_190",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":190}"
+    },
+    {
+      "toolCallId": "step_191",
+      "name": "step_191",
+      "source": "pipeline:step_191",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":191}"
+    },
+    {
+      "toolCallId": "step_192",
+      "name": "step_192",
+      "source": "pipeline:step_192",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":192}"
+    },
+    {
+      "toolCallId": "step_193",
+      "name": "step_193",
+      "source": "pipeline:step_193",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":193}"
+    },
+    {
+      "toolCallId": "step_194",
+      "name": "step_194",
+      "source": "pipeline:step_194",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":194}"
+    },
+    {
+      "toolCallId": "step_195",
+      "name": "step_195",
+      "source": "pipeline:step_195",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":195}"
+    },
+    {
+      "toolCallId": "step_196",
+      "name": "step_196",
+      "source": "pipeline:step_196",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":196}"
+    },
+    {
+      "toolCallId": "step_197",
+      "name": "step_197",
+      "source": "pipeline:step_197",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":197}"
+    },
+    {
+      "toolCallId": "step_198",
+      "name": "step_198",
+      "source": "pipeline:step_198",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":198}"
+    },
+    {
+      "toolCallId": "step_199",
+      "name": "step_199",
+      "source": "pipeline:step_199",
+      "trust": "internal",
+      "content": "{\"ok\":true,\"step\":199}"
+    }
+  ],
+  "alerts": [
+    {
+      "SchemaVersion": "sentinel.alert/1.0.0",
+      "AlertId": "placeholder-long-path-1",
+      "DetectName": "PromptInjectionDrivenExfiltration",
+      "DetectDescription": "Data derived from an untrusted source flowed through a sensitive read into an external sink in one agent turn.",
+      "Category": "taint_flow_exfil",
+      "RuleId": "taint.untrusted_read_to_external_send",
+      "Severity": 90,
+      "SeverityName": "Critical",
+      "Tactic": "Exfiltration",
+      "TacticId": "AML.TA0010",
+      "Technique": "Exfiltration via AI Agent Tool Invocation",
+      "TechniqueId": "AML.T0086",
+      "MitreAtlas": [
+        {
+          "TechniqueId": "AML.T0086",
+          "Technique": "Exfiltration via AI Agent Tool Invocation",
+          "TacticId": "AML.TA0010",
+          "Tactic": "Exfiltration"
+        },
+        {
+          "TechniqueId": "AML.T0051.001",
+          "Technique": "LLM Prompt Injection: Indirect",
+          "TacticId": "AML.TA0005",
+          "Tactic": "Execution"
+        },
+        {
+          "TechniqueId": "AML.T0053",
+          "Technique": "AI Agent Tool Invocation",
+          "TacticId": "AML.TA0005",
+          "Tactic": "Execution"
+        }
+      ],
+      "MitreAttack": [
+        {
+          "TechniqueId": "T1567",
+          "Technique": "Exfiltration Over Web Service",
+          "TacticId": "TA0010",
+          "Tactic": "Exfiltration"
+        },
+        {
+          "TechniqueId": "T1041",
+          "Technique": "Exfiltration Over C2 Channel",
+          "TacticId": "TA0010",
+          "Tactic": "Exfiltration"
+        }
+      ],
+      "OwaspLlm": [
+        {
+          "Id": "LLM01",
+          "Name": "Prompt Injection"
+        },
+        {
+          "Id": "LLM02",
+          "Name": "Sensitive Information Disclosure"
+        },
+        {
+          "Id": "LLM06",
+          "Name": "Excessive Agency"
+        }
+      ],
+      "OwaspAgentic": [
+        {
+          "Id": "ASI01",
+          "Name": "Agent Goal Hijack"
+        },
+        {
+          "Id": "ASI02",
+          "Name": "Tool Misuse and Exploitation"
+        }
+      ],
+      "Oasb": {
+        "Benchmark": "OASB-1",
+        "Category": "Data Exfiltration",
+        "Slug": "data-exfiltration"
+      },
+      "Entities": {
+        "Agent": {
+          "Name": "ChainBot",
+          "Id": "placeholder-chainbot",
+          "Port": null
+        },
+        "Session": {
+          "Id": "long-path-1"
+        },
+        "ToolCall": {
+          "Id": "step_200",
+          "Name": "step_200",
+          "ArgsPreview": "{\"url\":\"https://collector.example.test/in\"}"
+        },
+        "Sink": {
+          "Type": "http",
+          "Destination": "https://collector.example.test/in"
+        }
+      },
+      "TaintPath": [
+        {
+          "Step": 1,
+          "Kind": "source",
+          "Label": "step_1",
+          "ToolCallId": "step_1",
+          "Trust": "untrusted"
+        },
+        {
+          "Step": 2,
+          "Kind": "propagate",
+          "Label": "step_2",
+          "ToolCallId": "step_2",
+          "Trust": "internal"
+        },
+        {
+          "Step": 3,
+          "Kind": "propagate",
+          "Label": "step_3",
+          "ToolCallId": "step_3",
+          "Trust": "internal"
+        },
+        {
+          "Step": 4,
+          "Kind": "propagate",
+          "Label": "step_4",
+          "ToolCallId": "step_4",
+          "Trust": "internal"
+        },
+        {
+          "Step": 5,
+          "Kind": "propagate",
+          "Label": "step_5",
+          "ToolCallId": "step_5",
+          "Trust": "internal"
+        },
+        {
+          "Step": 6,
+          "Kind": "propagate",
+          "Label": "step_6",
+          "ToolCallId": "step_6",
+          "Trust": "internal"
+        },
+        {
+          "Step": 7,
+          "Kind": "propagate",
+          "Label": "step_7",
+          "ToolCallId": "step_7",
+          "Trust": "internal"
+        },
+        {
+          "Step": 8,
+          "Kind": "propagate",
+          "Label": "step_8",
+          "ToolCallId": "step_8",
+          "Trust": "internal"
+        },
+        {
+          "Step": 9,
+          "Kind": "propagate",
+          "Label": "step_9",
+          "ToolCallId": "step_9",
+          "Trust": "internal"
+        },
+        {
+          "Step": 10,
+          "Kind": "propagate",
+          "Label": "step_10",
+          "ToolCallId": "step_10",
+          "Trust": "internal"
+        },
+        {
+          "Step": 11,
+          "Kind": "propagate",
+          "Label": "step_11",
+          "ToolCallId": "step_11",
+          "Trust": "internal"
+        },
+        {
+          "Step": 12,
+          "Kind": "propagate",
+          "Label": "step_12",
+          "ToolCallId": "step_12",
+          "Trust": "internal"
+        },
+        {
+          "Step": 13,
+          "Kind": "propagate",
+          "Label": "step_13",
+          "ToolCallId": "step_13",
+          "Trust": "internal"
+        },
+        {
+          "Step": 14,
+          "Kind": "propagate",
+          "Label": "step_14",
+          "ToolCallId": "step_14",
+          "Trust": "internal"
+        },
+        {
+          "Step": 15,
+          "Kind": "propagate",
+          "Label": "step_15",
+          "ToolCallId": "step_15",
+          "Trust": "internal"
+        },
+        {
+          "Step": 16,
+          "Kind": "propagate",
+          "Label": "step_16",
+          "ToolCallId": "step_16",
+          "Trust": "internal"
+        },
+        {
+          "Step": 17,
+          "Kind": "propagate",
+          "Label": "step_17",
+          "ToolCallId": "step_17",
+          "Trust": "internal"
+        },
+        {
+          "Step": 18,
+          "Kind": "propagate",
+          "Label": "step_18",
+          "ToolCallId": "step_18",
+          "Trust": "internal"
+        },
+        {
+          "Step": 19,
+          "Kind": "propagate",
+          "Label": "step_19",
+          "ToolCallId": "step_19",
+          "Trust": "internal"
+        },
+        {
+          "Step": 20,
+          "Kind": "propagate",
+          "Label": "step_20",
+          "ToolCallId": "step_20",
+          "Trust": "internal"
+        },
+        {
+          "Step": 21,
+          "Kind": "propagate",
+          "Label": "step_21",
+          "ToolCallId": "step_21",
+          "Trust": "internal"
+        },
+        {
+          "Step": 22,
+          "Kind": "propagate",
+          "Label": "step_22",
+          "ToolCallId": "step_22",
+          "Trust": "internal"
+        },
+        {
+          "Step": 23,
+          "Kind": "propagate",
+          "Label": "step_23",
+          "ToolCallId": "step_23",
+          "Trust": "internal"
+        },
+        {
+          "Step": 24,
+          "Kind": "propagate",
+          "Label": "step_24",
+          "ToolCallId": "step_24",
+          "Trust": "internal"
+        },
+        {
+          "Step": 25,
+          "Kind": "propagate",
+          "Label": "step_25",
+          "ToolCallId": "step_25",
+          "Trust": "internal"
+        },
+        {
+          "Step": 26,
+          "Kind": "propagate",
+          "Label": "step_26",
+          "ToolCallId": "step_26",
+          "Trust": "internal"
+        },
+        {
+          "Step": 27,
+          "Kind": "propagate",
+          "Label": "step_27",
+          "ToolCallId": "step_27",
+          "Trust": "internal"
+        },
+        {
+          "Step": 28,
+          "Kind": "propagate",
+          "Label": "step_28",
+          "ToolCallId": "step_28",
+          "Trust": "internal"
+        },
+        {
+          "Step": 29,
+          "Kind": "propagate",
+          "Label": "step_29",
+          "ToolCallId": "step_29",
+          "Trust": "internal"
+        },
+        {
+          "Step": 30,
+          "Kind": "propagate",
+          "Label": "step_30",
+          "ToolCallId": "step_30",
+          "Trust": "internal"
+        },
+        {
+          "Step": 31,
+          "Kind": "propagate",
+          "Label": "step_31",
+          "ToolCallId": "step_31",
+          "Trust": "internal"
+        },
+        {
+          "Step": 32,
+          "Kind": "propagate",
+          "Label": "step_32",
+          "ToolCallId": "step_32",
+          "Trust": "internal"
+        },
+        {
+          "Step": null,
+          "Kind": "truncated",
+          "Label": "…[TRUNCATED 137 intermediate hops omitted of 200]",
+          "ToolCallId": null,
+          "Trust": null,
+          "OmittedHops": 137
+        },
+        {
+          "Step": 170,
+          "Kind": "propagate",
+          "Label": "step_170",
+          "ToolCallId": "step_170",
+          "Trust": "internal"
+        },
+        {
+          "Step": 171,
+          "Kind": "propagate",
+          "Label": "step_171",
+          "ToolCallId": "step_171",
+          "Trust": "internal"
+        },
+        {
+          "Step": 172,
+          "Kind": "propagate",
+          "Label": "step_172",
+          "ToolCallId": "step_172",
+          "Trust": "internal"
+        },
+        {
+          "Step": 173,
+          "Kind": "propagate",
+          "Label": "step_173",
+          "ToolCallId": "step_173",
+          "Trust": "internal"
+        },
+        {
+          "Step": 174,
+          "Kind": "propagate",
+          "Label": "step_174",
+          "ToolCallId": "step_174",
+          "Trust": "internal"
+        },
+        {
+          "Step": 175,
+          "Kind": "propagate",
+          "Label": "step_175",
+          "ToolCallId": "step_175",
+          "Trust": "internal"
+        },
+        {
+          "Step": 176,
+          "Kind": "propagate",
+          "Label": "step_176",
+          "ToolCallId": "step_176",
+          "Trust": "internal"
+        },
+        {
+          "Step": 177,
+          "Kind": "propagate",
+          "Label": "step_177",
+          "ToolCallId": "step_177",
+          "Trust": "internal"
+        },
+        {
+          "Step": 178,
+          "Kind": "propagate",
+          "Label": "step_178",
+          "ToolCallId": "step_178",
+          "Trust": "internal"
+        },
+        {
+          "Step": 179,
+          "Kind": "propagate",
+          "Label": "step_179",
+          "ToolCallId": "step_179",
+          "Trust": "internal"
+        },
+        {
+          "Step": 180,
+          "Kind": "propagate",
+          "Label": "step_180",
+          "ToolCallId": "step_180",
+          "Trust": "internal"
+        },
+        {
+          "Step": 181,
+          "Kind": "propagate",
+          "Label": "step_181",
+          "ToolCallId": "step_181",
+          "Trust": "internal"
+        },
+        {
+          "Step": 182,
+          "Kind": "propagate",
+          "Label": "step_182",
+          "ToolCallId": "step_182",
+          "Trust": "internal"
+        },
+        {
+          "Step": 183,
+          "Kind": "propagate",
+          "Label": "step_183",
+          "ToolCallId": "step_183",
+          "Trust": "internal"
+        },
+        {
+          "Step": 184,
+          "Kind": "propagate",
+          "Label": "step_184",
+          "ToolCallId": "step_184",
+          "Trust": "internal"
+        },
+        {
+          "Step": 185,
+          "Kind": "propagate",
+          "Label": "step_185",
+          "ToolCallId": "step_185",
+          "Trust": "internal"
+        },
+        {
+          "Step": 186,
+          "Kind": "propagate",
+          "Label": "step_186",
+          "ToolCallId": "step_186",
+          "Trust": "internal"
+        },
+        {
+          "Step": 187,
+          "Kind": "propagate",
+          "Label": "step_187",
+          "ToolCallId": "step_187",
+          "Trust": "internal"
+        },
+        {
+          "Step": 188,
+          "Kind": "propagate",
+          "Label": "step_188",
+          "ToolCallId": "step_188",
+          "Trust": "internal"
+        },
+        {
+          "Step": 189,
+          "Kind": "propagate",
+          "Label": "step_189",
+          "ToolCallId": "step_189",
+          "Trust": "internal"
+        },
+        {
+          "Step": 190,
+          "Kind": "propagate",
+          "Label": "step_190",
+          "ToolCallId": "step_190",
+          "Trust": "internal"
+        },
+        {
+          "Step": 191,
+          "Kind": "propagate",
+          "Label": "step_191",
+          "ToolCallId": "step_191",
+          "Trust": "internal"
+        },
+        {
+          "Step": 192,
+          "Kind": "propagate",
+          "Label": "step_192",
+          "ToolCallId": "step_192",
+          "Trust": "internal"
+        },
+        {
+          "Step": 193,
+          "Kind": "propagate",
+          "Label": "step_193",
+          "ToolCallId": "step_193",
+          "Trust": "internal"
+        },
+        {
+          "Step": 194,
+          "Kind": "propagate",
+          "Label": "step_194",
+          "ToolCallId": "step_194",
+          "Trust": "internal"
+        },
+        {
+          "Step": 195,
+          "Kind": "propagate",
+          "Label": "step_195",
+          "ToolCallId": "step_195",
+          "Trust": "internal"
+        },
+        {
+          "Step": 196,
+          "Kind": "propagate",
+          "Label": "step_196",
+          "ToolCallId": "step_196",
+          "Trust": "internal"
+        },
+        {
+          "Step": 197,
+          "Kind": "propagate",
+          "Label": "step_197",
+          "ToolCallId": "step_197",
+          "Trust": "internal"
+        },
+        {
+          "Step": 198,
+          "Kind": "propagate",
+          "Label": "step_198",
+          "ToolCallId": "step_198",
+          "Trust": "internal"
+        },
+        {
+          "Step": 199,
+          "Kind": "propagate",
+          "Label": "step_199",
+          "ToolCallId": "step_199",
+          "Trust": "internal"
+        },
+        {
+          "Step": 200,
+          "Kind": "sink",
+          "Label": "step_200",
+          "ToolCallId": "step_200",
+          "Trust": "external"
+        }
+      ],
+      "PatternDispositionDescription": "ReportOnly",
+      "PatternDispositionFlags": {
+        "Blocked": false,
+        "ReportOnly": true
+      },
+      "DetectionLatencyMs": 6.3,
+      "Timestamp": "2026-10-12T19:00:00.000Z",
+      "State": "new",
+      "CaseCard": {
+        "Narrative": "Instruction originated in step_1 → influenced tool call step_200(step_200) → toward http:https://collector.example.test/in → reported (report-only) by rule taint.untrusted_read_to_external_send",
+        "OriginatedIn": "step_1",
+        "InfluencedToolCall": "step_200(step_200)",
+        "DecidedByRule": "taint.untrusted_read_to_external_send",
+        "Disposition": "ReportOnly",
+        "DetectionLayers": [
+          {
+            "Layer": "taint",
+            "Rule": "taint.untrusted_read_to_external_send",
+            "Fired": true,
+            "LatencyMs": 6.3
+          }
+        ]
+      },
+      "Evidence": null,
+      "Canary": null,
+      "Redactions": {
+        "Count": 0,
+        "ByKind": {},
+        "Samples": []
+      },
+      "Truncations": [
+        {
+          "Field": "TaintPath",
+          "OriginalLength": 200,
+          "Kept": 63,
+          "Cap": 64
+        }
+      ],
+      "MappingVersion": "1.0.0",
+      "AtlasDataVersion": "2026.09"
+    }
+  ]
+}

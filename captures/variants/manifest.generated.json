@@ -1,0 +1,16 @@
+{
+  "generatedBy": "captures/variants/tools/generate-corpus.mjs",
+  "deterministic": true,
+  "baselineComputedWith": "dvaa-replica-subset@57918267",
+  "DETECTION_EDGE": 8192,
+  "cases": [
+    "fixtures/benign/benign-long-doc.json",
+    "fixtures/benign/benign-toolrows.json",
+    "fixtures/evasion/eva-pos-start-001.json",
+    "fixtures/evasion/eva-pos-middle-001.json",
+    "fixtures/evasion/eva-pos-end-001.json",
+    "fixtures/evasion/eva-bench-start-001.json",
+    "fixtures/evasion/eva-bench-middle-001.json",
+    "fixtures/evasion/eva-bench-end-001.json"
+  ]
+}
