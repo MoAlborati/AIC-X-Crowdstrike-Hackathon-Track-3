@@ -6,6 +6,10 @@ Attack & Defend the Agent"). We build a **defensive** detector/guardrail (Sentin
 **organizer-provided, intentionally-vulnerable training sandbox** running on localhost. All work is
 defensive and scoped to this repo + the authorized local DVAA target.
 
+**Cold start or post-compaction:** read [`RESUME.md`](RESUME.md) first. Reusable child-agent roles
+(dispatch templates, output contracts, time boxes) are indexed in [`prompts/archetypes/README.md`](prompts/archetypes/README.md).
+**Clock:** deadlines are PDT and the machine clock is CDT, so check the time with `TZ=America/Los_Angeles date`.
+
 ## Roles
 - **Operator** (humans): final authority. Reviews PRs, approves/merges, answers Blockers in STATE.md.
 - **Orchestrator** (the main Opus 5.5 session): owns the loop; **does not implement**. Selects tickets,

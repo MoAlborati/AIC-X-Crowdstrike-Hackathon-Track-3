@@ -127,6 +127,10 @@ so it can't go stale. How to read them:
 Each PR passed SE, tester, reviewer and delivery gates (`gates/`) and the merge gate
 `scripts/eval.sh gate <PR#>`, then a human or agent reviewer merged it. See [`LOOP.md`](LOOP.md).
 
+## Contributing / harness
+
+Agent harness: cold-start runbook [`RESUME.md`](RESUME.md) and reusable agent roles [`prompts/archetypes/`](prompts/archetypes/README.md).
+
 ## Provenance and licensing
 
 - Every **attack** string in the corpus is copied **verbatim** from a published benchmark or from DVAA,
