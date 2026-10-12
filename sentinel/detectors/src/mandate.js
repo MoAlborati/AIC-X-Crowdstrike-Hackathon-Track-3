@@ -49,6 +49,20 @@ export class SessionStore {
     return s;
   }
 
+  /**
+   * Session for an exchange that records nothing (no tool calls): the stored session if one exists,
+   * else a throwaway one that is NOT added to the store (review B2: plain chat volume must never fill
+   * the session cap and fail closed).
+   */
+  peek(id) {
+    const s = this.sessions.get(id);
+    if (s) {
+      s.lastSeen = this.now();
+      return s;
+    }
+    return { id, key: randomBytes(32), createdAt: this.now(), lastSeen: this.now(), grant: null, ledger: new Map(), ephemeral: true };
+  }
+
   /** Evict sessions idle past TTL (their history is finished, not truncated). */
   sweep() {
     const t = this.now();
