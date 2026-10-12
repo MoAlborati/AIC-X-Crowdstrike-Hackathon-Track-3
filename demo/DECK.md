@@ -168,7 +168,7 @@ deck's source. FP rate sits beside recall on purpose, because it's a headline me
 latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **Never put a guessed number on it.**
 Say it plainly: our detection recall is now slightly above DVAA's baseline, but the baseline has the higher
 prevention recall, at a 12.8% benign FP rate.
-Our 0% benign FP is on the 164-case benign corpus. On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
+Our 0% benign FP is on the 164-case benign corpus. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 The only unqualified win is the 2/2 cases that evade the baseline's 8KB window. Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
 

@@ -12,7 +12,7 @@ false-positive rate, flagging 21 of the 164 benign cases in our corpus. On detec
 67.7% against 65.6%, at 100% precision and 0 false positives on that 164-case benign corpus. We also catch both cases
 where the injection hides between DVAA's head and tail 8KB windows (2 of 2), which their scanner can't see. Every
 miss is listed openly in RESULTS.md."
-*FP caveat, say it if asked:* "On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46."
+*FP caveat, say it if asked:* "Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46."
 *After the 15:00 rescore:* re-read the RESULTS.md headline and use the figures that are there.
 **Proof:** RESULTS.md headline table (t3 against dvaa-baseline, both lenses), the 8KB-evasion (`evadesBaseline`) block, and
 the "False negatives" list. PR #46 has the before/after rescore table.
@@ -110,12 +110,13 @@ from 2.5 ms undefended to 8.7 ms behind both the chat proxy and the egress guard
 LLM in the loop, so a real model call dwarfs them."
 **Proof:** PR #67 (proxy bench). `track3a/RESULTS.md` latency column.
 
-**13. "Isn't this overfit to your own corpus? What about held-out data?"**
+**13. "Isn't this overfit to your own corpus? How does it generalize?"**
 "Partly a fair worry, and we measured it. On 32 hand-written held-out benign docs, 1 was blocked: a security-awareness
-memo quoting an injection phrase, which is pre-existing lexicon behavior; PR #92 takes that to 0 once it lands.
+memo quoting an injection phrase, the same as before #46.
 4 of the 32 raise an alert, not a block. On 16 paraphrased held-out attacks, the
 we detect 14 and block 1. PR #46 raised detection from 2 to 14 with alert-only structural signals; it
-did not add blocks. A larger held-out set from public data is still pending, so we don't quote it."
+did not add blocks. That 14 of 16 is optimistic: on an independent reviewer's 6 further paraphrases, 1 was detected,
+so recall on novel phrasings is limited. A larger held-out set from public data is still pending, so we don't quote it."
 **Proof:** PR #46, "Held-out (hand-written, not corpus)" table, with no post-hoc tuning.
 
 **14. "What about streaming responses and multi-turn conversations?"**
@@ -141,7 +142,7 @@ The headline numbers are read from the committed scoring output, which anyone ca
 ### If you blank
 1. **Provenance, not keywords:** content can ask for something. Only the user's own turn can authorize it.
 2. **0 benign false positives on the 164-case benign corpus**, against DVAA's 12.8%. We detect slightly more; DVAA
-   prevents more. Our clear win is 2 of 2 attacks hidden past its 8KB window. Held-out caveat: On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
+   prevents more. Our clear win is 2 of 2 attacks hidden past its 8KB window. Held-out caveat: Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md.** We complement Falcon AIDR at the tool boundary.

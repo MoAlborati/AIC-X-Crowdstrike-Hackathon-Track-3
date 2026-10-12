@@ -27,7 +27,7 @@ export function renderMarkdown(r) {
         ? `Against ${r.headline.detector}, the DVAA baseline's recall is ${cmp(bD, H.detection)} on detection and ${cmp(bP, H.prevention)} on prevention, at a ${pct(bD.falsePositiveRate)} benign FP rate; the only structural win claimed outright is the evadesBaseline set below. `
         : '';
       L.push(`**Scope.** Benign FP rates are on the ${r.corpus.negatives}-case benign corpus. ` + recallLine +
-        'On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.', '');
+        'Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer\'s 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.', '');
     }
     L.push('| detector | lens | recall | precision | benign FP rate | TP | FP | TN | FN | evades DVAA 8KB window (evadesBaseline) |', '|---|---|---|---|---|---|---|---|---|---|');
     const row = (name, lens, m, beat) => L.push(`| ${name} | ${lens} | ${pct(m.recall)} | ${pct(m.precision)} | ${pct(m.falsePositiveRate)} | ${m.tp} | ${m.fp} | ${m.tn} | ${m.fn} | ${beat} |`);

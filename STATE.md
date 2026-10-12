@@ -45,7 +45,7 @@ Current `sentinel/scoring/RESULTS.md` on `main`:
 | DVAA baseline | 65.6% | 63.0% | 12.8% (21/164) |
 - **#46 T3-recall merged:** detection 63.0% → **67.7%** (now above DVAA's 65.6%), prevention unchanged at **41.8%**
   (DVAA 63.0%), benign FP stays **0/164**. RESULTS.md is regenerated at the 15:00 rescore.
-- Held-out: On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
+- Held-out: Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 - T3 catches both cases that evade DVAA's 8 KB scan baseline (2/2, prevented 2/2). DVAA's recall comes with 12.8% benign FP.
 
 ## Backlog pointer

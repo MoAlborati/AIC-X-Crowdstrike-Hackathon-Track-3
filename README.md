@@ -79,7 +79,7 @@ so it can't go stale. How to read them:
   exfiltration was actually stopped. We report both separately, because an alert-only check detects but
   does not prevent.
 - **Benign false positives.** The 0% benign FP rate is on the 164-case benign corpus, the same corpus the
-  DVAA baseline detector is scored on, so the comparison is like for like. On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46.
+  DVAA baseline detector is scored on, so the comparison is like for like. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 - **Recall.** SentinelProxy's detection recall is now slightly above DVAA's baseline, but the baseline has
   the higher prevention recall, at a 12.8% benign FP rate (figures in RESULTS.md). We do not claim to beat it on
   prevention.

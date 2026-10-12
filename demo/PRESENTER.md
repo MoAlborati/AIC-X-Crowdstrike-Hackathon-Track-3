@@ -121,7 +121,7 @@ Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut
 
 - **Scope the FP claim every time:** "0% FP on the 164-case benign corpus." Never say "zero false positives" without that scope.
 - **The recall one-liner:** "We now detect slightly more than DVAA's baseline, but it prevents more, at a 12.8% benign FP rate. We have 0 FP on the 164-case benign corpus, and we catch the 2 cases that evade its 8KB window."
-- **Held-out FP caveat:** "On 32 hand-written held-out benign docs, 1 is blocked on main (a security-awareness memo quoting an injection phrase; pre-existing lexicon behavior), 0 once #92 lands, and 4 raise an alert without a block — see PR #46."
+- **Held-out FP caveat:** "Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46."
 - Never say we "beat the baseline" across the board. Say "8KB evasion: 2/2 fixtures", which is the case we do win.
 - Latency: say only "under half a millisecond".
 
