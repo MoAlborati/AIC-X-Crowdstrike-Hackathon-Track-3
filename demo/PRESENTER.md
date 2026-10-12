@@ -105,7 +105,7 @@ Screen: `false` + the AIM denial reason.
 
 The terminal prints the T3 vs DVAA table: detection recall 67.7% vs 65.6%, prevention 41.8% vs 63.0%, FP 0.0% vs 12.8%,
 `8KB evasion: 2/2`, latency median 0.082 ms / p95 ~0.4 ms.
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 
