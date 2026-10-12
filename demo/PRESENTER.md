@@ -7,10 +7,9 @@ If you need to shorten a line, drop sentences from it. Don't reword it.
 Judge answers: [`demo/QA-PREP.md`](QA-PREP.md). Read it once before 18:00.
 All commands run from the repo root. Under Colima the repo must be somewhere under `~`, because Colima only shares `$HOME`.
 
-> **If #76 (`t5-stage`) is not merged:** there is no `?stage=1` and no `?capture=`. Open these tabs instead:
-> `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runA` (vulnerable) and `…&run=runB` (AIM twin). For the
-> proxy-blocked view, stay on the terminal; Beat 4 prints the block and the T4 alert there. There is also no
-> **Copy alert JSON** button.
+> **If #76 (`t5-stage`) is not merged:** there is no `?stage=1&capture=` and no **Copy alert JSON** button. For the
+> Beat 3 and Beat 5a tabs, open `http://127.0.0.1:9100/?id=attack/aim-ab.demo&run=runA` (vulnerable) and `…&run=runB`
+> (AIM twin) instead. The Beat 4 and 4b tabs (`?id=live/…`) are on main already and don't change.
 
 ## T-30 min checklist
 
@@ -18,11 +17,14 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
 - [ ] `export PATH=/opt/homebrew/opt/node@24/bin:$PATH`, then confirm that `node --version` prints `v24.x`.
 - [ ] `git pull`, then `scripts/eval.sh doctor`. Expect all PASS. Every FAIL prints its macOS `fix:` line.
 - [ ] `scripts/eval.sh up`. Expect `all 22 DVAA ports answer 200` and `bound to 127.0.0.1`.
-- [ ] Pre-warm the dashboard on a fixed port with `EVAL_DASHBOARD_PORT=9100 scripts/eval.sh dashboard`, then open three tabs:
-      `http://127.0.0.1:9100/?stage=1&capture=vulnerable`, `…?stage=1&capture=aim-twin`, and
-      `…?stage=1&capture=proxy-blocked&step=last`.
-- [ ] Dry run: `demo/run-demo.sh --auto --keep-dvaa --no-teardown`. The Summary must say `demo run clean`,
-      and Beat 4 must show a **live** `200` then `403`, with no `WARN live proxy unavailable`.
+- [ ] Dry run: `demo/run-demo.sh --auto --keep-dvaa --no-teardown`. It starts the dashboard on :9100 **with the real
+      SentinelProxy alerts** (preflight 3/3), so don't start the dashboard by hand. The Summary must say
+      `demo run clean`, and Beat 4 must show a **live** `200` then `403`, with no `WARN live proxy unavailable`.
+- [ ] Leave that dashboard running (`--no-teardown`) and open four tabs, in beat order:
+  - Beat 3: `http://127.0.0.1:9100/?stage=1&capture=vulnerable`
+  - Beat 4: `http://127.0.0.1:9100/?id=live/proxy-7005&run=run&step=last` (should read "High 70 IndirectPromptInjection · Blocked · pre-forward")
+  - Beat 4b: `http://127.0.0.1:9100/?id=live/egress-boundary&run=run&step=last` (should show four "Blocked · egress deny" cards)
+  - Beat 5a: `http://127.0.0.1:9100/?stage=1&capture=aim-twin`
 - [ ] Have the fallback video open in QuickTime, paused at 0:00 (`~/Desktop/fallback-demo.mov`; see **After**).
 - [ ] Quit Slack, Mail, Messages and anything else that pops up. Turn on **Do Not Disturb** (Control Center → Focus).
 - [ ] Screen share: set the display to 1920×1080 or the "Default" scaling (System Settings → Displays). Share the
@@ -30,10 +32,6 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
 - [ ] Terminal: Cmd-+ until the font is at least 20pt, dark theme. Put the terminal on the left and the dashboard on the right.
 - [ ] At T-2, run `demo/run-demo.sh --keep-dvaa --no-teardown` (interactive). Let the preflights pass (row 0 is the
       script-drift check), then **stop at the first "press Enter"**, before Beat 3. That's your starting position.
-
-> **Beat 4b dashboard view, if available** (branch `stage-egress`, not on main yet): it adds a **4th stage capture**,
-> the tool-boundary egress block, to the `?stage=1` dropdown. If it has merged by T-30, open it in a fourth tab and show
-> it during Beat 4b. If not, Beat 4b is terminal-only, which is what main does today.
 
 ## Run of show (3:00 clock; Enter advances each beat)
 
@@ -66,7 +64,7 @@ Pause for two seconds and let it land.
 Screen: `inMiddleGap:true`, `evadesDvaaBaseline:true`, `fullScanFindsSignal:true`, then `t3Caught: 2`.
 > "SentinelProxy scans the full payload and never truncates. 8KB evasion: 2 out of 2 fixtures caught."
 
-**1:20 · Beat 4 Detect → alert → block (green, live)** · **Enter**, then the dashboard tab `proxy-blocked`.
+**1:20 · Beat 4 Detect → alert → block (green, live)** · **Enter**, then the dashboard tab `?id=live/proxy-7005&run=run&step=last`.
 `run-demo.sh` starts the real shipped proxy (`sentinel/proxy/cli.mjs`, block mode, `sentinel-t3`) on an ephemeral
 loopback port in front of 7005 and sends two `curl`s to it.
 > "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
@@ -86,8 +84,8 @@ Fallback is automatic. If the terminal prints `WARN live proxy unavailable; show
 > "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
 
 Screen: `deny` rows (RAGBot 7005 honeytokens, RepoBot 7022 `bootstrap.sh` fetch + credential post), then
-`RESULT block: PREVENTED`, `RESULT repobot block: PREVENTED`, `(no canary hits)`. If the 4th stage capture is
-available (see the box above), switch to it here.
+`RESULT block: PREVENTED`, `RESULT repobot block: PREVENTED`, `(no canary hits)`. Dashboard: switch to the tab
+`?id=live/egress-boundary&run=run&step=last`, which shows four "Blocked · egress deny" cards, one per deny.
 > "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
 
 **1:50 · Beat 5a AIM twin** · **Enter**, then the tab `aim-twin`, then slide 6 (red / green / green) · fallback: slide 6 only
@@ -105,8 +103,9 @@ Screen: `false` + the AIM denial reason.
 
 **2:30 · Beat 7 Close** · **Enter**, then slides 8 → 10 · fallback: read the numbers off the slide
 
-The terminal prints the T3 vs DVAA table: recall, FP, `8KB evasion: 2/2`, p95 0.4 ms.
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives: it flags 12.8 percent of benign traffic, and T3 flags none. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
+The terminal prints the T3 vs DVAA table: detection recall 67.7% vs 65.6%, prevention 41.8% vs 63.0%, FP 0.0% vs 12.8%,
+`8KB evasion: 2/2`, latency median 0.082 ms / p95 ~0.4 ms.
+> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 
@@ -115,9 +114,10 @@ Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut
 ## Claim wording (for Q&A; also see `demo/QA-PREP.md`)
 
 - **Scope the FP claim every time:** "0% FP on the 164-case benign corpus." Never say "zero false positives" without that scope.
-- **The recall one-liner:** "DVAA's baseline has higher recall; we trade recall for zero false alarms on the benign corpus, and we catch the 2 cases that evade its 8KB window."
+- **The comparison one-liner** (matches Beat 7 after #95): "DVAA's baseline prevents more, 63 percent versus our 42; we detect slightly more, with zero false alarms on the 164 benign cases versus its 21, and we catch the 2 cases that evade its 8KB window."
+- Don't say "DVAA has higher recall" without a qualifier. Since #46/#95 that's only true for **prevention**; on detection T3 is ahead (67.7% vs 65.6%).
 - Never say we "beat the baseline" across the board. Say "8KB evasion: 2/2 fixtures", which is the case we do win.
-- Latency: say only "under half a millisecond".
+- Latency: say exactly "median under a tenth of a millisecond, p95 around half a millisecond". p95 moves between about 0.39 and 0.52 ms from run to run, so never say "under half a millisecond".
 
 ## Encores (after 3:00, or in Q&A)
 
@@ -137,7 +137,7 @@ Running long? Cut the benign pass in Beat 4 first, then trim Beat 6. **Never cut
   A manual encore on the shipped config (:8080) needs
   `SENTINEL_LISTEN_PORT=8090 node sentinel/proxy/cli.mjs --config sentinel/config/sentinel.config.json`.
   If the dashboard port is busy, use `EVAL_DASHBOARD_PORT=9101`. Find what holds a port with `lsof -nP -iTCP:9100 -sTCP:LISTEN`.
-- **Dashboard blank:** press Cmd-R, then reload with an explicit capture (`?stage=1&capture=proxy-blocked`). If it's
+- **Dashboard blank:** press Cmd-R, then reload with an explicit capture (`?id=live/proxy-7005&run=run&step=last`). If the alert cards say "No detector verdicts recorded", the dashboard was started without the stage alerts: run `scripts/eval.sh dashboard-stop` and re-run `demo/run-demo.sh --no-teardown`. If it's
   still blank, stay on the terminal. Every beat prints there.
 - **Live 403 fails** (prints `WARN live proxy unavailable; showing the recording`): `run-demo.sh` has already switched
   to the recorded block. Say: **"Same request, same detector: here's the block from our recorded run against live DVAA."**
