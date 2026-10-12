@@ -103,6 +103,57 @@ EVAL="$REPO/scripts/eval.sh"                                   # merged: PR #20 
 CAP_ATTACK="$REPO/captures/attack/aim-ab.demo.json"            # merged: T1
 DASH_PORT="${EVAL_DASHBOARD_PORT:-9100}"                       # T5 dashboard (PR #11)
 
+# Stage alerts (T10 pipeline -> T5 dashboard). The dashboard only shows a detector verdict when an alert
+# sidecar exists for the capture. The committed captures have none, so without this every stage view reads
+# "No detector verdicts recorded". Preflight converts the RECORDED block-mode proxy log + egress evidence
+# (committed files, so the output is deterministic) into .eval/stage/, and serves the dashboard from a merged
+# tree: a copy of captures/ (every original capture keeps its id) plus the two pipeline incidents under live/.
+# Alert sidecars for the originals still fall through to sentinel/scoring/alerts/ (PR #76 stage sidecars).
+PIPELINE_CLI="$REPO/sentinel/pipeline/cli.mjs"
+STAGE_DIR="$REPO/.eval/stage"
+STAGE_CAPTURES="$STAGE_DIR/captures"
+STAGE_ALERTS="$STAGE_DIR/pipe/alerts"
+INC_PROXY="live/proxy-7005"          # request-side block: High 70 IndirectPromptInjection · Blocked · pre-forward
+INC_EGRESS="live/egress-boundary"    # 4 x Blocked · egress deny (RAGBot 7005 + RepoBot 7022 + telemetry)
+dash_link() { printf 'http://127.0.0.1:%s/?id=%s&run=run&step=last' "$DASH_PORT" "$1"; }
+dash_note() {   # incident  what-it-shows -> point the right-hand screen at the incident that really shows the block
+  if [ "${STAGE_OK:-0}" = 1 ] && [ "$STARTED_DASHBOARD" = 1 ]; then
+    printf '  %sDASHBOARD%s  %s  (%s)\n' "$B" "$Z" "$(dash_link "$1")" "$2"
+  else
+    note "dashboard: stage alerts unavailable this run; the terminal output above is the evidence"
+  fi
+}
+stage_build() {   # -> rc 0 iff .eval/stage holds the merged captures + both incident sidecars
+  local tmp="$STAGE_DIR.tmp"
+  rm -rf "$tmp" && mkdir -p "$tmp" || return 1
+  node "$PIPELINE_CLI" convert "$PROXY_BLOCK_JSONL" --egress "$EGRESS_BLOCK_JSONL" --out "$tmp/pipe" \
+    >"$tmp/convert.log" 2>&1 || { tail -n 5 "$tmp/convert.log"; return 1; }
+  cp -R "$REPO/captures" "$tmp/captures" && cp -R "$tmp/pipe/captures/live" "$tmp/captures/live" || return 1
+  rm -rf "$STAGE_DIR" && mv "$tmp" "$STAGE_DIR"
+  printf '  %d captures + 2 pipeline incidents; sidecars: %s\n' \
+    "$(find "$REPO/captures" -name '*.json' | wc -l | tr -d ' ')" "$(ls "$STAGE_ALERTS" | tr '\n' ' ')"
+}
+stage_verify() {   # -> rc 0 iff the RUNNING dashboard serves both incidents with the real block verdicts
+  node --input-type=module - "$DASH_PORT" "$INC_PROXY" "$INC_EGRESS" <<'JS'
+const [port, incProxy, incEgress] = process.argv.slice(2);
+const get = async (id) => (await fetch(`http://127.0.0.1:${port}/api/replay?id=${encodeURIComponent(id)}&run=run`)).json();
+const fmt = (a) => `${a.severityName} ${a.severity} ${a.detectName} · ${a.disposition}${a.hints?.direction ? ' · ' + a.hints.direction + '-side' : ''}`;
+let bad = 0;
+const p = await get(incProxy), e = await get(incEgress);
+const pa = (p.alerts ?? []).filter(a => !a.invalid), ea = (e.alerts ?? []).filter(a => !a.invalid);
+for (const a of pa) console.log(`  ${incProxy}: ${fmt(a)}`);
+for (const a of ea) console.log(`  ${incEgress}: ${fmt(a)}`);
+if (!pa.some(a => a.detectName === 'IndirectPromptInjection' && a.blocked && a.hints?.direction === 'request')) {
+  console.log(`  ${incProxy}: no blocked request-side IndirectPromptInjection alert (source: ${p.alertSource?.origin})`); bad++;
+}
+if (ea.length < 1 || !ea.every(a => a.blocked)) {
+  console.log(`  ${incEgress}: expected only blocked egress alerts, got ${ea.length} (source: ${e.alertSource?.origin})`); bad++;
+}
+if (p.alertSource?.placeholder || e.alertSource?.placeholder) { console.log('  alerts came from a PLACEHOLDER source'); bad++; }
+process.exit(bad ? 1 : 0);
+JS
+}
+
 # T6 8KB-evasion fixtures (PR #10/#15) + T7 scoring results. Beat 3b and Beat 7 read the COMMITTED
 # sentinel/scoring/results.json (regenerate with `scripts/eval.sh score`), so the numbers on screen are the
 # ones in the repo, with no live recompute inside the 3-min window.
@@ -405,10 +456,43 @@ else
 fi
 advance
 
-hdr "Preflight 3/3 — start the T5 dashboard (loopback)"
+hdr "Preflight 3/3 — real SentinelProxy alerts (T10 pipeline) + the T5 dashboard (loopback)"
+STAGE_OK=0
+if [ -f "$PIPELINE_CLI" ] && [ -f "$PROXY_BLOCK_JSONL" ] && [ -f "$EGRESS_BLOCK_JSONL" ]; then
+  printf '  %s$ node sentinel/pipeline/cli.mjs convert %s --egress %s --out .eval/stage/pipe%s\n' \
+    "$B" "${PROXY_BLOCK_JSONL#$REPO/}" "${EGRESS_BLOCK_JSONL#$REPO/}" "$Z"
+  if stage_build; then
+    STAGE_OK=1; ok "stage alerts built from the recorded block-mode run (.eval/stage/)"
+    export SENTINEL_CAPTURES_DIR="$STAGE_CAPTURES" SENTINEL_ALERTS_DIR="$STAGE_ALERTS"
+  else
+    bad "pipeline convert failed; the dashboard would show no detector verdicts"
+    record "preflight: stage alerts" FAIL "pipeline convert failed"
+  fi
+else
+  nym "T10 pipeline (sentinel/pipeline/cli.mjs) or the recorded proxy/egress evidence"
+  record "preflight: stage alerts" "NOT YET MERGED" "pipeline or evidence absent"
+fi
 if [ -x "$EVAL" ] && [ -f "$REPO/sentinel/dashboard/server.mjs" ]; then
   if bash "$EVAL" dashboard 2>&1 | sed 's/^/  /'; then
     STARTED_DASHBOARD=1; ok "dashboard up: http://127.0.0.1:$DASH_PORT/"; record "preflight: dashboard" PASS "up :$DASH_PORT"
+    if [ "$STAGE_OK" = 1 ] && ! stage_verify >/dev/null 2>&1; then
+      # eval.sh reuses an already-running dashboard; one started without the stage dirs would hide the alerts.
+      warn "running dashboard does not serve the stage alerts (started earlier without them?); restarting it"
+      bash "$EVAL" dashboard-stop >/dev/null 2>&1
+      bash "$EVAL" dashboard 2>&1 | sed 's/^/  /'
+    fi
+    if [ "$STAGE_OK" = 1 ]; then
+      if stage_verify; then
+        ok "dashboard shows the real SentinelProxy alerts (not placeholders)"
+        record "preflight: stage alerts" PASS "IndirectPromptInjection blocked + egress denies on dashboard"
+      else
+        bad "dashboard does not show the real block alerts"
+        record "preflight: stage alerts" FAIL "dashboard missing pipeline alerts"
+      fi
+      note "deep links (open these on the right-hand screen):"
+      note "  Beat 4  request-side block : $(dash_link "$INC_PROXY")"
+      note "  Beat 4b egress boundary    : $(dash_link "$INC_EGRESS")"
+    fi
   else
     warn "dashboard did not come up; beats still replay in the terminal"
     record "preflight: dashboard" WARN "did not start"
@@ -478,6 +562,7 @@ if [ -f "$PROXY_BLOCK_JSONL" ]; then
   run_cmd "recorded: same block on the live DVAA run (captures/contrast, detector:sentinel-t3)" proxy_block_cmd
   if [ -f "$PROXY_BLOCK_T4" ]; then
     run_cmd "recorded: the T4 alert built from that verdict (T10 pipeline)" t4_alert_cmd
+    dash_note "$INC_PROXY" "High 70 IndirectPromptInjection · Blocked · pre-forward"
   else
     nym "T4 alert from the T10 pipeline (captures/contrast/runs/proxy-block.t4-alerts.json)"
     record "Beat 4 T4 alert" "NOT YET MERGED" "alert sidecar absent"
@@ -496,6 +581,7 @@ if [ -f "$EGRESS_BLOCK_JSONL" ] && [ -f "$EGRESS_GROUND_TRUTH" ]; then
   run_cmd "egress guard: deny decisions at the tool boundary (sentinel/egress/evidence-block.jsonl)" egress_block_cmd
   say "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
   run_cmd "ground truth: attacker server received nothing, RAGBot 7005 and RepoBot 7022 (scripts/egress-demo.sh block)" egress_truth_cmd
+  dash_note "$INC_EGRESS" "4 x Blocked · egress deny"
 else
   nym "T12 egress guard (sentinel/egress/evidence-block.jsonl + demo/captures/egress-demo-block.txt)"
   record "Beat 4b egress guard" "NOT YET MERGED" "egress evidence absent"
