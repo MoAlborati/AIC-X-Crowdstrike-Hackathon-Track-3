@@ -115,7 +115,7 @@ test('observe mode: request-side would-block is ReportOnly; response-side alert-
   }
   for (const a of res) assert.equal(a.PipelineContext.Outcome, 'reply_delivered_tool_already_executed');
   const [side] = readSidecars(s.outDir);
-  assert.deepEqual(side.doc.pipeline.byDirection, { request: req.length, response: res.length });
+  assert.deepEqual(side.doc.pipeline.byDirection, { request: req.length, response: res.length, egress: 0 });
   const [cap] = readCaptures(s.outDir);
   assert.equal(cap.doc.exchanges.length, 1);
   assert.equal(cap.doc.exchanges[0].response.dvaa.exfilExecuted, true, 'dvaa{} ground truth kept for display, never used as a verdict');

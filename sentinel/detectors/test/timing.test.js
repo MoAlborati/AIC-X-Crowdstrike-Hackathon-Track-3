@@ -10,8 +10,15 @@ import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdow
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
-// T2's inspector timeout is ~50 ms: the WHOLE inspection must finish inside our own fail-closed budget.
-const TOTAL_BUDGET_MS = DEFAULT_BOUNDS.timeBudgetMs;
+// TWO DIFFERENT NUMBERS (review of PR #27):
+//   TOTAL_BUDGET_MS = 40  PERFORMANCE bound: a whole inspection of a 384 KiB adversarial turn (PERF_INPUT, ~16x
+//                         the ~23 KB demo payloads) must take < 40 ms of CPU (median of 5). A speed target that
+//                         catches quadratic regressions; it is NOT a reason to block traffic.
+//   DEFAULT_BOUNDS.timeBudgetMs (runtime, 4000 ms) the fail-closed budget, derived from the proxy's real
+//                         inspectorTimeoutMs (5000 ms -> 80%) + its abort signal (bounds.js, inspector.js, review
+//                         B3). Asserted separately below on payloads at the full 2 MiB cap.
+const TOTAL_BUDGET_MS = 40;
+const PERF_INPUT = 384 * 1024;
 // The 40 ms bound is asserted on CPU time (user+system delta, see cpuUsage below), not wall clock: the merge
 // gate runs ~13 agents in parallel (load ~10), and wall clock then measures the scheduler, not the
 // detector. A quadratic regression is 100x+ in CPU time too, so the bound stays strict. A generous
@@ -31,8 +38,8 @@ function measure(fn) {
   const c = cpuUsage(c0);
   return { out, cpu: (c.user + c.system) / 1000, wall };
 }
-const MAX = DEFAULT_BOUNDS.maxPayloadBytes;
-const SCANNER_INPUT = MAX; // each scanner alone is held to 50 ms at the cap (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
+const MAX = PERF_INPUT;
+const SCANNER_INPUT = PERF_INPUT; // each scanner alone is held to 50 ms (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
 // The adversarial string appears twice (untrusted tool output + sink args), so each copy is ~45% of the cap.
 const ADVERSARIAL = {
   jwt_prefix: 'eyJ',
@@ -65,7 +72,7 @@ function detectorWithBigRegistry() {
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-test('whole inspection < 40 ms CPU budget (wall-clock ceiling 250 ms; every layer < 50 ms) on adversarial inputs at the payload cap (20k canaries)', { timeout: 60000 }, () => {
+test('whole inspection < 40 ms CPU (performance bound; wall-clock ceiling 250 ms; every layer < 50 ms) on adversarial 384 KiB inputs (20k canaries)', { timeout: 60000 }, () => {
   const det = detectorWithBigRegistry();
   const report = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
@@ -83,8 +90,7 @@ test('whole inspection < 40 ms CPU budget (wall-clock ceiling 250 ms; every laye
     const walls = [];
     for (let r = 0; r < RUNS; r++) {
       const { out: d, cpu, wall } = measure(() => det.inspect({ sessionId: `adv-${name}-${r}`, request: req, response: res }));
-      // JSON escaping can push a few cases (e.g. "\n"-heavy) over the cap: that must FAIL CLOSED, fast.
-      if (d.failClosed) assert.equal(d.error.bound, 'maxPayloadBytes', `${name}: ${JSON.stringify(d.error)}`);
+      assert.equal(d.failClosed, false, `${name}: ${JSON.stringify(d.error)}`);
       totals.push(Math.round(cpu * 1000) / 1000);
       walls.push(Math.round(wall * 1000) / 1000);
       for (const l of d.stats.layers) (layerRuns[l.layer] ??= []).push(l.latencyMs);
@@ -95,7 +101,7 @@ test('whole inspection < 40 ms CPU budget (wall-clock ceiling 250 ms; every laye
     assert.ok(median(totals) < TOTAL_BUDGET_MS, `${name}: total CPU ${median(totals)} ms >= ${TOTAL_BUDGET_MS} ms budget`);
     assert.ok(median(walls) < WALL_CEILING_MS, `${name}: wall clock ${median(walls)} ms >= ${WALL_CEILING_MS} ms ceiling (hang?)`);
   }
-  console.log(`# adversarial timing @ ${MAX} B cap (median of ${RUNS}; total = CPU ms, wall = wall-clock ms):`);
+  console.log(`# adversarial timing @ ${MAX} B perf input (median of ${RUNS}; total = CPU ms, wall = wall-clock ms):`);
   for (const r of report) console.log(`#   ${r.name.padEnd(15)} total=${r.total} wall=${r.wall} ${Object.entries(r).filter(([k]) => !['name', 'total', 'wall'].includes(k)).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 });
 
@@ -138,4 +144,20 @@ test('honeytoken index stays O(1) per position with 50k canaries sharing the "sk
     runs.push(performance.now() - t);
   }
   assert.ok(median(runs) < LAYER_BUDGET_MS, `registry.scan took ${median(runs).toFixed(1)} ms`);
+});
+
+test('runtime budget: adversarial turns at the FULL 2 MiB payload cap finish far inside the runtime fail-closed budget (default 4000 ms)', { timeout: 60000 }, () => {
+  const det = detectorWithBigRegistry();
+  const CAP = DEFAULT_BOUNDS.maxPayloadBytes;
+  const worst = [];
+  for (const [name, unit] of Object.entries(ADVERSARIAL)) {
+    const s = unit.repeat(Math.ceil((CAP * 0.4) / unit.length)).slice(0, Math.floor(CAP * 0.4));
+    const req = { messages: [{ role: 'user', content: 'process' }, { role: 'assistant', tool_calls: [{ id: 'h', type: 'function', function: { name: 'web_fetch', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'h', content: s }] };
+    const res = { choices: [{ message: { role: 'assistant', content: 'ok', tool_calls: [{ id: 'c', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'http://x.test/a', body: s }) } }] } }] };
+    const d = det.inspect({ sessionId: `cap-${name}`, request: req, response: res });
+    if (d.failClosed) assert.equal(d.error.bound, 'maxPayloadBytes', `${name}: ${JSON.stringify(d.error)}`);
+    worst.push([name, d.stats.latencyMs]);
+    assert.ok(d.stats.latencyMs < DEFAULT_BOUNDS.timeBudgetMs / 4, `${name}: ${d.stats.latencyMs} ms at the 2 MiB cap`);
+  }
+  console.log(`# adversarial @ ${CAP} B cap (runtime budget ${DEFAULT_BOUNDS.timeBudgetMs} ms): ${worst.map(([n, ms]) => `${n}=${ms}`).join(' ')}`);
 });

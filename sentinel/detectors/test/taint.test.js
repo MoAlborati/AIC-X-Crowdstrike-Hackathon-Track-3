@@ -8,7 +8,10 @@ test('live capture: RepoBot 7022 read_repo -> read_file(~/.aws/credentials) -> h
   // DVAA runs these tools in-process; the AGENTS.md payload never crosses the proxy, so the request side
   // has nothing to act on. Honest outcome: detected + evidenced after execution, not prevented.
   const inproc = dvaaInProcess({ agent: { name: c.agent, port: c.port } }).det.inspect({ sessionId: `${c.id}-ip`, request: c.request, response: c.response });
-  assert.equal(inproc.action, 'allow');
+  // B1: the AWS secret in http_post args withholds the reply (flagged), still post-execution evidence.
+  assert.equal(inproc.action, 'block');
+  assert.ok(inproc.findings.filter((x) => x.disposition === 'block').every((x) => x.withholdsReply && x.postExecution && !x.prevents));
+  assert.deepEqual(inproc.blockedToolCallIds, [], 'post-execution calls already ran: none listed as blockable');
   const tf = inproc.findings.find((x) => x.ruleId === 'taint.untrusted_read_to_external_send');
   assert.ok(tf && tf.postExecution && !tf.prevents && tf.wouldBlock);
   const { det } = dvaaDetector({ agent: { name: c.agent, port: c.port } });
@@ -141,7 +144,8 @@ test('live capture: RAGBot 7005 poisoned doc arrives INSIDE the request -> REQUE
   assert.equal(f.entities.sink.destination, '127.0.0.1');
   // Post-agent (same turn): response-side findings are evidence only.
   const post = det.inspect({ sessionId: `${c.id}-post`, request: c.request, response: c.response });
-  assert.ok(post.findings.filter((x) => x.direction === 'response').every((x) => x.postExecution && x.disposition === 'allow'));
+  // Response side: evidence only (prevents:false); a honeytoken/secret in the args withholds the reply (B1).
+  assert.ok(post.findings.filter((x) => x.direction === 'response').every((x) => x.postExecution && !x.prevents && (x.disposition === 'allow' || x.withholdsReply)));
   assert.ok(post.findings.some((x) => x.direction === 'response' && x.ruleId === 'taint.untrusted_span_copied_to_sink'));
 });
 

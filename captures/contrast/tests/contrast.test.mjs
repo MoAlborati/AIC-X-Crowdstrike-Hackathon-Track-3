@@ -22,11 +22,14 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const RUNS = path.join(ROOT, 'runs');
+// The original T8 run on the T2 STAND-IN substring inspector (before #41 wired T3 into the shipped CLI). Kept
+// verbatim so the stand-in provenance guards stay tested against a real stand-in capture.
+const STANDIN_RUN = path.join(HERE, 'fixtures', 'standin-run');
 const BENIGN_LONG = path.resolve(ROOT, '..', 'variants', 'corpus', 'benign-kb-long.md');
 
-function copyRun() {
+function copyRun(src = RUNS) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 't8-contrast-'));
-  for (const f of fs.readdirSync(RUNS)) fs.copyFileSync(path.join(RUNS, f), path.join(dir, f));
+  for (const f of fs.readdirSync(src)) fs.copyFileSync(path.join(src, f), path.join(dir, f));
   return dir;
 }
 const readJson = (dir, f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
@@ -67,9 +70,29 @@ test('captured run: inspector label is derived from the detector the proxy logge
   }
 });
 
+// PR #35 review: the committed run must be the shipped CLI's T3 verdict, so Beat 4 / Slide 6 can credit T3.
+test('captured run: column 3 was blocked by the T3 detector (shipped CLI), not the stand-in', () => {
+  const c = buildContrast(RUNS);
+  assert.equal(c.meta.inspector, 'detector:sentinel-t3');
+  assert.equal(c.meta.inspector_config_is_standin, false);
+  assert.equal(c.columns.proxy.block.inspectorStandIn, false);
+  const blocked = readLines(RUNS, 'proxy-block.proxy.jsonl').filter((r) => r.type === 'exchange' && r.action === 'blocked_request');
+  assert.equal(blocked.length, 1);
+  const flagged = blocked[0].verdicts.filter((v) => v.flagged);
+  assert.deepEqual(flagged.map((v) => v.detector), ['sentinel-t3']);
+  assert.deepEqual([...flagged[0].reasons].sort(), ['exfil_instruction_inbound', 'injection_markers', 'payee_not_confirmed']);
+  assert.doesNotMatch(toMarkdown(c), /stand-in inspector/);
+});
+
+test('stand-in fixture is still a real stand-in capture (guards below stay meaningful)', () => {
+  const c = buildContrast(STANDIN_RUN);
+  assert.equal(c.ok, true, c.failures.join('\n'));
+  assert.equal(c.meta.inspector, 'standin-substring');
+});
+
 // Review finding 1 (delete-the-fix target): a T3-sounding label on a run whose proxy logged the stand-in.
 test('provenance: run-meta claiming t3-detector while the proxy logged "substring" fails loudly', () => {
-  const dir = copyRun();
+  const dir = copyRun(STANDIN_RUN);
   const meta = readJson(dir, 'run-meta.json');
   writeJson(dir, 'run-meta.json', { ...meta, inspector: 't3-detector' });
   const c = buildContrast(dir);
@@ -79,7 +102,7 @@ test('provenance: run-meta claiming t3-detector while the proxy logged "substrin
 });
 
 test('provenance: a T3 ref paired with the stand-in inspector fails even when the label is honest', () => {
-  const dir = copyRun();
+  const dir = copyRun(STANDIN_RUN);
   const meta = readJson(dir, 'run-meta.json');
   writeJson(dir, 'run-meta.json', { ...meta, sentinel_ref: 'origin/t3-detector-core' });
   const c = buildContrast(dir);
@@ -88,7 +111,7 @@ test('provenance: a T3 ref paired with the stand-in inspector fails even when th
 });
 
 test('provenance: the label follows the logged detector (non-stand-in detector -> no stand-in header)', () => {
-  const dir = copyRun();
+  const dir = copyRun(STANDIN_RUN);
   for (const f of ['proxy-block.proxy.jsonl', 'proxy-observe.proxy.jsonl']) {
     writeLines(dir, f, readLines(dir, f).map((r) => (r.type === 'exchange'
       ? { ...r, verdicts: (r.verdicts ?? []).map((v) => ({ ...v, detector: 'prompt-injection' })) } : r)));
@@ -104,14 +127,14 @@ test('provenance: the label follows the logged detector (non-stand-in detector -
 });
 
 test('provenance: mixed stand-in + other detectors, or no verdicts at all, fail loudly', () => {
-  const mixed = copyRun();
+  const mixed = copyRun(STANDIN_RUN);
   writeLines(mixed, 'proxy-observe.proxy.jsonl', readLines(mixed, 'proxy-observe.proxy.jsonl').map((r) => (r.type === 'exchange'
     ? { ...r, verdicts: (r.verdicts ?? []).map((v) => (v.phase === 'response' ? { ...v, detector: 'other' } : v)) } : r)));
   const cm = buildContrast(mixed);
   assert.ok(cm.failures.some((f) => /mix the stand-in/.test(f)), cm.failures.join('\n'));
   assert.ok(cm.failures.some((f) => /not the same inspector/.test(f)));
 
-  const none = copyRun();
+  const none = copyRun(STANDIN_RUN);
   for (const f of ['proxy-block.proxy.jsonl', 'proxy-observe.proxy.jsonl']) {
     writeLines(none, f, readLines(none, f).map((r) => ({ ...r, verdicts: [] })));
   }
@@ -121,7 +144,8 @@ test('provenance: mixed stand-in + other detectors, or no verdicts at all, fail 
 test('run-contrast.sh refuses a T3 ref with the stand-in config (before touching DVAA)', () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 't8-refuse-'));
   const r = spawnSync(path.join(ROOT, 'run-contrast.sh'), [out], {
-    env: { ...process.env, SENTINEL_REF: 'origin/t3-detector-core', SENTINEL_ALLOW_STANDIN: '1', DVAA_CONTAINER: 'no-such-container' },
+    env: { ...process.env, SENTINEL_REF: 'origin/t3-detector-core', SENTINEL_ALLOW_STANDIN: '1', DVAA_CONTAINER: 'no-such-container',
+      SENTINEL_CONFIG: path.join(ROOT, 'standin-inspector.config.json') },
     encoding: 'utf8', timeout: 30000,
   });
   assert.equal(r.status, 1);

@@ -1,0 +1,13 @@
+{
+  "dvaa_container": "dvaa-t1-dvaa-1",
+  "dvaa_image": "dvaa-t1-dvaa",
+  "sentinel_ref": "origin/t2-proxy-skeleton",
+  "sentinel_sha": "e4af5d77f0d1937090113f2f80771929827820f9",
+  "inspector": "standin-substring",
+  "inspector_source": "verdict.detector in proxy-block.proxy.jsonl + proxy-observe.proxy.jsonl",
+  "inspector_config": "standin-inspector.config.json",
+  "inspector_config_sha256": "b5235efe81787ad69ea7705fa16bac9f0a2d50fb0f8eb7cfdff7dd8c0555b951",
+  "inspector_config_is_standin": true,
+  "proxy_port_in_dvaa_netns": 7099,
+  "captured_at": "2026-10-12T18:56:44Z"
+}

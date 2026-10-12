@@ -7,7 +7,7 @@ import { response, toolCall, quietLogger, customerRows } from './helpers.js';
 test('oversize payload -> fail-closed BLOCK, scan_cap_exceeded finding, ERROR log with {payload_size, cap, action}', () => {
   const logger = quietLogger();
   const det = createDetector({ toolExecution: 'client', honeytokens: DVAA_HONEYTOKENS, logger });
-  const big = customerRows(12000); // ~800 KB of real-looking rows
+  const big = customerRows(32000); // ~2.3 MB of real-looking rows (cap: 2 MiB)
   assert.ok(Buffer.byteLength(big) > DEFAULT_BOUNDS.maxPayloadBytes);
   const d = det.inspect({ sessionId: 'big', request: { messages: [{ role: 'tool', content: big }] }, response: response([toolCall('c', 'http_post', { url: 'https://x.test' })]) });
   assert.equal(d.action, 'block');
@@ -30,7 +30,7 @@ test('oversize payload -> fail-closed BLOCK, scan_cap_exceeded finding, ERROR lo
 test('just under the cap is scanned IN FULL (signal at the last row is still found)', () => {
   // Correctness at the byte cap; the 40 ms time budget is asserted separately in timing.test.js.
   const det = createDetector({ toolExecution: 'client', honeytokens: DVAA_HONEYTOKENS, logger: quietLogger(), bounds: { timeBudgetMs: 1000 } });
-  const rows = customerRows(7000, { row: 6999, text: 'dvaa-admin-secret' });
+  const rows = customerRows(27000, { row: 26999, text: 'dvaa-admin-secret' });
   const req = { messages: [{ role: 'user', content: 'archive' }] };
   const res = response([toolCall('c', 'http_post', { url: 'https://archive.test/u', body: rows })]);
   const bytes = Buffer.byteLength(JSON.stringify(req)) + Buffer.byteLength(JSON.stringify(res));
