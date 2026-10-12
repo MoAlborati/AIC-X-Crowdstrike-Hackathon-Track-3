@@ -19,6 +19,8 @@
 See BACKLOG.md. Next unblocked ticket: **T1 — Verify target + capture exploits** (no deps).
 
 ## Decision Log (append-only, newest first)
+- 2026-10-12 — Branch policy: all ticket PRs target `main` from now on. #2, #4 and #5 had merged into stacked base branches, so their content was off `main`; this catch-up PR lands T0b, T0c and T1.
+- 2026-10-12 — T1 DONE (PR #5, attempt 2). It captured 3 attack fixtures (RAGBot A/B, RepoBot, FlightBot) and 6 benign ones. Headline pair: RAGBot 7005 ↔ RAGBot-AIM 7014. The optional LegacyBot/SecureBot pair is deferred: it hit a safety stop, and acceptance (≥3 attack fixtures) is already met.
 - 2026-10-12 — **Concurrency floor (operator directive):** replaces the "at most 3 implementer agents" cap with
   **minimum 5 concurrent child agents**, all Opus 5.5, each in its own worktree on a disjoint file scope. When fewer than 5
   tickets are unblocked, run tickets stacked on in-review branches plus research, review and test agents. The orchestrator is always
