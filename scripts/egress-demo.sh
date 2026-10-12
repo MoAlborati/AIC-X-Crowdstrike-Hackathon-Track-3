@@ -80,7 +80,7 @@ run_mode() {
   node -e '
     const fs=require("fs"); const p=process.argv[1];
     const lines=fs.existsSync(p)?fs.readFileSync(p,"utf8").trim().split("\n").filter(Boolean):[];
-    for (const l of lines){const r=JSON.parse(l); console.log(`${r.kind.padEnd(6)} ${r.action.padEnd(7)} ${String(r.proto).padEnd(7)} host=${r.host} size=${r.size} reasons=[${r.reasons}] canaries=[${r.canary_ids}]` + (r.alert?` alert=${r.alert.DetectName}/${r.alert.PatternDispositionDescription}`:""));}
+    for (const l of lines){const r=JSON.parse(l); console.log(`${r.kind.padEnd(6)} ${r.action.padEnd(7)} ${String(r.proto).padEnd(7)} host=${r.host ?? (r.host_sha256 ? "sha256:"+r.host_sha256+"/len="+r.host_len : null)} size=${r.size} reasons=[${r.reasons}] canaries=[${r.canary_ids}]` + (r.alert?` alert=${r.alert.DetectName}/${r.alert.PatternDispositionDescription}`:""));}
   ' "$log"
   hits="$(canary_hits)"
   echo "--- attacker server (ground truth) ---"; [ -n "$hits" ] && echo "$hits" || echo "(no canary hits)"
