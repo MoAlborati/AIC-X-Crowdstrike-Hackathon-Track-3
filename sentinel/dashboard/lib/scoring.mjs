@@ -6,10 +6,9 @@
 //     The DVAA baseline for each lens is read from detectors['dvaa-baseline'].modes[<headline.mode>]:
 //     `anyFinding` for detection and `prevention` for prevention. These are the same rows T7's own
 //     RESULTS.md report uses.
-//   * legacy shape (T7 before PR #28): only `detectionRate | recall`. It is shown as the detection tile
-//     with `lensSource: 'legacy'`, and the UI puts a visible note on it. Prevention recall is null, never
-//     estimated. Its baseline is the DVAA row for the same metric as the legacy recall (headline.metric,
-//     "blocking" by default).
+//   * legacy shape (T7 before PR #28): only `detectionRate | recall`, which is the rule-intent BLOCK lens.
+//     `lensSource: 'legacy'`; detectionRecall and preventionRecall are null (the legacy recall is NOT a
+//     detection rate and is never presented as one); the UI shows "n/a" with a visible note.
 // Other fields: falsePositiveRate | fpRate, precision, latencyMs {median, p95} | medianLatencyMs/p95LatencyMs,
 // counts, headline.status ("ok" | "awaiting t3: …" | "error: …"; any non-ok status replaces the numbers).
 // When the file is absent the slot reads "awaiting T7". Nothing here invents a rate: a field that is not
@@ -29,7 +28,7 @@ export function baselineFrom(raw, lensSource) {
   const mode = typeof raw?.headline?.mode === 'string' ? raw.headline.mode : 'enforce';
   const metric = typeof raw?.headline?.metric === 'string' ? raw.headline.metric : 'blocking';
   const m = base?.available === false ? null : base?.modes?.[mode];
-  if (!m) return { available: false, detection: null, prevention: null, fpRate: null, latencyMedianMs: null, mode, metric };
+  if (!m) return { available: false, detection: null, prevention: null, fpRate: null, fpDetection: null, fpPrevention: null, latencyMedianMs: null, mode, metric };
   const legacy = lensSource === 'legacy';
   return {
     available: true,
@@ -39,6 +38,9 @@ export function baselineFrom(raw, lensSource) {
     prevention: legacy ? null : first(m.prevention?.recall),
     // Same metric as the candidate's headline falsePositiveRate.
     fpRate: first(m[metric]?.falsePositiveRate),
+    // Per-lens FP, so each headline tile compares like with like.
+    fpDetection: legacy ? null : first(m.anyFinding?.falsePositiveRate),
+    fpPrevention: legacy ? null : first(m.prevention?.falsePositiveRate),
     latencyMedianMs: first(base?.latencyMs?.median),
   };
 }
@@ -76,13 +78,16 @@ export async function loadScoring(index, env = process.env) {
     file: rel,
     corpus,
     lensSource,
-    detectionRecall: hasLens ? lensDetection : legacyRecall,
+    detectionRecall: hasLens ? lensDetection : null,
     preventionRecall: hasLens ? lensPrevention : null,
     // Legacy `recall` (rule-intent blocking) is kept so the note can name it; it is not a tile in lens mode.
     legacyRecall,
     // Back-compat alias for older callers.
     detectionRate: legacyRecall,
     fpRate: first(raw.falsePositiveRate, raw.fpRate),
+    // Each lens's own benign FP rate (headlineLenses.<lens>.falsePositiveRate). Not filled from the
+    // top-level falsePositiveRate, which belongs to the legacy blocking lens.
+    lensFp: { detection: first(raw.headlineLenses?.detection?.falsePositiveRate), prevention: first(raw.headlineLenses?.prevention?.falsePositiveRate) },
     precision: first(raw.precision),
     latencyMs: { median: first(raw.latencyMs?.median, raw.medianLatencyMs), p95: first(raw.latencyMs?.p95, raw.p95LatencyMs) },
     counts: raw.counts ?? null,
