@@ -1,0 +1,42 @@
+# SPIKE — DVAA with its tool-boundary egress forced through sentinel's inspector.
+# Uses the already-built DVAA image (dvaa-t1-dvaa); DVAA source is NOT modified.
+# Separate project name so it never collides with the live dvaa-t1 fleet.
+#
+#   sandbox (internal: no route out)  : dvaa, egress
+#   outside                           : egress, canary
+# DVAA's only path to the canary is through the inspector, so env-var routing
+# cannot be bypassed by a client that ignores HTTP_PROXY.
+name: dvaa-egress-spike
+services:
+  dvaa:
+    image: ${DVAA_IMAGE:-dvaa-t1-dvaa}
+    environment:
+      NODE_USE_ENV_PROXY: "1"
+      HTTP_PROXY: http://egress:8899
+      HTTPS_PROXY: http://egress:8899
+      # DVAA's own loopback hops (dashboard -> agent ports, CLI demos) stay direct.
+      NO_PROXY: "127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006,127.0.0.1:7007,127.0.0.1:7008,127.0.0.1:7014,127.0.0.1:7015,127.0.0.1:7016,127.0.0.1:7017,127.0.0.1:7018,127.0.0.1:7022,127.0.0.1:7023,127.0.0.1:9000,localhost:7005"
+    networks: [sandbox]
+    depends_on: [egress]
+  egress:
+    image: node:24-alpine
+    command: ["node", "/spike/inspector.mjs"]
+    environment:
+      MODE: ${EGRESS_MODE:-observe}
+      ALLOW_HOSTS: ${EGRESS_ALLOW:-}
+      HONEYTOKENS: "dvaa-admin-secret,123-45-6789"
+      LOG: /logs/egress.jsonl
+    volumes:
+      - ./inspector.mjs:/spike/inspector.mjs:ro
+      - ./logs:/logs
+    networks: [sandbox, outside]
+  canary:
+    image: node:24-alpine
+    command: ["node", "/spike/canary.mjs"]
+    volumes:
+      - ./canary.mjs:/spike/canary.mjs:ro
+    networks: [outside]
+networks:
+  sandbox:
+    internal: true
+  outside: {}
