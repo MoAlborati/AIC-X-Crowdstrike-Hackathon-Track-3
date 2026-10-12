@@ -1,5 +1,8 @@
 // Where detector verdicts (T4 alerts) for a capture come from, in priority order:
-//   1. alerts embedded in the capture itself (`alerts: [...]`, single-run captures / T6 variants)
+//   1. alerts embedded in the capture itself: `alerts: [...]` on a single-run capture (T6 variants),
+//      or `alerts: { <runKey>: [...] }` on any capture. capture-loader normalizes both to a per-run
+//      map and rejects a flat array on a multi-run capture as ambiguous (422), never 0 alerts.
+//      A run absent from the map falls through to the sidecars below.
 //   2. $SENTINEL_ALERTS_DIR/<capture-id>.alerts.json
 //   3. sentinel/scoring/alerts/<capture-id>.alerts.json   (expected T3/T7 replay output)
 //   4. sentinel/dashboard/fixtures/alerts/<capture-id>.alerts.json   (PLACEHOLDER, labeled in the UI)
@@ -25,8 +28,9 @@ export const sidecarName = (captureId) => `${captureId.replace(/\//g, '__')}.ale
 
 /** @returns {Promise<{alerts: object[], origin: string, placeholder: boolean, note: string|null}>} */
 export async function alertsFor(capture, runKey, dirs = alertDirs()) {
-  if (capture.alerts && capture.runs.length === 1) {
-    return { alerts: capture.alerts, origin: 'embedded in capture', placeholder: capture.placeholder, note: null };
+  const embedded = capture.alerts?.[runKey];
+  if (embedded) {
+    return { alerts: embedded, origin: 'embedded in capture', placeholder: capture.placeholder, note: null };
   }
   for (const { dir, placeholder } of dirs) {
     const file = path.join(dir, sidecarName(capture.id));
