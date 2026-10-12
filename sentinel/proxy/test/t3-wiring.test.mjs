@@ -127,7 +127,7 @@ describe('T3 is wired into the shipped proxy CLI', () => {
     } finally { await cli.stop(); await up.close(); }
   });
 
-  test('observe mode: T3 response-phase `flagged:false, alert:true` evidence is logged as an ALERT (redacted)', async () => {
+  test('observe mode: T3 response-phase honeytoken in tool-call args is FLAGGED (B1, #56: would withhold the reply), labelled post-execution, logged as a would-block ALERT (redacted)', async () => {
     const up = await replayUpstream();
     const cli = await runCli({ target: { host: '127.0.0.1', port: up.port }, mode: 'observe' });
     try {
@@ -135,15 +135,19 @@ describe('T3 is wired into the shipped proxy CLI', () => {
       assert.equal(r.status, 200, 'observe forwards');
       await cli.stop();
       const recs = readCapture(cli.capture);
-      const evid = recs.find((x) => x.type === 'alert' && x.reason === 'detector_alert' && x.phase === 'response');
-      assert.ok(evid, `response-phase detector_alert ALERT present; got ${recs.filter((x) => x.type === 'alert').map((x) => `${x.reason}/${x.phase}`)}`);
-      assert.equal(evid.action, 'alert_only');
-      assert.equal(evid.verdicts[0].detector, 'sentinel-t3');
-      assert.equal(evid.verdicts[0].flagged, false);
-      assert.equal(evid.verdicts[0].alert, true);
+      const evid = recs.find((x) => x.type === 'alert' && x.reason === 'flagged' && x.phase === 'response');
+      assert.ok(evid, `response-phase flagged ALERT present; got ${recs.filter((x) => x.type === 'alert').map((x) => `${x.reason}/${x.phase}`)}`);
+      assert.equal(evid.action, 'would_block_observe_only');
+      const v = evid.verdicts.find((x) => x.detector === 'sentinel-t3');
+      assert.equal(v.flagged, true);
+      assert.equal(v.disposition, 'block');
+      assert.equal(v.prevents, false, 'the in-process tool already ran: never claimed prevention');
+      assert.equal(v.postExecution, true);
+      assert.ok(v.reasons.includes('honeytoken_crossed_egress'));
+      assert.ok(!recs.some((x) => x.type === 'alert' && x.reason === 'detector_alert' && x.phase === 'response'), 'flagged verdict is not double-logged as alert-only');
       const ex = recs.find((x) => x.type === 'exchange');
-      assert.ok(ex.verdicts.some((v) => v.phase === 'response' && v.alert === true && v.flagged === false), 'evidence in exchange verdicts');
-      assert.ok(cli.stderr().includes('"reason":"detector_alert"'), 'ALERT on stderr');
+      assert.ok(ex.verdicts.some((x) => x.phase === 'response' && x.flagged === true && x.postExecution === true && x.prevents === false), 'evidence in exchange verdicts');
+      assert.ok(cli.stderr().includes('"reason":"flagged"'), 'ALERT on stderr');
       assert.ok(!cli.stderr().includes(ADMIN));
       for (const x of recs) if (x.type === 'alert') assert.ok(!JSON.stringify(x).includes(ADMIN));
     } finally { await cli.stop(); await up.close(); }
