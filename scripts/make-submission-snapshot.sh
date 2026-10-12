@@ -6,7 +6,7 @@
 #   1. fails unless the working tree is clean and HEAD == origin/main (after `git fetch origin`);
 #   2. runs `scripts/eval.sh test` (skip with --skip-tests);
 #   3. writes ONE parentless commit whose tree is exactly HEAD's tree;
-#   4. scans that tree (minus anything gitignored) for secrets (gitleaks if installed, else regex),
+#   4. scans every file of that tree (gitignored and export-ignore paths included) for secrets (gitleaks if installed, else regex),
 #      local home/scratch paths, and internal tooling words. Known-inert strings are listed in
 #      scripts/submission-scan-allowlist.tsv. Any other hit fails the run and NO ref is created;
 #   5. on a clean scan, creates branch `submission-snapshot` and tag `v1.0-submission` locally;
@@ -82,14 +82,14 @@ step "4/6 scan snapshot tree (secrets, local paths, internal words)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/snapscan.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 SRC="$WORK/tree"; mkdir "$SRC"
-git archive "$SNAP" | tar -x -C "$SRC"
-# Drop anything gitignored (tracked-but-ignored files included) from the scan.
-git -c core.quotePath=false ls-tree -r --name-only "$SNAP" > "$WORK/all"
-git -c core.quotePath=false check-ignore --no-index --stdin < "$WORK/all" > "$WORK/ignored" || true
-if [ -s "$WORK/ignored" ]; then command grep -vxF -f "$WORK/ignored" "$WORK/all" > "$WORK/files" || true
-else cp "$WORK/all" "$WORK/files"; fi
+# Materialize EVERY blob of the snapshot tree. Not `git archive`: it drops export-ignore paths, which the
+# pushed commit still contains. Every tracked file is scanned, gitignored or not: a tracked file is
+# published whatever .gitignore says.
+GIT_INDEX_FILE="$WORK/index" git read-tree "$TREE" || die "git read-tree failed"
+GIT_INDEX_FILE="$WORK/index" git checkout-index -a -f --prefix="$SRC/" || die "git checkout-index failed"
+git -c core.quotePath=false ls-tree -r --name-only "$SNAP" > "$WORK/files"
 NFILES="$(wc -l < "$WORK/files" | tr -d ' ')"
-echo "  scanning $NFILES files (gitignored excluded: $(wc -l < "$WORK/ignored" | tr -d ' '))"
+echo "  scanning all $NFILES tracked files"
 
 GITLEAKS_JSON=""
 if [ "${SNAPSHOT_NO_GITLEAKS:-0}" != 1 ] && command -v gitleaks >/dev/null 2>&1; then
@@ -114,14 +114,14 @@ perl -e '
     die "bad allowlist line $.: $_\n" unless defined $lit && length $lit;
     (my $re = quotemeta $g) =~ s/\\\*/.*/g; push @allow, [qr/^$re$/, $lit]; }
   close $A;
-  # A hit is inert when its path matches an entry glob AND the hit lies inside an occurrence of that
-  # entry literal on the same line (or the hit itself contains the literal).
+  # A hit is inert only when its path matches an entry glob AND the whole hit lies inside an occurrence
+  # of that entry literal on the same line. A hit that merely CONTAINS the literal is not inert: a real
+  # key that extends a fake one (fake-prefix + real suffix) must still fail.
   sub allowed { my ($f, $m, $line, $s) = @_; my $e = $s + length $m;
     for my $a (@allow) { next unless $f =~ $a->[0]; my $lit = $a->[1];
-      return 1 if index($m, $lit) >= 0;
       my $i = -1; while (($i = index($line, $lit, $i + 1)) >= 0) { return 1 if $i <= $s && $i + length($lit) >= $e } }
     return 0 }
-  my $secret = qr{(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}|sk-ant-[A-Za-z0-9_-]{20,}|sk-(?:proj-)?[A-Za-z0-9]{32,}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|hooks\.slack\.com/services/T[A-Z0-9]+|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{36})};
+  my $secret = qr{(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}|sk-ant-[A-Za-z0-9_-]{20,}|(?<![A-Za-z0-9])sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|hooks\.slack\.com/services/T[A-Z0-9]+|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{36})};
   my $p = "/" . "ho" . "me/|/" . "Us" . "ers/|/tmp/" . "claude-";
   my $localpath = qr{($p)};
   my $w = "content" . "[-_ ]?engine|\\bf" . "irm\\b";
@@ -148,7 +148,8 @@ perl -e '
   if ($gl_mode) { require JSON::PP; local $/; open my $G, "<", $gl or die "$gl: $!\n";
     my $txt = <$G>; my $arr = length $txt ? JSON::PP::decode_json($txt) : [];
     for my $r (@$arr) { (my $f = $r->{File}) =~ s{^\Q$root\E/?}{};
-      $report->($f, $r->{StartLine} // 0, "secret[$r->{RuleID}]", $r->{Secret} // $r->{Match} // "", $r->{Match} // "", 0) } }
+      my $sec = $r->{Secret} // $r->{Match} // "";
+      $report->($f, $r->{StartLine} // 0, "secret[$r->{RuleID}]", $sec, $sec, 0) } }
   print "  allowlisted (inert, see scripts/submission-scan-allowlist.tsv): $ok\n";
   exit($hits ? 1 : 0);
 ' "$SRC" "$WORK/files" "$REPO/$ALLOWLIST" "$GITLEAKS_JSON"

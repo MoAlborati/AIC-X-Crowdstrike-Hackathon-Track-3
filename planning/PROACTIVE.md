@@ -32,7 +32,7 @@ Snapshot copied at ~13:40 PDT on 2026-10-12. Status markers are as of that time.
 18. 14:45 dispatch final-rescore agent (after #56, #46 merged): `npm run rescore`, `fill-submission-metrics --video-pending`, update #38 (prompt: `prompts/archetypes/final-rescore.md`)
 19. [DONE #50] Round-2 steward for #50 once t9-beat4-fix pushes its round-1 fix
 20. [DONE #46] Round-2 steward for #46 once t3-recall pushes its round-1 fix (after #56 merges)
-21. Next STATE refresh: also fix nits: ADJACENT.md:125 "(firm rule)", the old repo URL in LOOP.md and STATE.md (LOOP.md fixed in the harness-docs PR)
+21. Next STATE refresh: also fix nits: the ADJACENT.md:125 rule-wording nit (done in #114), the old repo URL in LOOP.md and STATE.md (LOOP.md fixed in the harness-docs PR)
 22. After #75 + #76 merge: add live/egress-boundary as stage capture #4 (tool-boundary Blocked) in stage mode + run-demo Beat 4b deep link (#97)
 23. After #50 + #70 + #76 merge: refresh demo/PRESENTER.md (drop hedges, final stage URLs, live Beat 4) (#102)
 24. ~14:00, after #50 + #76 + #46 merge: mock-judge pass #2 on main (score delta vs 6/7/7/5), last-chance fixes before 15:15 (critic archetype; #112 is the latest teardown)

@@ -387,14 +387,21 @@ discover_suites() {
       echo "$comp|$t"
     done
 }
-# Prints every *.test.js/*.test.mjs dir outside SUITE_ROOTS (dot dirs and node_modules pruned). Such files
-# have no runner in this gate; cmd_test turns each into an UNGATED FAIL row so they are never skipped silently.
+# Prints every *.test.js/*.test.mjs dir outside SUITE_ROOTS (dot dirs and node_modules pruned; gitignored
+# files dropped, e.g. a local scratchpad/, since they are not part of the repo). Such files have no runner in
+# this gate; cmd_test turns each into an UNGATED FAIL row so they are never skipped silently.
 discover_ungated() {
-  local r pat=""
+  local r pat="" list ign
   for r in "${SUITE_ROOTS[@]}"; do pat="$pat|$r"; done
-  ( cd "$REPO" && find . \( -name node_modules -o -name '.?*' \) -prune -o \
+  list="$( ( cd "$REPO" && find . \( -name node_modules -o -name '.?*' \) -prune -o \
       -type f \( -name '*.test.js' -o -name '*.test.mjs' \) -print 2>/dev/null ) \
-    | sed 's|^\./||' | grep -Ev "^(${pat#|})/" | while IFS= read -r t; do dirname "$t"; done | sort -u
+    | sed 's|^\./||' | grep -Ev "^(${pat#|})/" )"
+  [ -n "$list" ] || return 0
+  # Outside a git checkout check-ignore fails and nothing is dropped (fail loud, not silent).
+  ign="$(printf '%s\n' "$list" | git -C "$REPO" check-ignore --stdin 2>/dev/null)"
+  if [ -n "$ign" ]; then list="$(printf '%s\n' "$list" | grep -vxF "$ign")"; fi
+  [ -n "$list" ] || return 0
+  printf '%s\n' "$list" | while IFS= read -r t; do dirname "$t"; done | sort -u
 }
 # The command runs the exact discovered files with node --test (so no file can fall outside a
 # package.json glob), keeping any --test-* flags the package's own test script sets (e.g. concurrency).
