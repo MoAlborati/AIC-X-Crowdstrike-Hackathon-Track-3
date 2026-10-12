@@ -23,7 +23,7 @@ detecting it. Start with the [README](../README.md).
 |---|---|---|---|
 | T2 | `sentinel/proxy` | Reverse proxy for `/v1/chat/completions`, observe or block mode, full-body capture | Over-cap → 413 + ALERT in both modes; inspector failure → 503 fail-closed in block mode, forward + ALERT in observe mode |
 | T3 | `sentinel/detectors` | Pure detector library: bounds, honeytoken, taint, egress shapes, mandate/destination provenance, velocity | Any exception, timeout or full registry → BLOCK + ALERT |
-| T12 | `sentinel/egress` (landing, PR #45) | Forward proxy on an internal Docker network, reuses T3 matchers, exact-host allowlist | Oversize, decode depth, scan timeout → deny + ALERT, in observe mode too |
+| T12 | `sentinel/egress` (PR #45) | Forward proxy on an internal Docker network, reuses T3 matchers, exact-host allowlist | Oversize, decode depth, scan timeout → deny + ALERT, in observe mode too |
 | T4 | `sentinel/alerts` | Falcon/AIDR-shaped alert schema, MITRE ATLAS + OWASP LLM / Agentic mapping, secret redaction | Oversize strings are withheld whole, never passed through partly scanned |
 | T10 | `sentinel/pipeline` | Turns proxy verdicts into T4 alerts and writes them to the dashboard sink | Display caps only (never change a verdict); overflow rotates to a new part or raises `PipelineBoundError`, never drops |
 | T5 | `sentinel/dashboard` | Deterministic replay, incident graph, alert feed on `127.0.0.1:9100` | Loopback only, DNS-rebinding guarded |

@@ -30,7 +30,7 @@ Applications 2026. All pitch wording comes from [`planning/CITATIONS.md`](planni
    honeytokens (including encoded forms), destination provenance (did the user or system turns
    authorize this destination, or did it come only from untrusted tool output?), taint flow and secret shapes. It fails closed and **blocks before the request is forwarded**,
    so the agent never acts on it.
-2. **Egress guard at the tool boundary** (`sentinel/egress`, **landing via T12, PR #45**). It is a forward
+2. **Egress guard at the tool boundary** ([`sentinel/egress`](sentinel/egress), T12, PR #45). It is a forward
    proxy on an internal Docker network whose only exit is the guard. Every outbound tool call is decided
    **before it leaves**: honeytoken match, an exact-host allowlist, and fail-closed handling of oversize or
    over-encoded payloads. This is what stops attacks that the agent reads inside its own process, such as a
@@ -43,7 +43,7 @@ flowchart LR
   A[Agent client] -->|chat request| P[SentinelProxy<br/>sentinel/proxy + T3 detectors]
   P -->|allowed only| D[DVAA agent<br/>127.0.0.1 only]
   D -->|response, alert-only| P --> A
-  D -->|outbound tool call| E[Egress guard<br/>sentinel/egress, T12 landing]
+  D -->|outbound tool call| E[Egress guard<br/>sentinel/egress, T12]
   E -->|allowlisted only| X[(Internet / attacker canary)]
   P -->|verdict| AL[T4 alerts<br/>ATLAS + OWASP, redacted]
   E -->|verdict| AL
@@ -63,6 +63,7 @@ scripts/eval.sh doctor    # check the tools and the pinned DVAA checkout; every 
 scripts/eval.sh up        # start the DVAA fleet, bound to 127.0.0.1 only
 scripts/eval.sh all       # doctor, up, test, score, contrast, dashboard, then a summary table
 demo/run-demo.sh --auto   # the deterministic demo, every beat back to back
+scripts/egress-demo.sh both   # egress guard live: observe (exfil lands), then block (prevented)
 ```
 
 - [`EVAL.md`](EVAL.md) explains what each step shows and how to fix failures.
@@ -101,6 +102,7 @@ so it can't go stale. How to read them:
 | Path | What |
 |---|---|
 | `sentinel/proxy` | T2 reverse proxy: bounded, fail-loud, observe or block mode |
+| `sentinel/egress` | T12 egress guard: forward proxy at the tool boundary, exact-host allowlist |
 | `sentinel/detectors` | T3 detectors: honeytokens, provenance, full-payload fail-closed scan |
 | `sentinel/alerts` | T4 alert schema, ATLAS/OWASP mapping, redaction |
 | `sentinel/pipeline` | T10 wiring: proxy verdicts → T4 alerts → dashboard sink |
