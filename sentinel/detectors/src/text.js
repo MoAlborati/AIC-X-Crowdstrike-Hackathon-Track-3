@@ -22,10 +22,14 @@ const URL_STOP = new Set([32, 9, 10, 13, 34, 39, 60, 62, 96, 41, 93, 125, 0]); /
 export function extractUrls(text) {
   const out = [];
   if (typeof text !== 'string' || text.length === 0) return out;
+  // Schemes are case-insensitive (RFC 3986 §3.1): `HTTP://` / `Https://` must not skip the destination checks
+  // (t3-url-case, #105). ASCII-only fold keeps the same length, so indices stay valid in the original text,
+  // and the URL itself is sliced from the original. hostOf() already lower-cases the host.
+  const lower = text.replace(/[A-Z]/g, (c) => c.toLowerCase());
   for (const scheme of ['http://', 'https://']) {
     let from = 0;
     for (;;) {
-      const i = text.indexOf(scheme, from);
+      const i = lower.indexOf(scheme, from);
       if (i === -1) break;
       let j = i + scheme.length;
       const limit = Math.min(text.length, i + MAX_URL_CHARS);
@@ -292,7 +296,8 @@ export function foldConfusables(text) {
   while (i < n0 && text.charCodeAt(i) < 128) i++;
   if (i === n0) return text;
   // NFKC, then drop format chars (\p{Cf}: ZWSP/ZWJ/ZWNJ, soft hyphen, BOM, bidi controls). Linear regex, no backtracking.
-  const t = text.normalize('NFKC').replace(CF_RE, '');
+  // COMP-1: Unicode TAG chars (also \p{Cf}) are mapped to ASCII FIRST, so tag-smuggled text is scanned, not erased.
+  const t = stripInvisible(text.normalize('NFKC')).replace(CF_RE, '');
   const n = t.length;
   let buf = null; // UTF-16 code units of t, allocated on the first mixed-script word only
   i = 0;
@@ -380,7 +385,12 @@ export function decodedVariants(text, { depth = 3, minRun = 12 } = {}) {
     if (seen.has(s)) continue;
     seen.add(s);
     out.push({ text: s, encoding: enc });
-    const children = decodeOnce(s, enc, minRun);
+    const all = decodeOnce(s, enc, minRun);
+    // COMP-1 review: invisible / unicode_tag normalization is depth-FREE (queued at the same depth). It is
+    // idempotent and strictly shortens the text, so it terminates; charging it a level let one ZWSP push a
+    // 3x-%-encoded honeytoken past maxDecodeDepth (and made benign emoji ZWJ raise decode_depth_exhausted).
+    for (const c of all) if (c.norm) queue.push({ s: c.s, d, enc: c.enc });
+    const children = all.filter((c) => !c.norm);
     if (d >= depth) {
       const further = children.filter((c) => !seen.has(c.s));
       if (further.length) {
@@ -429,7 +439,55 @@ function decodeOnce(s, enc, minRun) {
   }
   if (hex.length) children.push({ s: hex.join('\n'), enc: tag('hex') });
   if (b64.length) children.push({ s: b64.join('\n'), enc: tag('base64') });
+  // Invisible-character / Unicode-tag smuggling (COMP-1): only when stripping actually changes the text.
+  const inv = stripInvisibleInfo(s);
+  if (inv.text !== s) children.push({ s: inv.text, enc: tag(inv.tagChars ? 'unicode_tag' : 'invisible'), norm: true });
   return children;
+}
+
+// ---- invisible characters / Unicode-tag "ASCII smuggling" (COMP-1) -------------------------------
+// Zero-width (U+200B..U+200F, U+2060..U+2064, U+FEFF, U+180E), soft hyphen (U+00AD), Arabic letter mark
+// (U+061C) and bidi embedding/override/isolate controls (U+202A..U+202E, U+2066..U+2069) are dropped.
+// Unicode TAG characters U+E0020..U+E007E (UTF-16: high surrogate 0xDB40 + low 0xDC20..0xDC7E) map 1:1 to
+// ASCII 0x20..0x7E; the remaining tags (U+E0000..U+E001F, U+E007F CANCEL TAG) are dropped. One linear
+// charCode pass, no regex; the common case (nothing invisible) returns the input string unchanged.
+const isInvisible = (c) =>
+  c === 0x00ad || c === 0x061c || c === 0x180e || c === 0xfeff ||
+  (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e) || (c >= 0x2060 && c <= 0x2064) || (c >= 0x2066 && c <= 0x2069);
+
+function stripInvisibleInfo(s) {
+  if (typeof s !== 'string' || s.length === 0) return { text: s, tagChars: false };
+  const n = s.length;
+  let parts = null; // lazily allocated on the first invisible char
+  let runStart = 0;
+  let tagChars = false;
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    let repl = null;
+    let width = 1;
+    if (c === 0xdb40 && i + 1 < n) {
+      const lo = s.charCodeAt(i + 1);
+      if (lo >= 0xdc00 && lo <= 0xdc7f) {
+        width = 2;
+        tagChars = true;
+        repl = lo >= 0xdc20 && lo <= 0xdc7e ? String.fromCharCode(lo - 0xdc00) : '';
+      }
+    } else if (isInvisible(c)) repl = '';
+    if (repl === null) continue;
+    if (parts === null) parts = [];
+    if (i > runStart) parts.push(s.slice(runStart, i));
+    if (repl) parts.push(repl);
+    i += width - 1;
+    runStart = i + 1;
+  }
+  if (parts === null) return { text: s, tagChars: false };
+  if (runStart < n) parts.push(s.slice(runStart));
+  return { text: parts.join(''), tagChars };
+}
+
+/** `s` with zero-width / bidi / soft-hyphen characters removed and Unicode TAG characters mapped to ASCII. Linear. */
+export function stripInvisible(s) {
+  return stripInvisibleInfo(s).text;
 }
 
 function isMostlyPrintable(s) {
@@ -673,14 +731,20 @@ const INJECTION_PHRASES = [
 /**
  * Instruction-like phrases in (untrusted) text. Normalized first (issue #126 #3): NFKC, \p{Cf} stripped,
  * mixed-script homoglyphs folded (foldConfusables), every whitespace run (double space, newline, NBSP, tab)
- * collapsed to one space. Linear: one fold, one /\s+/g pass (maximal run, nothing after it), lower-case
- * once, indexOf per phrase.
+ * collapsed to one space. Unicode TAG characters are mapped to ASCII before the \p{Cf} strip (COMP-1, in
+ * foldConfusables), and when zero-width separators stand in for spaces ("ignore\u200Bprevious") a second
+ * view with them turned into spaces is matched too. Linear: at most two folds, lower-case, indexOf per phrase.
  */
 export function findInjectionPhrases(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
-  const lower = foldConfusables(text).replace(/\s+/g, ' ').toLowerCase();
-  return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
+  const norm = (t) => foldConfusables(t).replace(/\s+/g, ' ').toLowerCase();
+  const views = [norm(text)];
+  const spaced = text.replace(ZW_SEPARATORS, ' ');
+  if (spaced !== text) views.push(norm(spaced));
+  return INJECTION_PHRASES.filter((p) => views.some((v) => v.indexOf(p) !== -1));
 }
+// Zero-width chars an attacker can use in place of a space (single-char class, global: linear replace).
+const ZW_SEPARATORS = /[\u200B\u200C\u200D\u2060\uFEFF\u180E]/g;
 
 // ---- lookalike destinations ----------------------------------------------------------------------
 

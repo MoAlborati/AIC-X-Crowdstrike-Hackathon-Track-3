@@ -1,4 +1,4 @@
-# SentinelProxy — demo script (376 spoken words, about 2:49 with transitions; hard limit 3:00)
+# SentinelProxy — demo script (Track 3 core 376 words ≈2:49; expanded run ≈6:00 for the 5–7 min slot)
 
 > Beats follow `planning/STRATEGY.md` §7. Every factual claim spoken on stage uses the "Safe slide wording" from
 > `planning/CITATIONS.md`. Don't paraphrase those claims and don't add new ones. **Never fill a metric by hand.**
@@ -22,6 +22,34 @@
 > LLM" in the first 15 seconds, say "recorded" on every replay beat, and never headline "100% precision" or "0% FP".
 >
 > Companion deck: `demo/DECK.md`. Rehearsal + fallback-video checklist + replay log: `demo/REHEARSAL.md`.
+
+## Expanded run (≈6:00 — the 5–7 min 18:00 slot)
+
+@c-awad on #55: **"the 18:00 slot is 5–7 minutes total, slides plus live demo."** So the tight 3-minute Track 3 core
+below (Beats 1–7, **unchanged**, with the live Beat 4b) is **wrapped**, not rewritten, by three expansion beats
+(full text in "Expansion beats (8–10)" lower down):
+
+| Segment | Beat(s) | Spoken | Speech | ~Wall-clock | Driver |
+|---|---|---|---|---|---|
+| **Track 3 core** (hook → block → egress → "we attacked ourselves") | 1–7 | 376 words | 2:30 | ≈2:55 | `demo/run-demo.sh` (live Beat 4 + 4b) |
+| **OpsBot / Path A** — it generalizes to our own agent | 8 | 76 words | 0:30 | ≈0:35 | `node track3a/run-demo.mjs` |
+| **Ciocca** — who pays, how it stands apart, path to launch | 9 | 188 words | 1:15 | ≈1:25 | Slide 12 only |
+| **SOC handoff** (only if time) | 10 | 51 words | 0:20 | ≈0:25 | `scripts/soc-handoff.sh` |
+| **Total (with SOC)** | | **691 words** | **4:35** | **≈5:45** (≈5:20 without Beat 10) | |
+
+Speech is at 150 wpm; wall-clock adds Enter presses, tab/slide switches, the ~2 s Beat 8 command, and natural
+slide-reading pauses on the dense Ciocca and results slides. It lands comfortably inside the 5–7 min slot, with
+headroom toward 6:00 from those pauses; trim or add nothing to the core to adjust — cut or restore Beat 10 and Beat 8.
+
+Rules for the expansion: every number comes from `track3a/RESULTS.md`, `demo/slides/VENTURE.md` or
+`sentinel/scoring/results.json`; **no market figure is invented** (`VENTURE.md` "Do not say"); the honesty fixes from
+#154 stand (DVAA's numbers are always paired, and we never say "nothing gets out"). The expansion beats are
+**presenter-driven** (one slide or one terminal command each), so `demo/run-demo.sh --check-script` only polices the
+core's spoken lines (Beats 3–7); it does not police Beats 8–10.
+**Close handling:** in the expanded run, **drop the final "Thank you." from Beat 7** (dropping a sentence is allowed;
+don't reword the rest) and deliver "Thank you." once at the very end, after Beat 9 (or Beat 10 if you run it).
+**Running long?** Cut Beat 10 first, then Beat 8; **never cut Beat 9** (the Ciocca criteria) and never cut Beat 7's
+"we attacked ourselves" line.
 
 ## Ground rules (STRATEGY §8)
 
@@ -193,8 +221,8 @@ tool already ran, so prevention there is alert-only, but block mode withholds th
 ### Beat 4b — Egress guard, LIVE, green (1:24–1:41) · terminal, then dashboard tab `egress-blocked`
 
 The climax is live (critic A pass 2, #138; Catherine, #131). `run-demo.sh` starts the real two-layer run,
-`scripts/encore-two-layer.sh block` (PR #139), **in the background when Beat 4 starts**. It takes about 20 s even when
-warm, because it recreates its own compose stack. By Beat 4b it has finished, and the runner shows its result:
+`scripts/encore-two-layer.sh block` (PR #139), **in the background when Beat 4 starts**. It takes about 14 s warm on the stage
+Mac (about 20 s on WSL), because it recreates its own compose stack. By Beat 4b it has finished, and the runner shows its result:
 user turn → SentinelProxy (block) → RepoBot 7022 → poisoned `AGENTS.md` → tool egress → egress inspector (block) → canary.
 **Warm it at T-5** (`scripts/encore-two-layer.sh block`, once) so images and layers are cached; cold start is about 22 s.
 
@@ -290,6 +318,48 @@ Our 0 of 164 is on a benign set we also tuned on: say so if asked, and never hea
 
 *Hard stop at 3:00. If running long, cut Beat 6 first, then the second line of Beat 3b. Never cut the "we attacked
 ourselves" line: it defuses the hardest Q&A question before a judge asks it.*
+
+---
+
+## Expansion beats (8–10) — the ≈6-minute venture run
+
+> These beats wrap the 3-minute Track 3 core (Beats 1–7, unchanged, live Beat 4b included) for the 5–7 minute 18:00
+> slot. They are **presenter-driven from the slides and one terminal command each**, not `run-demo.sh` beats, so
+> `run-demo.sh --check-script` does not police their wording — but every number still comes from a committed source
+> (`track3a/RESULTS.md`, `demo/slides/VENTURE.md`, `sentinel/scoring/results.json`) and no market figure is invented.
+>
+> **Close:** drop the final "Thank you." from Beat 7 (dropping a sentence is allowed; don't reword the rest) and
+> deliver "Thank you." once at the very end, after Beat 9 (or Beat 10 if you run it).
+
+### Beat 8 — OpsBot / Path A: it generalizes (≈0:35) · Slide 11 · `node track3a/run-demo.mjs`
+
+> "That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified SentinelProxy, a different agent."
+
+*Screen:* Slide 11 (the Path-A layering table) and, in the terminal, `node track3a/run-demo.mjs` (about 2 s; it prints
+the matrix). Numbers are the committed `track3a/RESULTS.md`: attacks stopped per stack — undefended 0/2, chat proxy
+1/2, chat proxy + egress guard 2/2, hardened-only (mandate) 1/2, hardened + both 2/2; benign false positives 0/2 on
+every row. The point to make: no single layer is enough (the chat proxy can't see an injection that arrives inside a
+tool result; the mandate can't stop a malicious user turn), but together they stop both attacks with zero benign false
+positives — the same architecture finding as the DVAA A/B. **Cut this beat first if running long** (after Beat 10).
+Fallback: open `track3a/RESULTS.md` instead of running the command.
+
+### Beat 9 — Ciocca: who pays, how it stands apart, path to launch (≈1:25) · Slide 12
+
+> "As a product, for the Ciocca award: who pays? Teams running agents they can't rebuild — a vendor agent, an open-source one, a legacy internal one — where you can't rewrite the prompt or the tool code, but you can control the network. The budget holder can't ship an agent until security signs off on what it can send out. How we stand apart: classifiers ask whether text looks like an attack, and an attacker can reword it. We ask whether the user authorized the destination, and rewording doesn't change where the data goes. It's the secure web gateway model — a destination allowlist on egress — applied one layer down, to an agent's tool calls. Our path to launch: today, a prototype against the sandbox and our own OpsBot; next, an open-source sidecar that design partners run in observe mode on real traffic; then a paid managed tier for hosted allowlists and alert routing; then SOC integration. Where data actually leaves, we prevent 57 of 71 exfil attempts with zero of 164 legitimate requests blocked; the sandbox's scanner prevents 64 of 71 but blocks 21 of 164."
+
+*Screen:* Slide 12 (the venture slide, from `demo/slides/VENTURE.md`), including the "how it stands apart" table with
+the **SWG / SASE egress row**. **No market size, price, or customer name is spoken** (`VENTURE.md` "Do not say"). Always
+pair "57 of 71" with the baseline's "64 of 71 at 21 of 164 blocked" in the same breath (done in the line above). The
+SWG/SASE line is an analogy for what the egress guard *is* (a destination allowlist), not a claim that it works because
+gateways work. This beat is the heart of the venture award — **never cut it.**
+
+### Beat 10 — SOC handoff (≈0:25, only if time) · Slide 12 footer · `scripts/soc-handoff.sh`
+
+> "And if there's time: our alerts don't stop at a dashboard. One offline command hands them to our Track 1 SOC brief, which turns them into a plain-English priority-one analyst brief — the source document, the tool, and the destination — ready for triage. No model key, no network. Thank you."
+
+*Screen:* the terminal, `scripts/soc-handoff.sh` (it prints the brief and writes `.eval/soc-handoff/brief.md`; offline,
+Node ≥ 22; merged in PR #86). **Only if time** — this is the first thing to drop when the clock is tight. If you skip
+Beat 10, move the closing **"Thank you."** to the end of Beat 9.
 
 ---
 

@@ -48,9 +48,11 @@ Our honest headline, from [`sentinel/scoring/RESULTS.md`](sentinel/scoring/RESUL
   not a zero-FP guarantee, and we don't headline it.
 
 **We attacked ourselves.** On 600 held-out public jailbreak and injection rows we never tuned on, T3 detected 28.5%
-and prevented **0%**, because none of them carries a destination to steal to ([`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md)).
+and prevented **0%** ([`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md)). On held-out indirect injections
+that do name destinations (LLMail-Inject + BIPIA), T3 prevented 3.2% against DVAA's 51.4% ([`captures/holdout-ipi/RESULTS.md`](captures/holdout-ipi/RESULTS.md)).
 Our own critics (issue #112) also found that the **request-side rule is bypassable**: spacing out an account number
-(`U S 1 3 3 0 ...`) or using homoglyphs slips past it. The spacing fix is in PR #122, not merged yet; the blocking verbs
+(`U S 1 3 3 0 ...`) or using homoglyphs slips past it. PR #122 (merged) now normalizes spacing, invisible characters and
+mixed-script homoglyphs before matching; the blocking verbs
 are English only. We make no request-side robustness claim. **Residual risk at egress:** exfil to a host the operator
 has allowlisted, including an HTTPS CONNECT to an allowlisted host, where TLS is opaque and only the host is checked.
 

@@ -616,13 +616,16 @@ if [ -x "$EVAL" ] && [ -f "$REPO/sentinel/dashboard/server.mjs" ]; then
   if start_dashboard; then STARTED_DASHBOARD=1
   else
     # Any start failure (port held by another process, or a server that would not bind): try the next free port.
-    want="$DASH_PORT"; free=""
-    for p in $(seq $((want + 1)) $((want + ${DEMO_DASHBOARD_PORT_SCAN:-20}))); do port_busy "$p" || { free="$p"; break; }; done
-    if [ -n "$free" ]; then
-      warn "dashboard did not start on :$want (port busy or server error); starting it on :$free instead"
-      DASH_PORT="$free"
-      if start_dashboard; then STARTED_DASHBOARD=1; DASH_MOVED_FROM="$want"; else DASH_PORT="$want"; fi
-    fi
+    # A port nobody answers on can still be bound (e.g. the local end of an outbound socket in the ephemeral range:
+    # EADDRINUSE), so keep trying the next candidate instead of giving up after the first.
+    want="$DASH_PORT"
+    for p in $(seq $((want + 1)) $((want + ${DEMO_DASHBOARD_PORT_SCAN:-20}))); do
+      port_busy "$p" && continue
+      warn "dashboard did not start on :$DASH_PORT (port busy or server error); trying :$p instead"
+      DASH_PORT="$p"
+      if start_dashboard; then STARTED_DASHBOARD=1; DASH_MOVED_FROM="$want"; break; fi
+    done
+    [ "$STARTED_DASHBOARD" = 1 ] || DASH_PORT="$want"
   fi
   if [ "$STARTED_DASHBOARD" = 1 ]; then
     ok "dashboard up: http://127.0.0.1:$DASH_PORT/"

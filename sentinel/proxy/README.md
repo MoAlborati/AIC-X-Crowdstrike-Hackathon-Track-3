@@ -61,6 +61,7 @@ Nothing is silently truncated. Every overflow is refused and ALERTed (stderr + c
 | `maxRequestBytes` | `413 request_too_large`, never forwarded, ALERT `{payload_size, cap, action}`. Declared `Content-Length` over the cap with `Expect: 100-continue` is refused before upload. An over-cap upload is drained (not buffered) up to `DRAIN_LIMIT_BYTES` (16 MiB) so the client reads the 413, then the socket is closed. |
 | `maxResponseBytes` | `502 response_too_large`, upstream aborted, the reply is never returned uninspected. |
 | decoded size (gzip/deflate/br) | Bounded by the same caps (zip-bomb safe). Over the cap: 413/502. More than `MAX_ENCODING_LAYERS` (4), unknown or corrupt codings: block mode refuses (`uninspectable_encoding`), observe forwards + ALERT. |
+| binary request body (#157) | A request body that is not valid UTF-8 after content-decoding (octet-stream, binary multipart, unknown binary types): block mode refuses 415 `uninspectable_content` before forwarding; observe forwards + ALERT. Text bodies of any content-type are inspected as before. Responses are unchanged (alert-only boundary). |
 | `inspectorTimeoutMs` | block: `503 inspector_timeout` (fail closed); observe: forwarded + ALERT. |
 | `upstreamTimeoutMs` | `504 upstream_timeout`; a closed port gives `502 upstream_unreachable`. |
 | `clientTimeoutMs` | Slow-drip clients get `408 client_timeout` + ALERT, never forwarded. |
