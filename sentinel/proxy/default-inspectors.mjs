@@ -1,11 +1,19 @@
-// The inspector set the shipped proxy CLI registers: T3's detector composed with the T2 substring
-// inspector.
+// The inspector set the shipped proxy CLI registers: T3's detector composed with two honeytoken
+// backstops.
 //
-//   [ substringInspector(flagSubstrings), t3 ]
+//   [ substringInspector(canaries), nonChatCanaryInspector(canaries), t3 ]
 //
-// Why both: T3's sentinelInspector() only looks at chat paths (/v1/chat/completions, /chat/completions)
-// and at bodies. The substring inspector also scans every path, the URL in all decoded spellings, and the
-// header block, so composing them keeps that coverage.
+// Why all three: T3's sentinelInspector() only parses the chat paths (T3_CHAT_PATHS) and returns null
+// for every other route, including DVAA's `POST /chat {message}` and A2A `/a2a/message` (#126).
+//   - substringInspector is seeded with EVERY canary (DVAA honeytokens + flagSubstrings), not just
+//     flagSubstrings (which ships as []). It scans every path, both phases: the body, the header block
+//     and (request phase) the URL in all decoded spellings. A raw honeytoken in an upstream reply on
+//     any route is therefore a flagged_response (block mode: withheld, 403).
+//   - nonChatCanaryInspector refuses a POST to a route T3 cannot parse when its body carries a canary
+//     percent-, hex- or base64-encoded (raw is the substring backstop's job). T3's chat paths are
+//     skipped so benign chat-completions traffic is judged by T3 alone.
+// Limit: this is exact-value matching. Reordered, split or otherwise transformed honeytokens on non-chat
+// routes are not caught here (#126 finding 4); the egress guard covers the tool boundary.
 //
 // T3 is configured from the proxy config:
 //   - honeytokens: T3's DVAA_HONEYTOKENS plus every inspect.flagSubstrings entry.
@@ -21,7 +29,10 @@
 // The same honeytoken list is returned as `canaries`. createProxy uses it for log redaction.
 
 import { sentinelInspector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../detectors/index.js';
-import { substringInspector, flagSubstringId } from './inspectors.mjs';
+import { substringInspector, nonChatCanaryInspector, flagSubstringId } from './inspectors.mjs';
+
+/** The routes T3's sentinelInspector parses (sentinel/detectors/src/inspector.js CHAT_PATHS). */
+export const T3_CHAT_PATHS = Object.freeze(['/v1/chat/completions', '/chat/completions']);
 
 export const T3_TIME_BUDGET_FRACTION = 0.8;
 
@@ -70,5 +81,10 @@ export function buildDefaultInspectors(config, opts = {}) {
     return inner(ctx);
   }
   t3.detector = inner.detector;
-  return { inspectors: [substringInspector(config.inspect.flagSubstrings), t3], canaries, t3 };
+  const inspectors = [
+    substringInspector(canaries),
+    nonChatCanaryInspector(canaries, { skipPaths: T3_CHAT_PATHS }),
+    t3,
+  ];
+  return { inspectors, canaries, t3 };
 }

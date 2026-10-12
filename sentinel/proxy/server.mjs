@@ -39,9 +39,11 @@ import { ConfigError, isLoopbackHost } from '../config/load.mjs';
 import { DISPOSITIONS } from '../alerts/index.js';
 import { prepareCanaries, redactDeep } from '../alerts/redact.js';
 
-// Every request and response is inspected, whatever its path. Keying inspection on an exact path
-// (e.g. only /v1/chat/completions) would let a path variant an upstream happens to accept, or a
-// non-OpenAI agent route (MCP/A2A), bypass the guard. Cost is one full-body scan per exchange.
+// The proxy runs every registered inspector on every request and response, whatever the path. What an
+// inspector then CHECKS depends on the inspector: T3 parses only the chat-completions paths and returns
+// null elsewhere. Other routes (DVAA `POST /chat`, A2A `/a2a/message`, MCP) get the honeytoken
+// backstops from default-inspectors.mjs (exact canary values in body/headers/URL, both phases, plus
+// encoded canaries in non-chat POST bodies), not T3's injection/mandate/egress analysis (#126).
 
 // RFC 7230 §6.1 hop-by-hop headers, plus ones we recompute ourselves.
 const HOP_BY_HOP = new Set([
