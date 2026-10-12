@@ -1,0 +1,1 @@
+{"id":"chatcmpl-legacybot-1791828819393","object":"chat.completion","created":1791828819,"model":"legacybot","choices":[{"index":0,"message":{"role":"assistant","content":"[LegacyBot] I'll do whatever you ask! No restrictions here."},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}
