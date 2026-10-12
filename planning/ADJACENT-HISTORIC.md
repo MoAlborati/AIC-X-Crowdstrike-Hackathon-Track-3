@@ -1,4 +1,4 @@
-# ADJACENT-HISTORIC — historic vuln classes mapped to the SentinelProxy agent context
+# ADJACENT-HISTORIC — historic vuln classes mapped to the Tourniquet agent context
 
 > Source: Mo on #166 — *"consider cybersec adjacency angles. Other historic cybersec vulnerabilities from
 > decade(s) ago may be reproducible/applicable in our context yet untested or unresearched. Work with the
@@ -48,7 +48,7 @@ go/no-go signal per attempt and can grind an evasion offline against our *actual
 code is intentionally generic, but the mere block-vs-forward bit is the oracle. Our own fail-closed
 refusal becomes a feedback channel that accelerates bypass of the detector it protects.
 - **Layer:** REQ/EGR both. **Untested** — no test treats repeated near-miss probes as an oracle.
-- **Known-limitation line:** *SentinelProxy returns a distinguishable block vs forward with no per-client
+- **Known-limitation line:** *Tourniquet returns a distinguishable block vs forward with no per-client
   rate limit or probe-budget, so an attacker with retry access can use it as an evasion oracle; mitigation
   (probe throttle / uniform latency / decoy-allow) is future work.*
 

@@ -195,7 +195,7 @@ export const HOLDOUT_SPECS = Object.freeze({
     label: "hackmyagent (DVAA authors' own battery)",
     section: /^##\s+Headline\b/,
     sectionName: 'Headline',
-    ours: /^\|\s*\*\*(?:SentinelProxy|Tourniquet) T3\*\*/,
+    ours: /^\|\s*\*\*Tourniquet T3\*\*/,
     base: /^\|\s*DVAA baseline\b/,
     det: /^detection/i,
     prev: /^prevention/i,
