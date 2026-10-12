@@ -23,7 +23,7 @@ deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interac
 - [ ] Every spoken fact matches `planning/CITATIONS.md` "Safe slide wording" (don't paraphrase, don't add).
 - [ ] `<<METRIC:>>` slots filled **verbatim** from `sentinel/scoring/results.json`, never hand-typed. Show detection
       and prevention recall for T3 **and** DVAA's baseline, with FP. Say "8KB evasion: 2/2 fixtures", never a blanket
-      "beats baseline". Quote one latency phrase: "under half a millisecond".
+      "beats baseline". Quote one latency phrase: "median under a tenth of a millisecond, p95 around half a millisecond".
 - [ ] `demo/run-demo.sh --check-script` passes: every spoken line in SCRIPT.md is verbatim from the runner.
 - [ ] Mechanisms on slide 7 (Confirmation of Payee / limited-mandate / dead-man fail-closed) are each
       actually implemented in merged T3 — drop any that isn't rather than claim it.
@@ -36,7 +36,7 @@ deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interac
 **Fallback video (record BEFORE the session; switch to it if any command fails — do not debug on stage)**
 - [ ] Recorded a clean `demo/run-demo.sh --auto` screen capture end-to-end (terminal + dashboard).
 - [ ] Audio narration present, or the deck narration is memorized over the silent capture.
-- [ ] Video is ≤ 3:00, named `demo/fallback-demo.mp4` (gitignored; stored on the demo laptop + a USB key).
+- [ ] Video is ≤ 3:00, saved as `~/Desktop/fallback-demo.mov` (outside the repo; copy it to a USB key). Recording steps: [`demo/slides/VIDEO-CHECKLIST.md`](slides/VIDEO-CHECKLIST.md).
 - [ ] Verified it plays offline on the demo laptop with the projector resolution.
 - [ ] One person owns "cut to video" and can trigger it within 3 seconds of a failure.
 

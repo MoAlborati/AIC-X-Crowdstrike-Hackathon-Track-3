@@ -71,6 +71,10 @@ async function manifestCases(dir) {
   } catch (err) {
     throw new CaptureFormatError(path.join(dir, 'manifest.json'), `invalid JSON: ${err.message}`);
   }
+  // A separately scored labeled set (T6c `captures/holdout-hf/`, manifest `separateSet: true`) is NOT a
+  // capture tree: its numbers are reported on their own and must never enter the dashboard's corpus counts.
+  // It is indexed as nothing (an explicit, documented exclusion, not a silent skip of unknown files).
+  if (m?.separateSet === true) return [];
   if (!Array.isArray(m?.cases) || !m.cases.every(c => typeof c?.path === 'string')) return null;
   // Containment is checked on real paths, not lexically: a symlink inside the tree that points
   // outside it counts as an escape, and a relative SENTINEL_CAPTURES_DIR still resolves correctly.

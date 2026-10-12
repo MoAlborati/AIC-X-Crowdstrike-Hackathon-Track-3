@@ -72,7 +72,7 @@ Each detection = an **AIDR/Falcon-shaped alert JSON**: `DetectName`, `Severity`/
 | 0:35–1:15 | **EXPLOIT (live, RAGBot 7005 / RepoBot 7022).** Poisoned RAG doc / repo `AGENTS.md` hijacks the agent → it exfiltrates admin creds + SSNs via `submit_to_index`/`http:post`. Secret leaves on screen. Show it **evading DVAA's own 8KB scanner.** Pause — let it land. |
 | 1:15–2:05 | **DETECT → ALERT → BLOCK.** Same attack through our proxy. Honeytoken tripwire fires; incident graph lights up; taint path glows red; tool call BLOCKED. Show latency + **precision/recall vs the `dvaa{}` ground truth.** |
 | 2:05–2:35 | **How it works.** One slide: tool-boundary taint + egress inspection = "prompts, responses, agent actions," the AIDR model. |
-| 2:35–3:00 | **Outcome + close.** "X/Y attacks caught at <N ms, including ones that beat the baseline scanner. Same attack hits the AIM-defended twin and SecureBot — secure by design. This is a working slice of Falcon AIDR." |
+| 2:35–3:00 | **Outcome + close.** "X/Y attacks caught at <N ms, including the 2/2 cases that evade the baseline scanner's 8KB window (the baseline has the higher prevention recall, at a 12.8% benign FP rate; see `sentinel/scoring/RESULTS.md`). Same attack hits the AIM-defended twin and SecureBot — secure by design. This is a working slice of Falcon AIDR." |
 
 ## 8. Live-demo failure modes to avoid
 
@@ -87,7 +87,7 @@ Each detection = an **AIDR/Falcon-shaped alert JSON**: `DetectName`, `Severity`/
 1. Demo maps 1:1 onto Falcon AIDR / AgentWorks (speak their words) — "workflow integration" + flatters judges.
 2. One crisp exploit → detect → block arc, end-to-end, live.
 3. The visual "aha": red (pwned) vs green (saved), side by side; taint path glowing.
-4. Quantified outcome: **real precision/recall vs ground truth** + latency (mirror "99% @ sub-30ms"); "we beat the baseline scanner."
+4. Quantified outcome: **real precision/recall vs ground truth** + latency (mirror "99% @ sub-30ms"); "we catch the 2/2 cases that evade the baseline's 8KB window" — never an unqualified "we beat the baseline": DVAA's baseline has the higher prevention recall, at a 12.8% benign FP rate (see `sentinel/scoring/RESULTS.md`).
 5. SOC credibility: AIDR-shaped alerts + MITRE ATLAS + OWASP mapping + incident graph.
 6. Relatable hook (refund bot / Air Canada / Chevy) = stakes land instantly.
 
