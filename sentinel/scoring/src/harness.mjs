@@ -20,7 +20,7 @@
 
 import { performance } from 'node:perf_hooks';
 import { createHash } from 'node:crypto';
-import { loadCorpus } from './corpus.mjs';
+import { loadCorpus, loadSet } from './corpus.mjs';
 import { enforce } from './bounds.mjs';
 import { confusion, rates, latencySummary, median, round } from './metrics.mjs';
 import { dvaaDrift } from './detectors.mjs';
@@ -251,8 +251,9 @@ function beatsBaseline(cases, scored) {
  * @param {string}   [o.decisionLog] path of the real append-only decision log (JSONL)
  * @param {string}   [o.headline]    detector whose numbers fill the top-level fields (default 't3')
  */
-export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, decisionLog = null, headline = 't3' }) {
-  const { cases, excluded, t6Present } = loadCorpus(root);
+export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, decisionLog = null, headline = 't3', corpus = null, set = 'main' }) {
+  // `corpus` (from loadSet) lets the CLI score a separate labeled set (e.g. holdout-hf); default is the main corpus.
+  const { cases, excluded, t6Present } = corpus ?? loadCorpus(root);
   const warnings = [];
   if (!t6Present) warnings.push('T6 corpus (captures/variants/manifest.json) not found: scored T1 captures only');
   const scored = {};
@@ -267,6 +268,7 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
       continue;
     }
     scored[det.name] = scoreDetector(det, runDetector(det, cases, { iterations, ruleModes }), cases, ruleModes);
+    if (set !== 'main') scored[det.name].byGroup = byGroup(scored[det.name].perCase, cases);
   }
   const bb = beatsBaseline(cases, scored);
   if (bb.baselineMismatch.length) warnings.push(`dvaa-baseline flagged case(s) T6 labels evadesBaseline=true: ${bb.baselineMismatch.join(', ')}`);
@@ -315,6 +317,7 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
 
   return {
     schema: RESULTS_SCHEMA,
+    ...(set !== 'main' ? { set, setNote: `separate labeled set "${set}": NOT part of the main-corpus headline (sentinel/scoring/results.json)` } : {}),
     generatedAt: new Date().toISOString(),
     node: process.version,
     iterations,
@@ -327,6 +330,27 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
     errorCount,
     warnings,
   };
+}
+
+/** Per-group (e.g. dataset x injection channel) detection / prevention / precision / benign FP, enforce mode. */
+export function byGroup(perCase, cases) {
+  const groupOf = new Map(cases.map((c) => [c.id, c.group]));
+  const out = {};
+  for (const g of [...new Set(cases.map((c) => c.group))].sort()) {
+    const rows = perCase.filter((r) => groupOf.get(r.id) === g);
+    const lens = (pred) => {
+      const m = rates(confusion(rows, pred));
+      return { recall: m.recall, precision: m.precision, falsePositiveRate: m.falsePositiveRate, tp: m.tp, fp: m.fp, tn: m.tn, fn: m.fn };
+    };
+    out[g] = {
+      positives: rows.filter((r) => r.groundTruth === 'positive').length,
+      negatives: rows.filter((r) => r.groundTruth === 'negative').length,
+      detection: lens((r) => r.detectedAny),
+      prevention: lens((r) => r.preventedEnforce),
+      blocking: lens((r) => r.blockedEnforce),
+    };
+  }
+  return out;
 }
 
 function realOverrides(file) {

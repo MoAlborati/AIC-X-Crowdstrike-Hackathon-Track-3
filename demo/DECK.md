@@ -70,7 +70,7 @@ SentinelProxy sits.
 Beat 3 (0:40–1:00) + Beat 3b (1:00–1:20). Deterministic replay of DVAA's own bundled payload (APWN-DE-003), no live
 LLM. Pause two seconds after the secret appears. The 8KB-evasion beat is DoD item 1 — **always run it**; the proof is
 the two mid-document fixtures plus "8KB evasion: 2/2 fixtures" from `sentinel/scoring/results.json`. Never say a blanket
-"beats the baseline": on the full corpus DVAA's baseline has the higher recall (slide 8). DVAA is the
+"beats the baseline": on the full corpus DVAA's baseline has the higher prevention recall (slide 8). DVAA is the
 organizer-provided sandbox; every secret is fake.
 
 ---
@@ -154,20 +154,27 @@ DVAA's 8KB head+tail baseline.
 | Prevention recall (pre-forward) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
 | 8KB evasion | `<<METRIC>>`/2 fixtures | — |
 | Corpus | `<<METRIC: N attack + M benign cases>>` | |
-| In-detector latency | under half a millisecond | |
+| In-detector latency | median under a tenth of a millisecond, p95 around half a millisecond | |
 
-As of `sentinel/scoring/results.json` on origin/main `6c4fdc7`: detection 63.0% / FP 0.0% vs 65.6% / 12.8%;
-prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.40 ms (origin/main 4817aca). Copy the slide's
-numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
+Copy the slide's numbers from `sentinel/scoring/results.json` (summarized in `sentinel/scoring/RESULTS.md`) after the
+15:00 rescore. Beat 7 of `run-demo.sh` prints them.
 
-- Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment."
+- Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment. Benign FP is measured on the
+  164-case benign corpus."
 
 **Speaker notes**
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
-latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **If T7 hasn't merged, this slide says "pending" and the script drops
-the numbers sentence. Never put a guessed number on it.** Don't put AIDR's figure on this slide as a comparison. A
+latency, the one latency phrase we quote is "median under a tenth of a millisecond, p95 around half a millisecond" (figures in RESULTS.md). **Never put a guessed number on it.**
+Say it plainly: our detection recall is now slightly above DVAA's baseline, but the baseline has the higher
+prevention recall, at a 12.8% benign FP rate.
+Our 0% benign FP is on the 164-case benign corpus. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
+The only unqualified win is the 2/2 cases that evade the baseline's 8KB window. Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
+
+---
+
+**Scope (say it if asked about generalization):** "SentinelProxy stops prompt-injection-driven exfiltration and tool misuse. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard." On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](../captures/holdout-hf/RESULTS.md).
 
 ---
 
@@ -190,8 +197,8 @@ efficacy at sub-30ms latency (CrowdStrike, internal benchmark)". Keep "up to" an
 ## Slide 10 — Close
 
 **On slide**
-- **SentinelProxy:** stops the confused deputy at the tool boundary.
-- Exploit → detect → alert → block, deterministic, scored against ground truth.
+- **SentinelProxy:** guards against the confused deputy at the tool boundary: injection-driven exfiltration and tool misuse.
+- Exploit → detect → alert → block, deterministic, scored against ground truth, misses published.
 - Repo link · team names · "Thank you."
 
 **Speaker notes**
