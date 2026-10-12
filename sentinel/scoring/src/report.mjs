@@ -1,5 +1,7 @@
 // Markdown/terminal table for a results object. Display only: every number comes from results.json.
 
+import { computeLayered } from './layered.mjs';
+
 const pct = (x) => (x === null || x === undefined ? 'n/a' : `${(Math.round(x * 1000) / 10).toFixed(1)}%`);
 const ms = (x) => (x === null || x === undefined ? 'n/a' : `${x.toFixed(3)} ms`);
 
@@ -38,7 +40,26 @@ export function renderMarkdown(r) {
       row('dvaa-baseline', 'detection (any finding)', base.modes.enforce.anyFinding, '—');
       row('dvaa-baseline', 'prevention (request-side hit)', base.modes.enforce.prevention, '—');
     }
+    const Y = computeLayered(r);
+    if (Y.status === 'ok') {
+      const q = `${pct(Y.detection.falsePositiveRate)} auto-blocked; ${Y.benignQueuedForReview}/${Y.detection.negatives} (${pct(Y.benignQueuedRate)}) queued for review`;
+      const lrow = (lens, m) => L.push(`| layered (${Y.primary} blocks, DVAA queues) | ${lens} | ${pct(m.recall)} | ${pct(m.precision)} (auto-blocks) | ${q} | ${m.tp} | ${m.fp} | ${m.tn} | ${m.fn} | — |`);
+      lrow('detection (T3 or DVAA finding)', Y.detection);
+      lrow('prevention (T3 prevents)', Y.prevention);
+    }
     L.push('');
+    if (Y.status === 'ok') {
+      L.push(`**Layered lens (T13, derived per case from this file's perCase rows; no new attack content).** ${Y.primary} stays the only blocker; ` +
+        `a DVAA \`detectAttacks()\` hit that ${Y.primary} did not block goes to a human review queue instead of being rejected. ` +
+        `Rule: ${Y.rule}. ` +
+        `Detection ${pct(Y.detection.recall)} (${Y.detection.tp}/${Y.detection.positives}; ${Y.attacksDetectedOnlyBySecondary} of those only DVAA detected) · ` +
+        `prevention ${pct(Y.prevention.recall)} (${Y.prevention.tp}/${Y.prevention.positives}, unchanged: DVAA never blocks here) · ` +
+        `benign auto-blocked ${Y.benignAutoBlocked}/${Y.detection.negatives} · ` +
+        `**benign queued for review ${Y.benignQueuedForReview}/${Y.detection.negatives} (${pct(Y.benignQueuedRate)})**: these legitimate requests wait for a human, they are not passed silently · ` +
+        `attacks queued for review ${Y.attacksQueuedForReview}/${Y.detection.positives}. The headline numbers above are ${Y.primary} alone.`, '');
+    } else {
+      L.push(`**Layered lens (T13): WITHHELD** — ${Y.reason}.`, '');
+    }
   }
   L.push('| detector | kind | mode | precision | recall | benign FP rate | TP | FP | TN | FN | median latency | p95 latency |');
   L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
