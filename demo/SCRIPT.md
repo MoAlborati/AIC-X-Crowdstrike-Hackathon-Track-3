@@ -251,7 +251,7 @@ plus the evasion result. Every number is read from the committed `sentinel/scori
   detection (any finding)  recall 63.0%  FP 0.0%        recall 65.6%  FP 12.8%
   prevention (pre-forward) recall 41.8%  FP 0.0%        recall 63.0%  FP 12.8%
   8KB evasion: 2/2 fixtures (T3)
-  in-detector latency: p95 0.38 ms over 353 cases (under half a millisecond)
+  in-detector latency: p95 0.4 ms over 353 cases (under half a millisecond)
 ```
 
 (Values above are as of `results.json` on origin/main `6c4fdc7`: 189 attack + 164 benign cases. The spoken line is
@@ -262,7 +262,7 @@ Beat 7 FAILS if the file no longer supports it. Then update the line in `run-dem
 
 > "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 
-Quote **one** latency phrase: "under half a millisecond" (the p95 in `results.json` is 0.38 ms; `run-demo.sh`
+Quote **one** latency phrase: "under half a millisecond" (the p95 in `results.json` is 0.40 ms as of origin/main 4817aca; `run-demo.sh`
 fails Beat 7 if it ever is not).
 
 *Hard stop at 3:00. The 8KB-evasion beat (3b) is DoD item 1 — **never cut it**. If running long, cut the
@@ -300,7 +300,7 @@ pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is
 | `<<T2/T5: replay … ALLOWED / BLOCKED>>` | T2/T3/T5 | **FILLED** | live benign 200 vs attack 403 (Beat 4), T4 alert `proxy-block.t4-alerts.json` |
 | (egress guard, Beat 4b) | T12 | **FILLED (PR #45)** | `sentinel/egress/evidence-block.jsonl` + ground truth `demo/captures/egress-demo-block.txt` (`scripts/egress-demo.sh block`) |
 | `<<METRIC: detection / prevention recall, FP, N / M>>` | T7 | **FILLED** | printed by Beat 7 from `sentinel/scoring/results.json`. **Do not invent.** |
-| latency | T7 | **FILLED** | one phrase only: "under half a millisecond" (p95 0.38 ms in `results.json`) |
+| latency | T7 | **FILLED** | one phrase only: "under half a millisecond" (p95 0.40 ms in `results.json`) |
 
 > **Note on metrics:** the stage reads `sentinel/scoring/results.json`. Figures from the older 29-case
 > corpus are stale and must not be used anywhere. **Never hand-type metrics into the slides.**

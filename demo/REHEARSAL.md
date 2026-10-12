@@ -110,7 +110,23 @@ no errors, no nondeterministic variance, on the data-rich environment. Record ea
   and RAGBot 7005 and RepoBot 7022 are both PREVENTED. The `api.oa2a.org` deny is DVAA's startup telemetry.
 - Beat order: 3, 3b, 4, 4b, 5a, 7. Beat 7 prints two headline rows from `results.json` (T3 vs DVAA baseline):
   detection 63.0% / FP 0.0% vs 65.6% / 12.8%; prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; 8KB evasion 2/2;
-  in-detector p95 0.38 ms.
+  in-detector p95 0.38 ms (0.40 ms after #56).
+
+**Pass 4 (review round 1, 2026-10-12T20:09Z, origin/main `4817aca` incl. #56 + #57):** same command and
+environment. It adds preflight row 0 (`--check-script`: 15 spoken lines verbatim in SCRIPT.md) and the withhold
+guard (the recorded observe exchange replayed through the shipped inspectors gives `disposition: block`, so block
+mode withholds the reply; this was RED on main before #56). The runner now exits 1 on any FAIL row. p95 is
+0.40 ms after #56.
+
+| Replay | Date/time (UTC) | Exit | Duration | Summary rows PASS | FAIL / WARN / NYM | Result |
+|---|---|---|---|---|---|---|
+| 1 | 2026-10-12T20:09:44Z | 0 | 2s | 19/19 | 0 / 0 / 0 | CLEAN |
+| 2 | 2026-10-12T20:09:46Z | 0 | 3s | 19/19 | 0 / 0 / 0 | CLEAN |
+| 3 | 2026-10-12T20:09:49Z | 0 | 3s | 19/19 | 0 / 0 / 0 | CLEAN |
+
+Pass 4: 3/3 clean, with identical beat output (md5, port-normalized) and no orphan proxy.
+
+Pass 3 (before review round 1):
 
 | Replay | Date/time (UTC) | Exit | Duration | Summary rows PASS | FAIL / WARN / NYM | Live 200/403 | Result |
 |---|---|---|---|---|---|---|---|

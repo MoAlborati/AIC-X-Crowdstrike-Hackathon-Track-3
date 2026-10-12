@@ -157,7 +157,7 @@ DVAA's 8KB head+tail baseline.
 | In-detector latency | under half a millisecond | |
 
 As of `sentinel/scoring/results.json` on origin/main `6c4fdc7`: detection 63.0% / FP 0.0% vs 65.6% / 12.8%;
-prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.38 ms. Copy the slide's
+prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.40 ms (origin/main 4817aca). Copy the slide's
 numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
 
 - Caption: "Labels from DVAA's `dvaa{}` ground-truth block, not our own judgment."
@@ -165,7 +165,7 @@ numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
 **Speaker notes**
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
-latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.38 ms). **If T7 hasn't merged, this slide says "pending" and the script drops
+latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.40 ms). **If T7 hasn't merged, this slide says "pending" and the script drops
 the numbers sentence. Never put a guessed number on it.** Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
 
