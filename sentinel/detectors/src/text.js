@@ -271,7 +271,55 @@ function decodeOnce(s, enc, minRun) {
   }
   if (hex.length) children.push({ s: hex.join('\n'), enc: tag('hex') });
   if (b64.length) children.push({ s: b64.join('\n'), enc: tag('base64') });
+  // Invisible-character / Unicode-tag smuggling (COMP-1): only when stripping actually changes the text.
+  const inv = stripInvisibleInfo(s);
+  if (inv.text !== s) children.push({ s: inv.text, enc: tag(inv.tagChars ? 'unicode_tag' : 'invisible') });
   return children;
+}
+
+// ---- invisible characters / Unicode-tag "ASCII smuggling" (COMP-1) -------------------------------
+// Zero-width (U+200B..U+200F, U+2060..U+2064, U+FEFF, U+180E), soft hyphen (U+00AD), Arabic letter mark
+// (U+061C) and bidi embedding/override/isolate controls (U+202A..U+202E, U+2066..U+2069) are dropped.
+// Unicode TAG characters U+E0020..U+E007E (UTF-16: high surrogate 0xDB40 + low 0xDC20..0xDC7E) map 1:1 to
+// ASCII 0x20..0x7E; the remaining tags (U+E0000..U+E001F, U+E007F CANCEL TAG) are dropped. One linear
+// charCode pass, no regex; the common case (nothing invisible) returns the input string unchanged.
+const isInvisible = (c) =>
+  c === 0x00ad || c === 0x061c || c === 0x180e || c === 0xfeff ||
+  (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e) || (c >= 0x2060 && c <= 0x2064) || (c >= 0x2066 && c <= 0x2069);
+
+function stripInvisibleInfo(s) {
+  if (typeof s !== 'string' || s.length === 0) return { text: s, tagChars: false };
+  const n = s.length;
+  let parts = null; // lazily allocated on the first invisible char
+  let runStart = 0;
+  let tagChars = false;
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    let repl = null;
+    let width = 1;
+    if (c === 0xdb40 && i + 1 < n) {
+      const lo = s.charCodeAt(i + 1);
+      if (lo >= 0xdc00 && lo <= 0xdc7f) {
+        width = 2;
+        tagChars = true;
+        repl = lo >= 0xdc20 && lo <= 0xdc7e ? String.fromCharCode(lo - 0xdc00) : '';
+      }
+    } else if (isInvisible(c)) repl = '';
+    if (repl === null) continue;
+    if (parts === null) parts = [];
+    if (i > runStart) parts.push(s.slice(runStart, i));
+    if (repl) parts.push(repl);
+    i += width - 1;
+    runStart = i + 1;
+  }
+  if (parts === null) return { text: s, tagChars: false };
+  if (runStart < n) parts.push(s.slice(runStart));
+  return { text: parts.join(''), tagChars };
+}
+
+/** `s` with zero-width / bidi / soft-hyphen characters removed and Unicode TAG characters mapped to ASCII. Linear. */
+export function stripInvisible(s) {
+  return stripInvisibleInfo(s).text;
 }
 
 function isMostlyPrintable(s) {
@@ -512,12 +560,25 @@ const INJECTION_PHRASES = [
   'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
 ];
 
-/** Instruction-like phrases in (untrusted) text. Linear: lower-case once, indexOf per phrase. */
+/**
+ * Instruction-like phrases in (untrusted) text. Linear: lower-case once, indexOf per phrase. When the text
+ * carries invisible / Unicode-tag characters (COMP-1), the phrases are also matched on the stripped text
+ * (zero-width removed, tags -> ASCII) and on a copy where zero-width separators stand in for spaces
+ * ("ignore​previous"): at most 3 passes, still linear.
+ */
 export function findInjectionPhrases(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
-  const lower = text.toLowerCase();
-  return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
+  const views = [text.toLowerCase()];
+  const stripped = stripInvisible(text);
+  if (stripped !== text) {
+    views.push(stripped.toLowerCase());
+    const spaced = stripInvisible(text.replace(ZW_SEPARATORS, ' '));
+    if (spaced !== stripped) views.push(spaced.toLowerCase());
+  }
+  return INJECTION_PHRASES.filter((p) => views.some((v) => v.indexOf(p) !== -1));
 }
+// Zero-width chars an attacker can use in place of a space (single-char class, global: linear replace).
+const ZW_SEPARATORS = /[​⁠﻿᠎]/g;
 
 // ---- lookalike destinations ----------------------------------------------------------------------
 
