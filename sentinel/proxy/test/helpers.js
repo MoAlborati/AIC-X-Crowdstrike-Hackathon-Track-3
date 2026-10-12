@@ -16,6 +16,27 @@ export const RAGBOT_PORT = 7005;
 
 export const readCapture = (rel) => readFileSync(join(CAPTURES, rel));
 
+/**
+ * The request a live DVAA agent actually acts on, built from a channel-faithful T6 fixture.
+ *
+ * Since #15 (review F5), `rag_document`/`tool_output` fixtures carry the payload in a `role:"tool"`
+ * message after an assistant tool_call (OpenAI shape). DVAA's /v1/chat/completions handler only reads
+ * the LATEST USER TURN (`latestUserText`), so it never sees tool-role content and never fires its
+ * server-side exfil path. To exercise that real path we deliver the retrieved document as the user
+ * turn, the way DVAA's own `aim-ab` demo does. The bytes of the document are unchanged.
+ * Fails loudly if the fixture is not the shape this adapter was written for.
+ */
+export function dvaaUserTurnRequest(fx) {
+  const idx = fx.baseline8kb?.payloadMessageIndex;
+  assert.ok(Number.isInteger(idx), `${fx.id}: fixture lacks baseline8kb.payloadMessageIndex`);
+  assert.ok(['rag_document', 'tool_output'].includes(fx.channel), `${fx.id}: unexpected channel ${fx.channel}`);
+  const msg = fx.request.messages[idx];
+  assert.equal(msg?.role, 'tool', `${fx.id}: payload message ${idx} must be role:"tool" (T6 F5 shape)`);
+  assert.equal(typeof msg.content, 'string');
+  assert.equal(msg.content.length, fx.baseline8kb.docLength, `${fx.id}: payload length drifted from baseline8kb.docLength`);
+  return { messages: [{ role: 'user', content: msg.content }] };
+}
+
 /** Raw HTTP POST returning the exact response bytes. `chunked: true` omits content-length. */
 export function post(url, body, { headers = {}, chunked = false, path = '/v1/chat/completions', method = 'POST' } = {}) {
   const u = new URL(url);
