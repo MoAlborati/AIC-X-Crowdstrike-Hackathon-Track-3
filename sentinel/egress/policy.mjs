@@ -54,7 +54,7 @@ export const DEFAULTS = Object.freeze({
   MAX_DECODE_ROUNDS: 4, // %-/\\u-decode iterations (double/triple/mixed encoding); still changing after -> deny
   SCAN_BUDGET_MS: 250, // measured scan time; over -> deny + ALERT scan_timeout
   MAX_ENCODING_LAYERS: 4, // stacked content-codings; more -> deny uninspectable_body (same as proxy MAX_ENCODING_LAYERS)
-  MAX_EMBEDDED_CONTAINERS: 16, // gzip members / zip entries sniffed inside a body; more are not decoded (counted in total cap)
+  MAX_EMBEDDED_CONTAINERS: 16, // gzip members / zip entries sniffed inside a body; one more -> deny uninspectable_body (#176, never silently skipped)
   MAX_HONEYTOKENS: MAX_CANARIES, // registry size = T4 redact.js canary cap; over -> config load throws
   MIN_HONEYTOKEN_CHARS: MIN_CANARY_VALUE_CHARS, // shorter values would false-positive; config load throws
 });
@@ -134,9 +134,10 @@ function embeddedDecoded(buf, budget) {
   let used = 0;
   const take = (b) => { used += b.length; if (used > budget) throw new UninspectableBody('embedded containers over cap'); out.push(b); };
   let n = 0;
-  for (let i = buf.indexOf(0x1f); i !== -1 && n < DEFAULTS.MAX_EMBEDDED_CONTAINERS; i = buf.indexOf(0x1f, i + 1)) {
+  const overCap = () => { if (n >= DEFAULTS.MAX_EMBEDDED_CONTAINERS) throw new UninspectableBody('too many embedded containers'); n += 1; };
+  for (let i = buf.indexOf(0x1f); i !== -1; i = buf.indexOf(0x1f, i + 1)) {
     if (buf[i + 1] !== 0x8b || buf[i + 2] !== 0x08) continue;
-    n += 1;
+    overCap(); // #176: a container past the cap fails closed instead of being silently skipped
     let d = null;
     // Skip the gzip member header (RFC 1952) and inflate the raw stream: gunzip rejects trailing multipart bytes.
     const flg = buf[i + 3] ?? 0;
@@ -151,11 +152,11 @@ function embeddedDecoded(buf, budget) {
     if (d) take(d);
   }
   const PK = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
-  for (let i = buf.indexOf(PK); i !== -1 && n < DEFAULTS.MAX_EMBEDDED_CONTAINERS; i = buf.indexOf(PK, i + 4)) {
+  for (let i = buf.indexOf(PK); i !== -1; i = buf.indexOf(PK, i + 4)) {
     if (i + 30 > buf.length) break;
     const method = buf.readUInt16LE(i + 8);
     const start = i + 30 + buf.readUInt16LE(i + 26) + buf.readUInt16LE(i + 28);
-    n += 1;
+    overCap();
     if (method === 0) { take(buf.subarray(start, Math.min(buf.length, start + buf.readUInt32LE(i + 18)))); continue; }
     if (method !== 8) continue;
     let d = null;

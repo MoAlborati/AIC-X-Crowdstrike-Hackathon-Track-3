@@ -53,3 +53,20 @@ test('benign traffic is unaffected: plain, gzip, deflate, identity, UTF-16, embe
     assert.deepEqual(v.reasons, []);
   }
 });
+
+test('#176: more embedded containers than MAX_EMBEDDED_CONTAINERS fail closed, never silently skipped (17 and 50 members)', () => {
+  const decoy = zlib.gzipSync(Buffer.from('hello'));
+  const secret = zlib.gzipSync(Buffer.from(`note ${CANARY}`));
+  for (const total of [17, 50]) {
+    const body = Buffer.concat([...Array(total - 1).fill(decoy), secret]);
+    for (const mode of ['block', 'observe']) {
+      const v = send(body, 'content-type: application/octet-stream\r\n', mode);
+      assert.equal(v.action, 'deny', `${total} members ${mode}`);
+      assert.ok(v.reasons.includes(REASON_CODES.UNINSPECTABLE_BODY), `${total} members: ${v.reasons}`);
+    }
+  }
+  // At the cap (16 members, canary in the last) it is still decoded and caught as a honeytoken.
+  const atCap = send(Buffer.concat([...Array(15).fill(decoy), secret]), '', 'block');
+  assert.equal(atCap.action, 'deny');
+  assert.ok(!atCap.reasons.includes(REASON_CODES.UNINSPECTABLE_BODY), String(atCap.reasons));
+});
