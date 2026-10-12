@@ -3,7 +3,7 @@
 Run by the Reviewer child agent after the tester gate is GREEN, so the operator's review starts clean.
 Review adversarially: assume the data grows and the attacker adapts.
 
-## Silent-degradation audit (firm rules)
+## Silent-degradation audit (team data-scale reliability rules)
 - [ ] Grep the diff for dynamically-assembled scans/buffers/lists without a cap → each must have a hard
       cap + fail-loud on overflow. No silent truncation anywhere (we are beating DVAA's 8KB gap).
 - [ ] Every `limit=N` / slice / head-tail in the diff: is it a **decision** site (must be
