@@ -10560,7 +10560,7 @@
     },
     "t3": {
       "kind": "candidate",
-      "description": "SentinelProxy T3 detector core (full-payload scan).",
+      "description": "Tourniquet T3 detector core (full-payload scan).",
       "available": true,
       "provenance": {
         "module": "sentinel/detectors/index.js",

@@ -1,8 +1,8 @@
 {
-  "name": "@sentinelproxy/pipeline",
+  "name": "@tourniquet/pipeline",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy T10: proxy verdicts -> T4 alerts -> T5 dashboard captures + sidecars. Zero dependencies.",
+  "description": "Tourniquet T10: proxy verdicts -> T4 alerts -> T5 dashboard captures + sidecars. Zero dependencies.",
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {

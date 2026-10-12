@@ -145,7 +145,7 @@ export function buildReplay(capture, alerts, extra = {}) {
       text: ex.assistant.content, bytes: byteLen(ex.assistant.content), flags: refused ? ['denied'] : [],
     });
     const agentEdges = prevInput ? [addEdge(prevInput, agentId)] : [];
-    step(refused ? 'proxy_refusal' : 'agent_turn', refused ? `SentinelProxy refused the request (403); ${capture.agent.name} never saw it` : `${capture.agent.name} responds`, [agentId], agentEdges);
+    step(refused ? 'proxy_refusal' : 'agent_turn', refused ? `Tourniquet refused the request (403); ${capture.agent.name} never saw it` : `${capture.agent.name} responds`, [agentId], agentEdges);
 
     for (const tc of ex.assistant.toolCalls) {
       const id = `call:${tc.id}`;

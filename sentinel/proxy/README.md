@@ -1,4 +1,4 @@
-# SentinelProxy — reverse proxy (T2)
+# Tourniquet — reverse proxy (T2)
 
 A reverse proxy in front of a DVAA agent's OpenAI-compatible HTTP API (DVAA is the organizer-provided,
 intentionally vulnerable sandbox on `127.0.0.1`). It logs every exchange in full, runs the inspector set
@@ -85,7 +85,7 @@ canaries in non-chat POST bodies (#126).
 ## Refusal shape
 
 ```json
-{ "error": { "type": "sentinel_blocked", "code": "flagged_request", "message": "SentinelProxy refused this request: flagged_request" },
+{ "error": { "type": "sentinel_blocked", "code": "flagged_request", "message": "Tourniquet refused this request: flagged_request" },
   "sentinel": { "request_id": "…", "blocked": true, "mode": "block", "phase": "request|response|forward|capture|proxy",
                 "reason": "<REFUSAL_CODES>", "verdict_count": 1, "detail": { "payload_size": 0, "cap": 0, "upstream_tool_calls_already_executed": true } } }
 ```

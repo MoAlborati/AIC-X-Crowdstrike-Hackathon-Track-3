@@ -2,7 +2,7 @@
  * T8 contrast tests. Run: node --test captures/contrast/tests/contrast.test.mjs
  *
  * Real seam: every test starts from the run captured from the live DVAA fleet by run-contrast.sh
- * (captures/contrast/runs/ — DVAA's own demo output + SentinelProxy's own JSONL capture log).
+ * (captures/contrast/runs/ — DVAA's own demo output + Tourniquet's own JSONL capture log).
  * Nothing about the feature is mocked; data-rich variants are built by padding those real files.
  * Live re-capture: T8_LIVE=1 also drives run-contrast.sh against the running dvaa-t1 fleet.
  */
@@ -66,7 +66,7 @@ test('captured run: inspector label is derived from the detector the proxy logge
   if (logged.standIn) {
     assert.equal(logged.label, 'standin-substring');
     assert.equal(c.meta.inspector_config_is_standin, true);
-    assert.match(toMarkdown(c), /\| 3\. Vulnerable \+ SentinelProxy \(block, \*\*stand-in inspector\*\*\) \|/);
+    assert.match(toMarkdown(c), /\| 3\. Vulnerable \+ Tourniquet \(block, \*\*stand-in inspector\*\*\) \|/);
   }
 });
 

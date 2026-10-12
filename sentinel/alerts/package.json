@@ -1,8 +1,8 @@
 {
-  "name": "@sentinelproxy/alerts",
+  "name": "@tourniquet/alerts",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy AIDR/Falcon-shaped alert schema + framework mapping (T4). Zero dependencies.",
+  "description": "Tourniquet AIDR/Falcon-shaped alert schema + framework mapping (T4). Zero dependencies.",
   "type": "module",
   "main": "index.js",
   "exports": {

@@ -1,4 +1,4 @@
-// Track 3A tests. Real seams: real OpsBot, real canary, real SentinelProxy chat proxy and egress guard
+// Track 3A tests. Real seams: real OpsBot, real canary, real Tourniquet chat proxy and egress guard
 // processes from sentinel/ (used unmodified). Run: node --test track3a/test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

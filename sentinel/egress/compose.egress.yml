@@ -1,4 +1,4 @@
-# SentinelProxy T12 — DVAA with every tool-boundary egress forced through sentinel's egress inspector.
+# Tourniquet T12 — DVAA with every tool-boundary egress forced through sentinel's egress inspector.
 #
 # A separate compose project next to the live `dvaa-t1` fleet: it reuses the built DVAA image
 # (`scripts/setup-dvaa.sh up` builds `dvaa-t1-dvaa`) UNCHANGED and never touches the dvaa-t1 containers.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SentinelProxy dashboard server. Zero dependencies, node:http only, binds 127.0.0.1 by default.
+// Tourniquet dashboard server. Zero dependencies, node:http only, binds 127.0.0.1 by default.
 //   node sentinel/dashboard/server.mjs [--port 9100] [--host 127.0.0.1]
 // Replays recorded captures. No live LLM or DVAA calls happen here.
 
@@ -201,5 +201,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.error(`[sentinel-dashboard] ERROR ${err.message}`);
     process.exit(2);
   }
-  createServer().listen(port, host, () => console.log(`SentinelProxy dashboard → http://${host}:${port}`));
+  createServer().listen(port, host, () => console.log(`Tourniquet dashboard → http://${host}:${port}`));
 }

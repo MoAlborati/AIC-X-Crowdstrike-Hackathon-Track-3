@@ -1,4 +1,6 @@
-# Venture slide: SentinelProxy as a product (Ciocca Venture Award)
+# Venture slide: Tourniquet as a product (Ciocca Venture Award)
+
+*A tourniquet stops the bleed: Tourniquet stops data exfiltration (the "bleed") and other agent tool-misuse vulnerabilities at the egress boundary.*
 
 One slide for @c-awad's 18:00 deck, plus about 30 seconds of speaker notes. Mo on #131: "Ciocca is a go".
 Every number on this slide comes from `sentinel/scoring/results.json`. There are no invented market figures or customers.
@@ -10,7 +12,7 @@ solution, how it stands apart from existing tools, and a credible path from prot
 
 ## Slide content
 
-**Title:** SentinelProxy: a drop-in egress guard for tool-using agents
+**Title:** Tourniquet: a drop-in egress guard for tool-using agents
 
 **Problem.** Agents with tools read untrusted text (tickets, docs, web pages). An indirect prompt injection hidden in
 that text makes the agent send private data out with the user's authority. This is the "lethal trifecta": private
@@ -28,7 +30,7 @@ data, untrusted content, external communication.
 like an attack?", and an attacker can reword it. We ask "did the user authorize this destination, and is it on the
 allowlist?" Rewording doesn't change where the data goes. We are *not* a better classifier:
 
-| | What it is | Where SentinelProxy fits |
+| | What it is | Where Tourniquet fits |
 |---|---|---|
 | Falcon AIDR | CrowdStrike's enterprise AI detection and response platform | We complement it at the tool boundary. We have not integrated with it. Our alerts use an AIDR-shaped schema |
 | NeMo Guardrails | NVIDIA's open-source toolkit of programmable rails inside the app | We need no app code changes: a sidecar in front of the chat endpoint plus an egress proxy |
@@ -45,6 +47,16 @@ Our edge, in four parts: **drop-in sidecar** · **default-deny egress at the too
 
 **Evidence (from `results.json`).** Where data actually leaves, we prevent **57 of 71** exfil attempts with **0 of 164**
 legitimate requests blocked. DVAA's own scanner prevents 64 of 71 but blocks 21 of 164.
+
+**Market evidence (public, cited; not our numbers).** The failure we stop is a shipped-product reality — EchoLeak,
+CVE-2025-32711, CVSS 9.3, exfiltrated Microsoft 365 Copilot data zero-click via a hidden email instruction
+([TechRepublic](https://www.techrepublic.com/article/news-microsoft-365-copilot-flaw-echoleak/)). The deployer, not
+the model vendor, is held liable (*Moffatt v. Air Canada*, BC tribunal, Feb 2024,
+[ABA](https://www.americanbar.org/groups/business_law/resources/business-law-today/2024-february/bc-tribunal-confirms-companies-remain-liable-information-provided-ai-chatbot/)).
+And the security market is already buying this capability: Prompt Security → SentinelOne (~$250M, Aug 2025,
+[press](https://www.sentinelone.com/press/sentinelone-to-acquire-prompt-security/)) and Lakera → Check Point (Sep 2025).
+Observe-then-block is the established SASE/SWG/DLP rollout pattern. Full brief with every citation:
+[`demo/slides/MARKET-EVIDENCE.md`](MARKET-EVIDENCE.md).
 
 ---
 

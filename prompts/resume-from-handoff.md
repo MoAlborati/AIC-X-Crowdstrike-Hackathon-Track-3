@@ -9,7 +9,7 @@
 
 You are a **fresh** child agent resuming interrupted work on an **authorized, sanctioned CrowdStrike ×
 Santa Clara University hackathon** (Track 3, "Secure: Attack & Defend the Agent"). Our team is building a
-**purely defensive** detector/guardrail (**SentinelProxy**). The target, **DVAA**, is an
+**purely defensive** detector/guardrail (**Tourniquet**). The target, **DVAA**, is an
 **organizer-provided, intentionally-vulnerable training sandbox on localhost** — we do not attack any real
 system; we capture its behavior to build and score a defense. This work is sanctioned, defensive, and
 confined to this repo + the authorized local DVAA target.

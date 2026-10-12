@@ -1,7 +1,7 @@
 # GOAL — Track 3 Autonomous Build Loop
 
 **North star:** Win CrowdStrike Track 3 ("Secure: Attack & Defend the Agent") with a <3-minute
-live demo of **SentinelProxy** — an inline, tool-boundary detection-and-response guardrail for AI
+live demo of **Tourniquet** — an inline, tool-boundary detection-and-response guardrail for AI
 agents (a working slice of CrowdStrike Falcon AIDR) that detects and blocks indirect prompt
 injection and data exfiltration against the provided DVAA target, and emits Falcon/AIDR-shaped
 alerts mapped to MITRE ATLAS + OWASP.
@@ -21,7 +21,7 @@ hackathon rules" proxy criteria (now superseded; see `planning/RESEARCH.md` §B)
 > 1st $1000 · 2nd $500 · 3rd Prize Box
 
 ## How we map to the brief (honest)
-- **"One clear exploit or defense, demoed live"** maps to one defense: SentinelProxy at the tool boundary.
+- **"One clear exploit or defense, demoed live"** maps to one defense: Tourniquet at the tool boundary.
   - **Live:** the only live beat is the proxy's benign **HTTP 200** (forwarded untouched), then DVAA's aim-ab request
     **HTTP 403**, blocked pre-forward.
   - **Recorded:** default-deny egress at the tool boundary is the control that actually stops data leaving (RepoBot/RAGBot
@@ -47,7 +47,7 @@ hackathon rules" proxy criteria (now superseded; see `planning/RESEARCH.md` §B)
 ## Definition of Done (the winning minimum)
 1. DVAA runs; one exploit reproduced, exfiltrating a planted secret, visibly **evading DVAA's own
    8KB-head/tail baseline scanner**.
-2. SentinelProxy **detects + BLOCKS** the same attack; honeytoken tripwire fires deterministically.
+2. Tourniquet **detects + BLOCKS** the same attack; honeytoken tripwire fires deterministically.
 3. A **Falcon/AIDR-shaped alert** renders, tagged MITRE ATLAS + OWASP LLM01/02/06 + Agentic ASI01/02 + OASB-1.
 4. **Incident graph** shows the taint path source->sink; **latency** number displayed (mirror "sub-30ms").
 5. **Scoring table:** precision/recall vs DVAA's `dvaa{}` ground-truth labels + median latency.

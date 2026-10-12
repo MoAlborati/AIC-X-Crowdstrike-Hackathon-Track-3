@@ -1,4 +1,4 @@
-# BACKLOG — SentinelProxy (Track 3, DVAA defense)
+# BACKLOG — Tourniquet (Track 3, DVAA defense)
 
 Ordered tickets. **One ticket = one branch = one PR.** The orchestrator picks the top ticket whose
 deps are merged; disjoint file scopes may run in parallel (see LOOP.md §Parallelism). Each child agent

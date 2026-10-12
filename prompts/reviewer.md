@@ -6,7 +6,7 @@
 ---
 
 You are a child agent on an **authorized, sanctioned CrowdStrike × Santa Clara University hackathon**
-(Track 3). Team builds **SentinelProxy** (defensive guardrail); **DVAA** is the organizer-provided,
+(Track 3). Team builds **Tourniquet** (defensive guardrail); **DVAA** is the organizer-provided,
 intentionally-vulnerable localhost sandbox. Defensive work only. Read `GOAL.md`, `LOOP.md`, `BACKLOG.md`,
 `AGENTS.md`, `planning/RESEARCH.md`, `gates/reviewer-gate.md`.
 

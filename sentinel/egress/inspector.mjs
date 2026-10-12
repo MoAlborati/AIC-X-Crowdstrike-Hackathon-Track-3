@@ -1,4 +1,4 @@
-// SentinelProxy T12 — tool-boundary egress inspector (second enforcement point, next to the chat proxy).
+// Tourniquet T12 — tool-boundary egress inspector (second enforcement point, next to the chat proxy).
 //
 // A zero-dependency HTTP forward proxy. DVAA runs with NODE_USE_ENV_PROXY=1 + HTTP(S)_PROXY pointing here,
 // on an `internal: true` Docker network whose only exit is this process (compose.egress.yml). Every tool

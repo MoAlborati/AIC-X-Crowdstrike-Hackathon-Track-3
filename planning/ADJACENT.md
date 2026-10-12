@@ -20,7 +20,7 @@ one-to-one role mapping and the **same goal** (Holyoak & Thagard [T3]).
 
 Our structure is the **confused deputy** (Hardy 1988 [T2]), which has three actors:
 
-| Role | In SentinelProxy / DVAA |
+| Role | In Tourniquet / DVAA |
 |---|---|
 | **Principal** owns the authority | the user / operator |
 | **Deputy** holds the authority and acts on it | the LLM agent and its tools |
@@ -162,10 +162,10 @@ Narrative opener (pick one), then the structure, then the mechanisms (§5 patter
 
 - **Software injection (mechanism):** "In 1998 we tried to stop SQL injection by filtering for bad quotes.
   We lost for a decade, until parameterized queries kept code and data apart. AI agents are at their 1998
-  now. SentinelProxy doesn't try to out-guess the model. It tracks where every byte came from and
+  now. Tourniquet doesn't try to out-guess the model. It tracks where every byte came from and
   enforces what it's allowed to reach."
 - **BEC:** "Your agent just fell for a BEC scam, a roughly $3 billion-a-year fraud. It never felt suspicious, so
-  it never picked up the phone. SentinelProxy is the phone call."
+  it never picked up the phone. Tourniquet is the phone call."
 - **Fraud:** "Banks stopped asking *'is this really the customer?'*, because the customer is usually
   real and being scammed. They ask *'does this payment make sense?'* Every tool call is a transaction,
   and we score it before it settles." Short version: **"Confirmation of Payee for AI agents."**
@@ -383,18 +383,18 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 ### 10.4 New pitch lines
 
 - **Trading:** "Wall Street learned in 2010 that every order passes a broker's risk gate before it reaches the
-  market. SentinelProxy is that gate for AI agents."
+  market. Tourniquet is that gate for AI agents."
 - **Voice:** "In 2017 a San Diego TV anchor said 'Alexa ordered me a dollhouse' on air, and viewers' Echos tried
-  to order dollhouses. Today every web page your agent reads is that anchor. SentinelProxy is the purchase PIN."
+  to order dollhouses. Today every web page your agent reads is that anchor. Tourniquet is the purchase PIN."
 - **Medication:** "Pharmacies stopped forged prescriptions by never trusting the paper, only the callback.
   Content can request an action; only the principal's own channel can authorize it."
 - **Military:** "Militaries never let a radio message launch a missile. Orders come from the authenticated
   chain of command; everything else is intelligence."
 - **Supply chain:** "npm has a lockfile. Your agent's tools don't."
 - **OAuth:** "OAuth solved the confused deputy for apps by making authority explicit, scoped, audience-bound
-  and consented on a trusted channel. SentinelProxy does the same for every tool call."
+  and consented on a trusted channel. Tourniquet does the same for every tool call."
 - **Agency law (business framing):** "Your AI agent holds your power of attorney. The law already says the
-  principal pays (*Moffatt v. Air Canada*), so SentinelProxy limits what it can be talked into doing."
+  principal pays (*Moffatt v. Air Canada*), so Tourniquet limits what it can be talked into doing."
 - **Newsroom:** "Sources inform, they never assign."
 - **Empirical (for a judge who asks "why not a classifier?"):** "Spam filters lost to spammers because the
   attacker wrote the content being scored. DKIM won because the mail server enforced it. We enforce at the boundary."

@@ -314,7 +314,7 @@ test('contrast runs are labeled by configuration; a fully blocked run reads prot
   const { trustAt } = await import('../public/replay-view.js');
   await withServer(async (base) => {
     const { body: pb } = await getJson(`${base}/api/replay?id=contrast/runs/proxy-block.demo&run=runB`);
-    assert.equal(pb.run.label, 'RAGBot :7005 behind SentinelProxy (block)');
+    assert.equal(pb.run.label, 'RAGBot :7005 behind Tourniquet (block)');
     assert.ok(!JSON.stringify(pb.timeline).includes('RAGBot-AIM'));
     assert.ok(pb.graph.nodes.some(n => n.kind === 'proxy_refusal'));
     const { body: s3 } = await getJson(`${base}/api/replay?id=stage/proxy-blocked-t3&run=run`);

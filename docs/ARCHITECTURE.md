@@ -1,4 +1,4 @@
-# SentinelProxy architecture
+# Tourniquet architecture
 
 This page covers the data flow, the components, and where each one prevents an attack versus only
 detecting it. Start with the [README](../README.md).
@@ -28,7 +28,7 @@ detecting it. Start with the [README](../README.md).
 | T10 | `sentinel/pipeline` | Turns proxy verdicts into T4 alerts and writes them to the dashboard sink | Display caps only (never change a verdict); overflow rotates to a new part or raises `PipelineBoundError`, never drops |
 | T5 | `sentinel/dashboard` | Deterministic replay, incident graph, alert feed on `127.0.0.1:9100` | Loopback only, DNS-rebinding guarded |
 | T7 | `sentinel/scoring` | Precision, recall, benign FP rate, latency and override rate for each detector | Missing detector → reported as unavailable, never scored as zero |
-| T8 | `captures/contrast` | Same attack against vulnerable DVAA, AIM-defended DVAA, and DVAA behind SentinelProxy | Every cell is checked against ground truth |
+| T8 | `captures/contrast` | Same attack against vulnerable DVAA, AIM-defended DVAA, and DVAA behind Tourniquet | Every cell is checked against ground truth |
 
 ## Where prevention happens
 

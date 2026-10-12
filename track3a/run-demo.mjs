@@ -8,9 +8,9 @@
 //
 // Stacks (each one adds or swaps a single layer):
 //   undefended     OpsBot, no defenses
-//   chat-proxy     SentinelProxy chat proxy (T2+T3, block mode) in front of OpsBot
-//   proxy+egress   + SentinelProxy egress guard (T12, block mode) on OpsBot's tool egress
-//   hardened       OpsBot with its own user-turn mandate (secure-by-design), no SentinelProxy
+//   chat-proxy     Tourniquet chat proxy (T2+T3, block mode) in front of OpsBot
+//   proxy+egress   + Tourniquet egress guard (T12, block mode) on OpsBot's tool egress
+//   hardened       OpsBot with its own user-turn mandate (secure-by-design), no Tourniquet
 //   full           hardened OpsBot + chat proxy + egress guard (defense in depth)
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -27,7 +27,7 @@ const MIN_NODE_MAJOR = 24;
 
 export const STACKS = [
   { id: 'undefended', label: 'Undefended OpsBot', hardened: false, proxy: false, egress: false },
-  { id: 'chat-proxy', label: '+ SentinelProxy chat proxy', hardened: false, proxy: true, egress: false },
+  { id: 'chat-proxy', label: '+ Tourniquet chat proxy', hardened: false, proxy: true, egress: false },
   { id: 'proxy+egress', label: '+ chat proxy + egress guard', hardened: false, proxy: true, egress: true },
   { id: 'hardened', label: 'Hardened OpsBot (mandate only)', hardened: true, proxy: false, egress: false },
   { id: 'full', label: 'Hardened + chat proxy + egress guard', hardened: true, proxy: true, egress: true },

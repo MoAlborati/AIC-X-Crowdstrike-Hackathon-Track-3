@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SentinelProxy T10 alert pipeline: proxy verdicts -> T4 alerts -> T5 dashboard.
+// Tourniquet T10 alert pipeline: proxy verdicts -> T4 alerts -> T5 dashboard.
 //
 //   node sentinel/pipeline/cli.mjs convert <proxy.jsonl> [--out DIR] [--clean]
 //       Batch: convert a finished proxy capture once. Deterministic: the same input gives

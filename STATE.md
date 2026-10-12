@@ -11,7 +11,7 @@
 - **Phase:** ENDGAME. Land the open PRs that are gated green before the 15:15 freeze, then the final rescore (15:00) and the delivery gate.
   Operator directive: **"keep the overseer running testing and evaluating."**
 - **Presenter:** Catherine (c-awad), from her Mac (bash 3.2, Colima) over screen share (#39, #51).
-- **Submissions (#63):** Track 3 = Path A (`track3a/` OpsBot) + Path B (SentinelProxy), ONE submission. Track 1 = `track1/`
+- **Submissions (#63):** Track 3 = Path A (`track3a/` OpsBot) + Path B (Tourniquet), ONE submission. Track 1 = `track1/`
   SOC analyst tool, a separate submission. Form submission: #106.
 - **Open PRs (`gh pr list`, 14:02 PDT):**
   | PR | Branch | What |
@@ -64,7 +64,7 @@
 ### Honest metrics (`sentinel/scoring/results.json`, generated 20:10Z = 13:10 PDT; 353 cases: 189 attack / 164 benign; 0 errors)
 | System | Detection | Prevention | Benign FP |
 |---|---|---|---|
-| SentinelProxy T3 | 67.7% (128/189) | 41.8% (79/189) | **0.0% (0/164)**, precision 100% |
+| Tourniquet T3 | 67.7% (128/189) | 41.8% (79/189) | **0.0% (0/164)**, precision 100% |
 | DVAA baseline | 65.6% (124/189) | 63.0% (119/189) | 12.8% (21/164) |
 - T3 rule-intent block (legacy `recall`) is 44.4% (84/189). T3 latency: median 0.08 ms, p95 0.42 ms.
 - T3 catches and prevents both cases that evade DVAA's 8 KB scan window (2/2). Any recall DVAA has beyond that comes with a 12.8% benign FP rate.
@@ -87,7 +87,7 @@ See BACKLOG.md and RESUME.md. Next: gate and merge the open PRs (#136 first, bec
 - 2026-10-12 — **Presenter and machine (#39, #51):** Catherine (c-awad) presents from her Mac over screen share. Mac: M4 Pro
   arm64, macOS 26.6.2, Colima, stock bash 3.2, Node 26 → move to node@24. Mac QA issues #58–#61 are routed.
 - 2026-10-12 — **Tracks (#63):** multiple tracks are allowed, each as its own submission. Track 3 Path A (`track3a/`,
-  OpsBot, PR #62) and Path B (SentinelProxy) ship as ONE submission. Track 1 (Shruti, `track1/`, #64/#68) is a separate
+  OpsBot, PR #62) and Path B (Tourniquet) ship as ONE submission. Track 1 (Shruti, `track1/`, #64/#68) is a separate
   submission, with advisor agents reviewing it every ~30 min.
 - 2026-10-12 — **Canonical proxy (#37):** the `.mjs` proxy (#14) is canonical. Consolidation PR #67 (merged, via its steward) retires the #21 `.js` proxy.
 - 2026-10-12 — **One orchestrator (#36):** Shruti's loop is off; this loop is the only orchestrator. #23 is closed at 13:00.
@@ -155,7 +155,7 @@ See BACKLOG.md and RESUME.md. Next: gate and merge the open PRs (#136 first, bec
 - 2026-10-12 — GitHub remote set: origin = shrutidoshi94/AIC-X-Crowdstrike-Hackathon (we have WRITE).
   Remote blocker resolved. T0 setup raised as reviewable PR off `t0-goal-loop-setup`.
 - 2026-10-12 — Pivoted from "paste-prompt" deliverable to autonomous PR-driven goal loop (operator request).
-- 2026-10-12 — Path B locked; SentinelProxy reverse-proxy design chosen; DVAA mapped (see STRATEGY §4).
+- 2026-10-12 — Path B locked; Tourniquet reverse-proxy design chosen; DVAA mapped (see STRATEGY §4).
 - 2026-10-12 — 5-agent parallel recon complete; strategy + research docs written.
 
 ## Metrics (update as tickets land)

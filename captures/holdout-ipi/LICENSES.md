@@ -3,7 +3,7 @@
 Every string in this set is copied **verbatim** from a public dataset at a pinned revision. Nothing is authored
 here except the benign scaffolding of the indirect variant, which is the same as in `captures/holdout-hf`: the user turn
 `Please summarize the document I just fetched for me.`, the tool name `fetch_document`, and its `doc_id` argument.
-We use these rows for **defensive evaluation only**: measuring how SentinelProxy (T3) generalizes to indirect
+We use these rows for **defensive evaluation only**: measuring how Tourniquet (T3) generalizes to indirect
 prompt-injection data it was never built or tuned on.
 
 Both datasets are **MIT**. Neither is gated. Neither was used before in this repo: `captures/variants` uses AgentDojo,

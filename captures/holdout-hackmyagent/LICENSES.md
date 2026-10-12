@@ -3,7 +3,7 @@
 Every payload string in this set is copied **verbatim** from the public, open-source attack tool
 [`opena2a-org/hackmyagent`](https://github.com/opena2a-org/hackmyagent) at a pinned commit. hackmyagent is
 authored by the same group (opena2a) that publishes DVAA, so a judge who knows DVAA would run this battery.
-We use these strings for **defensive evaluation only**: measuring how SentinelProxy (T3) generalizes to an
+We use these strings for **defensive evaluation only**: measuring how Tourniquet (T3) generalizes to an
 attack set it was never built or tuned on. This set is **HELD-OUT** and is **never merged into the headline**
 (see `RESULTS.md`).
 

@@ -17,7 +17,7 @@ export const STAGE_ENTRIES = Object.freeze([
   },
   {
     key: 'proxy-blocked',
-    label: '3 · Behind SentinelProxy: blocked before the agent',
+    label: '3 · Behind Tourniquet: blocked before the agent',
     candidates: [
       { id: 'stage/proxy-blocked-t3', run: 'run' },
       // T8 contrast recording (stand-in inspector); used only if the T3 stage recording is absent.

@@ -1,4 +1,4 @@
-// SentinelProxy T3 — structural injection signals (T3-recall). Pure, zero dependencies, linear-time.
+// Tourniquet T3 — structural injection signals (T3-recall). Pure, zero dependencies, linear-time.
 //
 // ALERT-ONLY by construction. These markers feed the dedicated rule `taint.structural_injection_marker`,
 // whose action is always "alert". A marker never blocks, never marks a principal turn suspect (so it cannot

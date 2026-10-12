@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# encore-two-layer.sh — Q&A encore: the SAME RepoBot attack through BOTH SentinelProxy layers, live.
+# encore-two-layer.sh — Q&A encore: the SAME RepoBot attack through BOTH Tourniquet layers, live.
 #
-#   user turn -> SentinelProxy (chat proxy, loopback sidecar in DVAA's netns) -> RepoBot (7022)
+#   user turn -> Tourniquet (chat proxy, loopback sidecar in DVAA's netns) -> RepoBot (7022)
 #             -> reads a poisoned AGENTS.md (DVAA's own fixture) -> tool egress -> egress inspector -> canary
 #
 # Layer 1 (chat proxy) sees only a benign "review my repo" turn: the payload is read INSIDE the agent, so the

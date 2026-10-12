@@ -11,7 +11,7 @@ export function renderMarkdown(r) {
   L.push(`Generated ${r.generatedAt} on Node ${r.node}, ${r.iterations} latency iterations per case (median per case).`);
   L.push(`Corpus: ${r.corpus.total} cases (${r.corpus.positives} attack, ${r.corpus.negatives} benign), digest \`${r.corpus.digest.slice(0, 19)}…\`.`);
   L.push(`Label rule: ${r.labelRule}.`, '');
-  L.push(`**Headline (SentinelProxy, enforce):** ${r.headline.status === 'ok'
+  L.push(`**Headline (Tourniquet, enforce):** ${r.headline.status === 'ok'
     ? `${r.headlineLenses ? `detection recall ${pct(r.detectionRecall)} · **prevention recall ${pct(r.preventionRecall)}** · rule-intent block recall ${pct(r.recall)} (legacy \`recall\`)` : `recall ${pct(r.recall)}`} · benign FP rate ${pct(r.falsePositiveRate)} · precision ${pct(r.precision)} · median ${ms(r.latencyMs.median)}`
     : r.headline.status}`, '');
   if (r.headline.status === 'ok' && r.headlineLenses) {
