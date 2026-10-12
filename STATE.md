@@ -19,6 +19,12 @@
 See BACKLOG.md. Next unblocked ticket: **T1 — Verify target + capture exploits** (no deps).
 
 ## Decision Log (append-only, newest first)
+- 2026-10-12 — T0b adjacent-knowledge analysis (`planning/ADJACENT.md`, PR stacked on #1): a field counts as adjacent
+  by structural match (confused-deputy triad, shared data/control channel, choke point, adaptive adversary),
+  not surface similarity. Top sources are software injection and BEC; immunology and HACCP are narrative only. Folded the convergent
+  deterministic mechanisms into T3/T4/T5/T7 (destination provenance, source→sink rule, canaries + seeded
+  fake records, fail-closed, per-tool policy report-only/enforce, cumulative caps, narrative case card,
+  benign FP rate as headline metric). Added stretch S5–S9. **Excluded learned behavioral baselines** (no history).
 - 2026-10-12 — Model policy set: orchestrator = main Opus 5.5 session (non-implementing); all ticket work
   by child agents dispatched `model: "opus"` (Opus 5.5); degradation/safety-stop → handoff file +
   re-dispatch fresh Opus 5.5, max 2 retries then operator (LOOP.md §Model policy, AGENTS.md).

