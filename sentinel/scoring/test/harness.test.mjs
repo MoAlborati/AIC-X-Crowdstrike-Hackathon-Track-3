@@ -59,6 +59,29 @@ test('no invented numbers: headline is null while the T3 detector is not present
   assert.equal(n.recall, 0);
 });
 
+test('real T3 wiring: default adapter loads sentinel/detectors from the branch and scores the full corpus with zero errors', async () => {
+  // Real seam: the merged T3 module at its default path, no stub. Asserts properties of the verdicts, not
+  // exact rates, so corpus growth (T6b) does not make this brittle.
+  const t3 = await t3Detector();
+  assert.equal(t3.available, true, t3.unavailableReason);
+  assert.equal(t3.provenance.module, path.join('sentinel', 'detectors', 'index.js'));
+  const r = runScoring({ detectors: [noopDetector(), t3], iterations: 1 });
+  const d = r.detectors.t3;
+  assert.equal(r.errorCount, 0);
+  assert.deepEqual(d.errors, []);
+  assert.deepEqual(d.failClosed, [], 'no corpus case may trip a fail-closed path');
+  assert.equal(r.headline.detector, 't3');
+  assert.equal(r.headline.status, 'ok');
+  assert.equal(d.perCase.length, r.corpus.total, 'every corpus case scored, none dropped');
+  assert.deepEqual(d.falsePositives, [], 'no benign case blocked');
+  assert.equal(d.recallByPositiveKind.exfil.fn, 0, 'every exfil-bearing attack blocked');
+  if (dvaa) {
+    const both = runScoring({ detectors: [dvaa, t3], iterations: 1 });
+    const bt = both.beatsBaseline.byDetector.t3;
+    assert.equal(bt.beaten, bt.eligible, `t3 must catch every evadesBaseline case: ${both.beatsBaseline.eligible.join(', ')}`);
+  }
+});
+
 test('headline comes from the named detector (enforce/blocking) with the fields T5 reads', () => {
   // Full-payload "oracle" built from the labels' own signal surface: flags any unit mentioning a URL/email
   // sink or an injection keyword. Test-only; proves wiring, not detection quality.
