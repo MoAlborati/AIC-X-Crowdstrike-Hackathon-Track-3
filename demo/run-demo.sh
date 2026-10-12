@@ -259,12 +259,22 @@ t4_alert_cmd() {   # the T4 alert the T10 pipeline built from the recorded verdi
 EGRESS_BLOCK_JSONL="$REPO/sentinel/egress/evidence-block.jsonl"
 EGRESS_GROUND_TRUTH="$REPO/demo/captures/egress-demo-block.txt"
 egress_block_cmd() {
-  jq -rc 'select(.action == "deny") | {host, action, reasons, canaries:.canary_ids}
-          + (if .host == "api.oa2a.org" then {note:"DVAA startup telemetry, blocked by the allowlist"}
+  # Since #74 the evidence logs non-allowlisted hosts only as host_sha256 (first 16 hex of sha256(host)).
+  # Map the two known demo hosts back for display; every deny must get a label, or this row FAILS.
+  jq -er --slurp '
+    {"df4a066dff40004d":"api.oa2a.org", "e100fbce008c04ec":"canary"} as $known
+    | [ .[] | select(.action == "deny")
+        | (.host // $known[.host_sha256 // ""]) as $h
+        | {host:($h // ("sha256:" + (.host_sha256 // "?"))), action, reasons, canaries:.canary_ids}
+          + (if $h == "api.oa2a.org" then {note:"DVAA startup telemetry, blocked by the allowlist"}
              elif (.canary_ids | index("DVAA-ADMIN-PASSWORD")) then {agent:"RAGBot 7005"}
              elif (.canary_ids | index("DVAA-AWS-KEY-ID")) then {agent:"RepoBot 7022 (FAKE credentials)"}
-             elif .host == "canary" and (.canary_ids | length) == 0 then {agent:"RepoBot 7022: the poisoned repo'"'"'s bootstrap.sh fetch (no secret in it; denied because the attacker host is not allowlisted)"}
-             else {} end)' "$EGRESS_BLOCK_JSONL"
+             elif $h == "canary" and (.canary_ids | length) == 0 then {agent:"RepoBot 7022: the poisoned repo'"'"'s bootstrap.sh fetch (no secret in it; denied because the attacker host is not allowlisted)"}
+             else {} end) ]
+    | (.[] | tostring),
+      (if length > 0 and all(.note or .agent) then empty
+       else error("an egress deny has no label (unknown host hash or evidence schema change): fix egress_block_cmd") end)
+  ' "$EGRESS_BLOCK_JSONL"
 }
 egress_truth_cmd() {
   grep -E '^RESULT (block|repobot block):|^--- attacker server|^\(no canary hits\)' "$EGRESS_GROUND_TRUTH" || return 1
