@@ -29,6 +29,8 @@ run_with_timeout() { # secs cmd...
     $SIG{ALRM} = sub {
       if (!$timed_out) { $timed_out = 1; kill "TERM", -$pid; alarm 10 } else { kill "KILL", -$pid }
     };
+    # Like GNU timeout: forward INT/TERM/HUP to the child group, so Ctrl-C does not orphan the suite.
+    $SIG{$_} = sub { kill $_[0], -$pid } for qw(INT TERM HUP);
     alarm $secs;
     my $r;
     do { $r = waitpid($pid, 0) } while ($r == -1 && $!{EINTR});
