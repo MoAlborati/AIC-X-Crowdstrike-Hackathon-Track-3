@@ -18,7 +18,7 @@
 //   3. generic flagged  { flagged:true, detector, reasons, hits? }     one alert. This is the T2
 //                       placeholder substring inspector, so it is labeled stand-in.
 
-import { buildAlert } from '../alerts/index.js';
+import { buildAlert, sinkPhrase } from '../alerts/index.js';
 import { T3_DETECTOR } from './t3.mjs';
 
 export const PIPELINE_SCHEMA = 'sentinel.pipeline/1.0.0';
@@ -103,7 +103,7 @@ const VERB = { block: 'blocked', report: 'reported (alert-only)', allow: 'allowe
 function narrativeFor({ policy, outcome, originatedIn, toolCall, sink, disposition, ruleId }) {
   const tc = toolCall ? `${toolCall.name}(${toolCall.id})` : 'no tool call';
   return `[${policy.label} · ${policy.enforcement}] Instruction originated in ${originatedIn} → ` +
-    `influenced tool call ${tc}${sink ? ` → toward ${sink.type}:${sink.destination}` : ''} → ` +
+    `influenced tool call ${tc}${sink ? ` → toward ${sinkPhrase(sink)}` : ''} → ` +
     `${VERB[disposition]} by rule ${ruleId}. Outcome: ${outcome}. ${policy.note}`;
 }
 
