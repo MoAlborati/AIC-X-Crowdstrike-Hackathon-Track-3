@@ -808,8 +808,11 @@ function hasExfilVerb(text) {
   return EXFIL_VERBS.some((v) => l.indexOf(v) !== -1);
 }
 
-const DIRECTED_VERB = /\b(?:send|sent|email|e-mail|mail|forward|post|upload|submit|transmit|exfiltrate|deliver|wire|transfer|pay)\b/;
-/** True when an exfil verb appears within the 120 chars before index `at` (where a destination starts). O(120). */
+// An exfil verb in the imperative, ADDRESSED TO THE AGENT ("please email ...", "assistant, send ...",
+// "you must forward ..."). A bare verb is not enough: benign mail/bank data says "send me an email",
+// "My e-mail is ...", "pay by bank transfer" (AgentDojo benign corpus scored 22 FPs with a bare-verb rule).
+const DIRECTED_VERB = /(?:\bplease|\bassistant\b[,:]?|\b(?:ai|agent|bot)\b[,:]|\byou (?:must|should|need to|have to)|\bimmediately|\bnow)\s+(?:also\s+)?(?:send|email|e-mail|mail|forward|upload|submit|transmit|exfiltrate|post)\b/;
+/** True when an agent-addressed exfil imperative appears within the 120 chars before `at` (a destination). O(120). */
 function exfilVerbBefore(text, at) {
   if (!Number.isInteger(at) || at < 0) return false;
   return DIRECTED_VERB.test(text.slice(Math.max(0, at - 120), at).toLowerCase());
