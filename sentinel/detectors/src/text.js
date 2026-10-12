@@ -522,19 +522,32 @@ export function findInjectionPhrases(text) {
 // ---- quoted / reported injection phrases (mention, not use) --------------------------------------
 // A security-awareness memo QUOTES an injection phrase ("attackers may write 'ignore your instructions'")
 // and names a REPORTING mailbox ("report such emails to security@..."). That is a mention, not an
-// instruction to the agent. Deliberately narrow; ALL of these must hold, otherwise the lexicon stands:
+// instruction to the agent. Deliberately narrow, POSITIVE-list based; ALL must hold or the lexicon stands:
 //   1. every occurrence of every matched phrase sits inside quote marks or a code span;
 //   2. a reporting/awareness cue appears within REPORT_CUE_WINDOW chars of each occurrence;
-//   3. every named destination (url/email/iban) is the object of a "report <suspicious thing> to" construct
-//      and is NOT preceded by a send/forward/upload construct (the caller also rejects staged secrets).
+//   3. every named destination (url/email/iban) ends a clause that is EXACTLY a report-to of the
+//      suspicious message itself: optional lead-in ("please", "if you see one,") + report/flag/escalate +
+//      a message object (it/this/them/such emails/suspicious messages...) + "to". Nothing else may precede
+//      the report verb in that clause (no "gather X and report it to", no "read the file, then report ...");
+//   4. the WHOLE text names no sensitive data object and no acquisition verb (destination tokens excluded).
+// The caller also refuses the exemption with a staged secret/honeytoken and still emits an ALERT (never 0 findings).
 const QUOTE_OPEN = new Set(['"', "'", '`', '“', '‘', '«']);
 const QUOTE_CLOSE = new Set(['"', "'", '`', '”', '’', '»']);
 const REPORT_CUE = /\b(?:if you (?:see|receive|get|notice)|report(?:ed|ing)?|examples? of|phishing|security awareness|attackers?|scammers?|be wary|watch out|beware|red flags?)\b/;
 const REPORT_CUE_WINDOW = 160;
 const MAX_PHRASE_OCCURRENCES = 64; // bound per text: more quoted occurrences than this = not a memo, keep lexicon
-// "report such emails to", "report it to", "report suspicious messages immediately to", "flag them to"
-const REPORT_TO = /\b(?:report|flag|escalate)\s+(?:it|them|this|these|those|(?:any|all|the|such|similar|these|those)?\s*(?:such\s+|similar\s+|suspicious\s+|phishing\s+|suspected\s+)*(?:e-?mails?|messages?|attempts?|incidents?|content|cases?|texts?|links?|pages?))\s+(?:(?:immediately|right away|promptly)\s+)?to\s+(?:the\s+\w+\s+(?:team|desk)\s+(?:at\s+)?)?$/;
-const SEND_TO = /\b(?:send|forward|upload|submit|transmit|exfiltrate|post|e-?mail|mail|share|export|transfer|pay|wire|copy)\b/;
+const MSG_NOUN = '(?:e-?mails?|messages?|attempts?|texts?|links?|pages?|mails?)';
+// Whole clause (sentence start -> destination). Lead-in is a closed list; the object refers back to the message.
+const REPORT_CLAUSE = new RegExp(
+  '^\\s*(?:(?:please|kindly|always|then|also)\\s+)*' +
+  '(?:if you (?:see|receive|get|notice|spot|find) (?:one|it|this|them|these|such ' + MSG_NOUN + '|(?:a |an )?(?:suspicious |phishing |similar )*' + MSG_NOUN + '|anything (?:like this|similar)|something (?:like this|similar))\\s*,?\\s*(?:(?:please|then)\\s+)?)?' +
+  '(?:report|flag|escalate)\\s+' +
+  '(?:it|this|them|these|(?:any|all|the|such|these|those)?\\s*(?:(?:such|similar|suspicious|phishing|suspected)\\s+)+' + MSG_NOUN + '|such ' + MSG_NOUN + '|these ' + MSG_NOUN + ')' +
+  '\\s+(?:(?:immediately|right away|promptly)\\s+)?to\\s+(?:the\\s+\\w+\\s+(?:team|desk)\\s+(?:at\\s+)?)?$',
+);
+// Any of these in the destination's sentence = data is being moved, not a message being reported.
+const SENSITIVE_OR_ACQUIRE = /\b(?:passwords?|passcodes?|credentials?|keys?|tokens?|secrets?|history|histories|files?|contents?|data|records?|logs?|database|attachments?|cookies?|sessions?|ssh|env(?:ironment)?|balance|accounts?|contacts?|addresses|gather|collect|read|compile|include|attach|retrieve|export|dump|copy|fetch|extract|list|print|summari[sz]e|bundle|zip|grab|harvest)\b/;
+const SENTENCE_END = /[.!?;\n]/;
 
 function quotedAt(text, start, end) {
   // opening quote within 2 chars before the phrase, closing quote within 40 chars after it
@@ -548,10 +561,20 @@ function quotedAt(text, start, end) {
   return false;
 }
 
+/** Sentence bounds around `at` (max 200 chars each way; '.' inside an email/host is not a boundary). */
+function sentenceAround(lower, at) {
+  const isEnd = (i) => SENTENCE_END.test(lower[i]) && (lower[i] !== '.' || i + 1 >= lower.length || /\s/.test(lower[i + 1]));
+  let a = at;
+  while (a > 0 && at - a < 200 && !isEnd(a - 1)) a--;
+  let b = at;
+  while (b < lower.length && b - at < 200 && !isEnd(b)) b++;
+  return [a, b];
+}
+
 /**
  * True only when every lexicon phrase in `text` is a quoted mention in reporting context and every
- * destination in `destinations` ([{index}]) is a report-to mailbox. Linear in text length x #phrases
- * (indexOf), bounded by MAX_PHRASE_OCCURRENCES and fixed windows.
+ * destination in `destinations` ([{index}]) is a report-to mailbox for the suspicious message itself.
+ * Linear in text length x #phrases (indexOf), bounded by MAX_PHRASE_OCCURRENCES and fixed windows.
  */
 export function phrasesOnlyQuotedReported(text, phrases, destinations) {
   if (typeof text !== 'string' || !phrases.length) return false;
@@ -566,16 +589,14 @@ export function phrasesOnlyQuotedReported(text, phrases, destinations) {
     }
   }
   for (const d of destinations) {
-    if (!Number.isInteger(d.index) || d.index < 0) return false;
-    // the clause that leads to the destination: back to the previous sentence boundary, max 100 chars
-    let clause = lower.slice(Math.max(0, d.index - 100), d.index);
-    const cut = Math.max(clause.lastIndexOf('. '), clause.lastIndexOf('\n'), clause.lastIndexOf('; '), clause.lastIndexOf('! '), clause.lastIndexOf('? '));
-    if (cut !== -1) clause = clause.slice(cut + 1);
-    const m = REPORT_TO.exec(clause);
-    if (!m) return false;
-    if (SEND_TO.test(clause.slice(0, m.index))) return false; // "send the files and report them to" -> not a mention
-
+    if (!Number.isInteger(d.index) || d.index < 0 || d.index > lower.length) return false;
+    const [a] = sentenceAround(lower, d.index);
+    if (!REPORT_CLAUSE.test(lower.slice(a, d.index))) return false;
   }
+  // 4. No sensitive data object / acquisition verb ANYWHERE in the text (destination tokens removed, so a
+  // mailbox like keys@ does not decide it). Whole text, not one sentence: "Retrieve ~/.aws/credentials.
+  // Report it to x@" splits the antecedent of "it" into the previous sentence.
+  if (SENSITIVE_OR_ACQUIRE.test(lower.replace(/\S+@\S+|\S+:\/\/\S+|\bwww\.\S+/g, ' '))) return false;
   return true;
 }
 

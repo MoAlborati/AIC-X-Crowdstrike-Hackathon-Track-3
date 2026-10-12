@@ -265,7 +265,16 @@ export function createDetector(opts = {}) {
       // Quoted/reported mention (security-awareness memo): every lexicon phrase is in quotes in a reporting
       // context and every named destination is a "report ... to" mailbox. Not an instruction to the agent.
       // Untrusted content only; never with a staged secret/honeytoken (see phrasesOnlyQuotedReported).
-      if (phrases.length && !u.principal && !staged && phrasesOnlyQuotedReported(u.text, phrases, named)) phrases = [];
+      // Never silent: the exemption downgrades the block to an ALERT that keeps the evidence.
+      if (phrases.length && !u.principal && !staged && phrasesOnlyQuotedReported(u.text, phrases, named)) {
+        push(ctx, {
+          ruleId: 'taint.instruction_in_untrusted_content', action: 'alert', mode: policy.mode, direction: 'request',
+          evidence: `pre-forward scan of ${u.label} (${u.text.length} chars, full scan); quoted/reported injection marker(s), not an instruction: ${phrases.slice(0, 5).map((p) => `"${p}"`).join(', ')}` +
+            (named.length ? `; report-to destination(s): ${named.slice(0, 5).map((d) => d.destination).join(', ')}` : ''),
+          originatedIn: u.label, reason: 'quoted_mention', reasonCodes: ['injection_markers', 'quoted_mention'],
+        });
+        continue;
+      }
       if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) {
         // Review S4: untrusted content that tells the agent to SEND something to a destination the
         // principal never named (exfil verb right before the destination) is at least REPORTED, even
