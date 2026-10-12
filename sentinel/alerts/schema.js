@@ -40,7 +40,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { getMapping, severityName, MAPPING_VERSION, ATLAS_DATA_VERSION } from './mapping.js';
-import { redactDeep, sha256Short } from './redact.js';
+import { redactDeep, sha256Short, MAX_CANARIES, MAX_CANARY_VALUE_CHARS, MIN_CANARY_VALUE_CHARS } from './redact.js';
 
 export const SCHEMA_VERSION = 'sentinel.alert/1.0.0';
 
@@ -177,8 +177,63 @@ function validate(verdict) {
   if (v.layers !== undefined && !Array.isArray(v.layers)) issues.push('layers must be an array');
   if (v.canary !== undefined && (!isNonEmptyString(v.canary?.id) || !isNonEmptyString(v.canary?.value))) {
     issues.push('canary must be {id, value} with non-empty strings');
+  } else if (v.canary !== undefined) {
+    checkCanary(v.canary, 'canary', issues);
+  }
+  if (v.canaries !== undefined) {
+    if (!Array.isArray(v.canaries)) issues.push('canaries must be an array');
+    else {
+      const total = v.canaries.length + (v.canary ? 1 : 0);
+      if (total > MAX_CANARIES) issues.push(`canaries: ${total} known canaries > MAX_CANARIES=${MAX_CANARIES}`);
+      else
+        v.canaries.forEach((c, i) => {
+          if (!isNonEmptyString(c?.id) || !isNonEmptyString(c?.value)) issues.push(`canaries[${i}] must be {id, value} with non-empty strings`);
+          else checkCanary(c, `canaries[${i}]`, issues);
+        });
+    }
+  }
+  // Type checks on optional fields (review S2): every field the builder emits must be a string (or the
+  // documented number) so the redaction + bounding steps — which only touch strings — cannot be bypassed
+  // by passing an object/array/number where a string is expected.
+  optString(v.evidence, 'evidence', issues);
+  optString(v.alertId, 'alertId', issues);
+  if (e && typeof e === 'object') {
+    optString(e.agent?.id, 'entities.agent.id', issues);
+    const port = e.agent?.port;
+    if (port !== undefined && port !== null && !(Number.isInteger(port) && port >= 0 && port <= 65535)) {
+      issues.push('entities.agent.port must be an integer in [0,65535]');
+    }
+    for (const [obj, keys] of [['toolCall', ['id', 'name', 'argsPreview']], ['sink', ['type', 'destination']]]) {
+      const x = e[obj];
+      if (x === undefined || x === null) continue;
+      if (typeof x !== 'object' || Array.isArray(x)) issues.push(`entities.${obj} must be an object`);
+      else for (const k of keys) optString(x[k], `entities.${obj}.${k}`, issues);
+    }
+  }
+  if (Array.isArray(v.taintPath)) {
+    v.taintPath.forEach((h, i) => {
+      optString(h?.toolCallId, `taintPath[${i}].toolCallId`, issues);
+      optString(h?.trust, `taintPath[${i}].trust`, issues);
+    });
+  }
+  if (v.caseCard !== undefined && v.caseCard !== null) {
+    if (typeof v.caseCard !== 'object' || Array.isArray(v.caseCard)) issues.push('caseCard must be an object');
+    else for (const k of ['originatedIn', 'influencedToolCall', 'decidedByRule', 'narrative']) optString(v.caseCard[k], `caseCard.${k}`, issues);
   }
   return issues;
+}
+
+function optString(x, field, issues) {
+  if (x !== undefined && x !== null && typeof x !== 'string') issues.push(`${field} must be a string (got ${Array.isArray(x) ? 'array' : typeof x})`);
+}
+
+/** Canary id is embedded in `[REDACTED:canary:<id>:…]` markers, so it is capped + must not contain
+ *  whitespace or brackets (which would break marker parsing). Value length is capped (scan cost) and has a floor (a 1-2 char canary matches everywhere). */
+function checkCanary(c, field, issues) {
+  if (c.id.length > BOUNDS.MAX_LABEL_CHARS) issues.push(`${field}.id length ${c.id.length} > MAX_LABEL_CHARS=${BOUNDS.MAX_LABEL_CHARS}`);
+  else if (/[\s\[\]]/.test(c.id)) issues.push(`${field}.id must not contain whitespace or [ ]`);
+  if (c.value.length > MAX_CANARY_VALUE_CHARS) issues.push(`${field}.value length ${c.value.length} > MAX_CANARY_VALUE_CHARS=${MAX_CANARY_VALUE_CHARS}`);
+  else if (c.value.length < MIN_CANARY_VALUE_CHARS) issues.push(`${field}.value length ${c.value.length} < MIN_CANARY_VALUE_CHARS=${MIN_CANARY_VALUE_CHARS}`);
 }
 
 /** Bound an array: keep head + tail around an explicit marker element. Never drops silently. */
@@ -193,7 +248,10 @@ function boundList(list, cap, makeMarker) {
 
 /** Bound a string with an explicit marker. Returns the bounded string (or the original). */
 function boundString(str, cap, field, truncations, warn) {
-  if (typeof str !== 'string' || str.length <= cap) return str;
+  if (str === null || str === undefined) return str;
+  // Invariant (validate() guarantees it): never let a non-string through the bounding step unbounded.
+  if (typeof str !== 'string') throw new TypeError(`internal: field ${field} is ${typeof str}, expected string`);
+  if (str.length <= cap) return str;
   const marker = `${TRUNCATION_MARKER_PREFIX} field=${field} kept=${cap} of ${str.length} chars sha256=${sha256Short(str)}]`;
   const kept = Math.max(0, cap - marker.length);
   const out = str.slice(0, kept) + marker;
@@ -335,6 +393,8 @@ export function buildAlert(verdict, opts = {}) {
       DetectionLayers: layers.list,
     },
     Evidence: verdict.evidence ?? null,
+    // Id only here so it is redacted + bounded like every other string; ValueSha256 added after.
+    Canary: verdict.canary ? { Id: verdict.canary.id } : null,
   };
 
   // 4) redact every string BEFORE truncation (canary values + generic secret patterns)
@@ -362,7 +422,7 @@ export function buildAlert(verdict, opts = {}) {
     warn(`sentinel alert Redactions.Samples truncated: ${samples.length} > cap ${BOUNDS.MAX_REDACTION_KINDS}`, rec);
   }
   if (red.withheldCount) {
-    warn(`sentinel alert: ${red.withheldCount} oversize string field(s) withheld unscanned (redaction scan cap)`, {
+    warn(`sentinel alert: ${red.withheldCount} oversize string field(s) withheld unscanned (redaction scan cap / per-alert scan budget)`, {
       withheld: red.withheldCount,
     });
   }
@@ -402,7 +462,9 @@ export function buildAlert(verdict, opts = {}) {
     l.Rule = b(l.Rule, L, `CaseCard.DetectionLayers[${i}].Rule`);
   });
 
-  alert.Canary = verdict.canary ? { Id: verdict.canary.id, ValueSha256: sha256Short(verdict.canary.value) } : null;
+  if (alert.Canary) {
+    alert.Canary = { Id: b(alert.Canary.Id, L, 'Canary.Id'), ValueSha256: sha256Short(verdict.canary.value) };
+  }
   alert.Redactions = { Count: red.findings.length, ByKind: byKind, Samples: boundedSamples.list };
   alert.Truncations = truncations;
   alert.MappingVersion = MAPPING_VERSION;
