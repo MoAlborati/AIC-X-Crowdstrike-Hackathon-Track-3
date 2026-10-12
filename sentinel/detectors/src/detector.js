@@ -26,6 +26,7 @@ import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
   findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
+import { findStructuralMarkers, extractBareHosts } from './structural.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
 let warmedUp = false;
@@ -201,7 +202,7 @@ export function createDetector(opts = {}) {
       ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
-      u.phrases = findInjectionPhrases(u.text);
+      u.phrases = [...findInjectionPhrases(u.text), ...findStructuralMarkers(u.text, { untrusted: !u.principal })];
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
     const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
@@ -233,6 +234,7 @@ export function createDetector(opts = {}) {
         ...extractUrls(u.text).map((x) => ({ type: 'http', destination: x.host })),
         ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email })),
         ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban })),
+        ...bareHostDestinations(u.text, principalText),
       ];
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
@@ -725,6 +727,16 @@ function sinkEntity(call, isSink) {
   if (d) return { type: d.type, destination: d.url ?? d.destination };
   const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : isSink ? 'tool' : 'tool';
   return { type: t, destination: `${call.name} (no network destination)` };
+}
+
+/** Scheme-less `www.` hosts as http destinations; one the principal itself named counts as confirmed. Over the
+ * host cap the overflow becomes an unconfirmable destination (fail-loud: never a silent drop). */
+function bareHostDestinations(text, principalText) {
+  const { hosts, overflow } = extractBareHosts(text);
+  const p = principalText.toLowerCase();
+  const out = hosts.filter((h) => !p.includes(h)).map((h) => ({ type: 'http', destination: h }));
+  if (overflow) out.push({ type: 'http', destination: 'bare-host-cap-exceeded.invalid' });
+  return out;
 }
 
 const EXFIL_VERBS = ['send', 'post ', 'upload', 'forward', 'submit', 'email', 'e-mail', 'transmit', 'exfiltrate', 'report ', 'sync ', 'share ', 'export', 'curl ', 'wget '];
