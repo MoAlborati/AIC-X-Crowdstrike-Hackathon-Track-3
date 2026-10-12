@@ -22,10 +22,14 @@ const URL_STOP = new Set([32, 9, 10, 13, 34, 39, 60, 62, 96, 41, 93, 125, 0]); /
 export function extractUrls(text) {
   const out = [];
   if (typeof text !== 'string' || text.length === 0) return out;
+  // Schemes are case-insensitive (RFC 3986 §3.1): `HTTP://` / `Https://` must not skip the destination checks
+  // (t3-url-case, #105). ASCII-only fold keeps the same length, so indices stay valid in the original text,
+  // and the URL itself is sliced from the original. hostOf() already lower-cases the host.
+  const lower = text.replace(/[A-Z]/g, (c) => c.toLowerCase());
   for (const scheme of ['http://', 'https://']) {
     let from = 0;
     for (;;) {
-      const i = text.indexOf(scheme, from);
+      const i = lower.indexOf(scheme, from);
       if (i === -1) break;
       let j = i + scheme.length;
       const limit = Math.min(text.length, i + MAX_URL_CHARS);
