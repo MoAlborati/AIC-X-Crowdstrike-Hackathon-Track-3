@@ -113,7 +113,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
     const eg = list.captures.find((c) => c.id === `live/${EGRESS_SESSION}`);
     assert.ok(eg, 'egress incident listed next to the chat-proxy sessions');
     assert.ok(!eg.error && eg.placeholder === false, JSON.stringify(eg));
-    assert.equal(list.captures.length, SESSIONS + 1);
+    assert.equal(list.captures.length, SESSIONS + 1, list.captures.map((c) => c.id).join(', '));
     const r = await fetch(`${base}/api/replay?id=${encodeURIComponent(`live/${EGRESS_SESSION}`)}&run=run`);
     assert.equal(r.status, 200);
     const rp = await r.json();
