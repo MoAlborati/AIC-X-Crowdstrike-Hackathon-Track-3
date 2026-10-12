@@ -1,0 +1,9 @@
+{
+  "dvaa_container": "dvaa-t1-dvaa-1",
+  "dvaa_image": "dvaa-t1-dvaa",
+  "sentinel_ref": "origin/t2-proxy-skeleton",
+  "sentinel_sha": "e4af5d77f0d1937090113f2f80771929827820f9",
+  "inspector": "standin-substring",
+  "proxy_port_in_dvaa_netns": 7099,
+  "captured_at": "2026-10-12T18:49:32Z"
+}
