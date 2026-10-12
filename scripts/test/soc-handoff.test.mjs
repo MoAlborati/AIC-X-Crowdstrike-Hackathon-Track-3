@@ -47,7 +47,12 @@ test('brief is written offline with the expected verdict and all three alert kin
     }
     assert.match(brief, /IndirectPromptInjection[\s\S]*Prevented · proxy blocked the request/);
     assert.match(brief, /Prevented · egress inspector denied the call/);
-    assert.match(brief, /Detected · post-execution \(alert-only\)[\s\S]*Handoff note:\*\* this alert is report-only/);
+    // The post-execution (report-only) card carries SOC Brief's own report-only wording; no handoff workaround.
+    const post = sections.find((s) => s.includes('Detected · post-execution (alert-only)'));
+    assert.ok(post, 'post-execution section present');
+    assert.match(post, /SOC Brief rule `sentinel-agent-report-only`/);
+    assert.match(post, /treat the data as sent/i);
+    assert.doesNotMatch(post, /stopped the send|Leave the block in place|Handoff note/);
     assert.match(brief, /AML\.T0086/);
     assert.match(brief, /LLM01 Prompt Injection/);
   } finally {
