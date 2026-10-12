@@ -61,7 +61,9 @@ const RULES = [
       card.sentinel?.severityName ? `SentinelProxy rated it ${card.sentinel.severityName}.` : '',
       card.sentinel?.sink ? `Data was headed toward ${card.sentinel.sink}.` : '',
       card.sentinel?.owasp?.length ? `Maps to ${card.sentinel.owasp.slice(0, 3).join(', ')}.` : '',
-      'A planted canary value showed up in the outbound request, so the leak is confirmed, not guessed.',
+      card.sentinel?.canary
+        ? `A planted canary (${card.sentinel.canary}) showed up in the outbound request, so the leak is confirmed, not guessed.`
+        : 'A planted canary value showed up in the outbound request, so the leak is confirmed, not guessed.',
     ],
     whatToDo: (card) => {
       if (card.sentinel?.blocked) return 'Leave the block in place, pull the agent session log, and remove or quarantine the untrusted document that carried the instruction. Rotate any secret the agent could read in that session.';
