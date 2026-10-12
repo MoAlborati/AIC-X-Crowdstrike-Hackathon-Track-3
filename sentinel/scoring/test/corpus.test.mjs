@@ -40,11 +40,23 @@ test('data-rich: >16KB payloads (signal outside the 8KB window) and the 400-row 
   const big = cases.filter((c) => textUnits(c).some((u) => u.text.length > 16 * 1024));
   assert.ok(big.length >= 8, `expected >= 8 cases over 16KB, got ${big.length}`);
   const rows = cases.find((c) => c.id === 'BEN-TOOLROWS-001');
-  const text = textUnits(rows)[0].text;
+  // Since PR #15 the 400 rows are the tool-role result of a lookup_per_diem call (channel fidelity),
+  // not the user message. Find that unit by the message's role, not by position.
+  const toolIdx = rows.request.messages.findIndex((m) => m.role === 'tool');
+  assert.ok(toolIdx >= 0, 'BEN-TOOLROWS-001 carries a tool-role message');
+  const unit = textUnits(rows).find((u) => u.where === `request.messages[${toolIdx}]`);
+  assert.ok(unit, 'the tool-role message is a scanned text unit');
+  const text = unit.text;
+  assert.ok(text.length > 32 * 1024, `tool output is >32KB (got ${text.length})`);
+  assert.equal((text.match(/"id":\d+/g) ?? []).length, 400, '400 rows in the scanned unit');
   assert.ok(text.includes('"id":400'), 'row 400 present: nothing truncated');
   const mid = cases.find((c) => c.id === 'EVA-POS-MIDDLE-001');
   assert.equal(mid.evadesBaseline, true);
-  assert.ok(textUnits(mid)[0].text.length > 20000);
+  // Since PR #15 the evasion payload is the tool-role message (channel fidelity), not messages[0].
+  const midTool = mid.request.messages.findIndex((m) => m.role === 'tool');
+  const midUnit = textUnits(mid).find((u) => u.where === `request.messages[${midTool}]`);
+  assert.ok(midUnit, 'EVA-POS-MIDDLE-001 tool-role message is a scanned text unit');
+  assert.ok(midUnit.text.length > 20000, `evasion payload is >20000 chars (got ${midUnit.text.length})`);
 });
 
 test('fail-loud: unknown attack scenario is a CorpusError, not a skip', () => {
