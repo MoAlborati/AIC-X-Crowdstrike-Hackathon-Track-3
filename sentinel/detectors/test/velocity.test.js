@@ -7,7 +7,7 @@ import { response, toolCall, quietLogger } from './helpers.js';
 const user = (c) => ({ messages: [{ role: 'user', content: c }] });
 
 test('structuring: N calls each just under the single-call byte cap -> HOLD on the Nth', () => {
-  const det = createDetector({ policy: { allowlist: { hosts: ['api.example.test'] }, tools: { http_post: { maxArgBytes: 1000, structuringThreshold: 3 } } }, logger: quietLogger() });
+  const det = createDetector({ toolExecution: 'client', policy: { allowlist: { hosts: ['api.example.test'] }, tools: { http_post: { maxArgBytes: 1000, structuringThreshold: 3 } } }, logger: quietLogger() });
   const call = (i) => response([toolCall(`c${i}`, 'http_post', { url: 'https://api.example.test/x', body: 'a'.repeat(900) })]);
   assert.equal(det.inspect({ sessionId: 'st', request: user('sync'), response: call(1) }).action, 'allow');
   assert.equal(det.inspect({ sessionId: 'st', request: user('sync'), response: call(2) }).action, 'allow');
@@ -37,7 +37,7 @@ test('count, bytes and summed-amount velocity caps', () => {
 
 test('ledger is bounded: too many distinct tools in one session -> LedgerFullError -> fail closed + ERROR log', () => {
   const logger = quietLogger();
-  const det = createDetector({ bounds: { maxLedgerKeysPerSession: 5 }, logger });
+  const det = createDetector({ toolExecution: 'client', bounds: { maxLedgerKeysPerSession: 5 }, logger });
   const calls = Array.from({ length: 6 }, (_, i) => toolCall(`c${i}`, `lookup_${i}`, {}));
   const d = det.inspect({ sessionId: 'big', request: user('look things up'), response: response(calls) });
   assert.equal(d.failClosed, true);
@@ -49,7 +49,7 @@ test('ledger is bounded: too many distinct tools in one session -> LedgerFullErr
 test('session store is bounded: full of live sessions -> fail closed; idle sessions past TTL are evicted', () => {
   let t = 0;
   const logger = quietLogger();
-  const det = createDetector({ bounds: { maxSessions: 3, sessionTtlMs: 1000 }, now: () => t, logger });
+  const det = createDetector({ toolExecution: 'client', bounds: { maxSessions: 3, sessionTtlMs: 1000 }, now: () => t, logger });
   for (const s of ['a', 'b', 'c']) assert.equal(det.inspect({ sessionId: s, request: user('hi'), response: response([]) }).failClosed, false);
   const full = det.inspect({ sessionId: 'd', request: user('hi'), response: response([]) });
   assert.equal(full.failClosed, true);

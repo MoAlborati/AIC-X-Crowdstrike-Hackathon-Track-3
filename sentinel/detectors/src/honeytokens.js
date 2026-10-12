@@ -25,6 +25,14 @@ const KEY = MIN_TOKEN_CHARS;
 // would hold 50,000 entries and adversarial text repeating "sk-proj-" would cost O(n x 50,000). The
 // 16-char second level keeps per-position work O(1) for random tokens (timing test proves it).
 const KEY2 = 16;
+const BASE = 257;
+let POW = 1; // BASE^(KEY-1) mod 2^32
+for (let k = 1; k < KEY; k++) POW = Math.imul(POW, BASE) >>> 0;
+function hashKey(str) {
+  let h = 0;
+  for (let k = 0; k < KEY; k++) h = (Math.imul(h, BASE) + str.charCodeAt(k)) >>> 0;
+  return h;
+}
 
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const rand62 = (n) => Array.from(randomBytes(n), (b) => BASE62[b % 62]).join('');
@@ -61,7 +69,10 @@ export class HoneytokenRegistry {
     this.ttlMs = canaryTtlMs;
     this.now = now;
     this.entries = new Map(); // value -> entry
-    this.index = new Map(); // first KEY chars -> [entry]
+    this.ids = new Map(); // id -> entry (targeted lookup for toAlertVerdict)
+    this.index = new Map(); // first KEY chars -> {key, short, long}
+    this.hashIndex = new Map(); // hashKey(first KEY chars) -> [bucket] (collision list)
+    this.filter = new Uint16Array(65536); // counting prefilter over the hash: skips the Map lookup for ~all positions
     this.minted = 0;
     this.seq = 0;
   }
@@ -137,29 +148,44 @@ export class HoneytokenRegistry {
    * the next 8 chars. Expired canaries still match until swept (a late leak is still a leak).
    * Returns [{entry, index}].
    */
-  scan(text) {
+  scan(text, { all = false } = {}) {
     const hits = [];
     if (typeof text !== 'string' || text.length < KEY || this.index.size === 0) return hits;
     const seen = new Set();
-    const last = text.length - KEY;
     const check = (list, i) => {
       for (const e of list) {
-        if (!seen.has(e.value) && text.startsWith(e.value, i)) {
+        if ((all || !seen.has(e.value)) && text.startsWith(e.value, i)) {
           seen.add(e.value);
           hits.push({ entry: e, index: i });
         }
       }
     };
-    for (let i = 0; i <= last; i++) {
-      const bucket = this.index.get(text.substr(i, KEY));
-      if (!bucket) continue;
-      if (bucket.short.length) check(bucket.short, i);
-      if (bucket.long.size && i + KEY2 <= text.length) {
-        const list = bucket.long.get(text.substr(i, KEY2));
-        if (list) check(list, i);
+    // Allocation-free rolling hash of the 8-char window (no substring per position). A hash hit is then
+    // verified exactly, so collisions cost a lookup, never a false match.
+    let h = 0;
+    for (let k = 0; k < KEY; k++) h = (Math.imul(h, BASE) + text.charCodeAt(k)) >>> 0;
+    const last = text.length - KEY;
+    for (let i = 0; ; i++) {
+      const bucket = this.filter[(h ^ (h >>> 16)) & 0xffff] === 0 ? undefined : this.hashIndex.get(h);
+      if (bucket !== undefined) {
+        for (const b of bucket) {
+          if (!text.startsWith(b.key, i)) continue;
+          if (b.short.length) check(b.short, i);
+          if (b.long.size && i + KEY2 <= text.length) {
+            const list = b.long.get(text.substr(i, KEY2));
+            if (list) check(list, i);
+          }
+        }
       }
+      if (i === last) break;
+      h = (Math.imul((h - Math.imul(text.charCodeAt(i), POW)) >>> 0, BASE) + text.charCodeAt(i + KEY)) >>> 0;
     }
     return hits;
+  }
+
+  /** Targeted lookup by id (O(1); never a scan). */
+  byId(id) {
+    return this.ids.get(id) ?? null;
   }
 
   /** All values (for T4's `canaries` redaction list). */
@@ -182,8 +208,16 @@ export class HoneytokenRegistry {
     if (this.entries.has(e.value)) return this.entries.get(e.value);
     e.sha256 = createHash('sha256').update(e.value).digest('hex').slice(0, 16);
     this.entries.set(e.value, e);
+    this.ids.set(e.id, e);
     const k = e.value.slice(0, KEY);
-    if (!this.index.has(k)) this.index.set(k, { short: [], long: new Map() });
+    if (!this.index.has(k)) {
+      const nb = { key: k, short: [], long: new Map() };
+      this.index.set(k, nb);
+      const hk = hashKey(k);
+      if (!this.hashIndex.has(hk)) this.hashIndex.set(hk, []);
+      this.hashIndex.get(hk).push(nb);
+      this.filter[(hk ^ (hk >>> 16)) & 0xffff]++;
+    }
     const b = this.index.get(k);
     if (e.value.length < KEY2) b.short.push(e);
     else {
@@ -197,6 +231,7 @@ export class HoneytokenRegistry {
 
   #remove(v, e) {
     this.entries.delete(v);
+    this.ids.delete(e.id);
     const k = v.slice(0, KEY);
     const b = this.index.get(k);
     if (b) {
@@ -204,7 +239,19 @@ export class HoneytokenRegistry {
       const i = list ? list.indexOf(e) : -1;
       if (i !== -1) list.splice(i, 1);
       if (list && list.length === 0 && v.length >= KEY2) b.long.delete(v.slice(0, KEY2));
-      if (b.short.length === 0 && b.long.size === 0) this.index.delete(k);
+      if (b.short.length === 0 && b.long.size === 0) {
+        this.index.delete(k);
+        const hk = hashKey(k);
+        const hb = this.hashIndex.get(hk);
+        if (hb) {
+          const j = hb.indexOf(b);
+          if (j !== -1) {
+            hb.splice(j, 1);
+            this.filter[(hk ^ (hk >>> 16)) & 0xffff]--;
+          }
+          if (hb.length === 0) this.hashIndex.delete(hk);
+        }
+      }
     }
     if (e.kind !== 'static') this.minted--;
   }

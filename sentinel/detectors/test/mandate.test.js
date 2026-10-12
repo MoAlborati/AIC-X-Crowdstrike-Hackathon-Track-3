@@ -55,17 +55,17 @@ test('content can never widen the grant: tool output claiming user authorization
 
 test('amount: within mandate allowed, above mandate denied, none stated -> 0 (narrower)', () => {
   const pol = { allowlist: { hosts: ['pay.utility.test'] } };
-  const within = createDetector({ policy: pol, logger: quietLogger() }).inspect({ sessionId: 'a1', request: user('Pay $120 for electricity'), response: response([toolCall('p', 'make_payment', { url: 'https://pay.utility.test', amount: 120 })]) });
+  const within = createDetector({ toolExecution: 'client', policy: pol, logger: quietLogger() }).inspect({ sessionId: 'a1', request: user('Pay $120 for electricity'), response: response([toolCall('p', 'make_payment', { url: 'https://pay.utility.test', amount: 120 })]) });
   assert.equal(within.action, 'allow', JSON.stringify(dims(within)));
-  const above = createDetector({ policy: pol, logger: quietLogger() }).inspect({ sessionId: 'a2', request: user('Pay $120 for electricity'), response: response([toolCall('p', 'make_payment', { url: 'https://pay.utility.test', amount: 121 })]) });
+  const above = createDetector({ toolExecution: 'client', policy: pol, logger: quietLogger() }).inspect({ sessionId: 'a2', request: user('Pay $120 for electricity'), response: response([toolCall('p', 'make_payment', { url: 'https://pay.utility.test', amount: 121 })]) });
   assert.deepEqual(dims(above), ['amount:attempted_escalation']);
-  const none = createDetector({ policy: pol, logger: quietLogger() }).inspect({ sessionId: 'a3', request: user('Pay the electricity bill'), response: response([toolCall('p', 'make_payment', { url: 'https://pay.utility.test', amount: 10 })]) });
+  const none = createDetector({ toolExecution: 'client', policy: pol, logger: quietLogger() }).inspect({ sessionId: 'a3', request: user('Pay the electricity bill'), response: response([toolCall('p', 'make_payment', { url: 'https://pay.utility.test', amount: 10 })]) });
   assert.deepEqual(dims(none), ['amount:attempted_escalation']);
 });
 
 test('tool: an operator template narrows the grant; out-of-grant call -> attempted_escalation', () => {
   const policy = { mandate: { templates: [{ name: 'flight-search', match: 'flight', tools: ['search_flights', 'web_fetch'] }] } };
-  const det = createDetector({ policy, logger: quietLogger() });
+  const det = createDetector({ toolExecution: 'client', policy, logger: quietLogger() });
   const d = det.inspect({ sessionId: 't', request: user('Find me a flight to JFK'), response: response([toolCall('s', 'search_flights', { q: 'JFK' }), toolCall('x', 'read_file', { path: '/home/u/wallet.json' })]) });
   assert.equal(d.grant.template, 'flight-search');
   assert.deepEqual(dims(d), ['tool:attempted_escalation']);
@@ -75,7 +75,7 @@ test('tool: an operator template narrows the grant; out-of-grant call -> attempt
 
 test('expiry: sink calls after the mandate TTL are denied', () => {
   let t = 1_000_000;
-  const det = createDetector({ policy: { mandate: { ttlMs: 1000 }, allowlist: { hosts: ['api.example.test'] } }, now: () => t, logger: quietLogger() });
+  const det = createDetector({ toolExecution: 'client', policy: { mandate: { ttlMs: 1000 }, allowlist: { hosts: ['api.example.test'] } }, now: () => t, logger: quietLogger() });
   const req = user('sync to https://api.example.test');
   const call = response([toolCall('p', 'http_post', { url: 'https://api.example.test/sync' })]);
   assert.equal(det.inspect({ sessionId: 'e', request: req, response: call }).action, 'allow');
@@ -86,7 +86,7 @@ test('expiry: sink calls after the mandate TTL are denied', () => {
 
 test('static_limit: banned tool, path jail, single-call byte cap', () => {
   const policy = { tools: { delete_repo: { banned: true }, read_file: { pathJail: ['/srv/app/'] }, http_post: { maxArgBytes: 1000 } }, allowlist: { hosts: ['api.example.test'] } };
-  const d = createDetector({ policy, logger: quietLogger() }).inspect({
+  const d = createDetector({ toolExecution: 'client', policy, logger: quietLogger() }).inspect({
     sessionId: 's',
     request: user('tidy up'),
     response: response([
@@ -112,7 +112,7 @@ test('report-only mode (T2 "observe"): would-block verdicts are logged as report
 });
 
 test('lookalike destinations are called out in evidence (Levenshtein <= 2 / confusables)', () => {
-  const d = createDetector({ policy: { allowlist: { hosts: ['github.com'] } }, logger: quietLogger() }).inspect({ sessionId: 'l', request: user('push the release notes'), response: response([toolCall('p', 'http_post', { url: 'https://g1thub.com/upload' })]) });
+  const d = createDetector({ toolExecution: 'client', policy: { allowlist: { hosts: ['github.com'] } }, logger: quietLogger() }).inspect({ sessionId: 'l', request: user('push the release notes'), response: response([toolCall('p', 'http_post', { url: 'https://g1thub.com/upload' })]) });
   assert.match(d.findings[0].evidence, /g1thub\.com is a lookalike of trusted destination github\.com/);
 });
 
@@ -134,7 +134,7 @@ test('grant is HMAC-signed per session; tampering is detected; narrowGrant only 
 
 test('grant entry cap: a principal turn naming > maxGrantEntries destinations fails closed (no partial grant)', () => {
   const logger = quietLogger();
-  const det = createDetector({ bounds: { maxGrantEntries: 50 }, logger });
+  const det = createDetector({ toolExecution: 'client', bounds: { maxGrantEntries: 50 }, logger });
   const many = Array.from({ length: 300 }, (_, i) => `https://host${i}.example.test/`).join(' ');
   const d = det.inspect({ sessionId: 'g', request: user(`notify ${many}`), response: response([]) });
   assert.equal(d.failClosed, true);

@@ -71,10 +71,16 @@ export const quietLogger = () => {
   return { errors, error: (o) => errors.push(o), warn: () => {} };
 };
 
+/** Synthetic tool-calling turns: the CLIENT executes returned tool_calls, so blocking prevents them. */
 export function dvaaDetector(extra = {}) {
   const logger = quietLogger();
-  const det = createDetector({ honeytokens: DVAA_HONEYTOKENS, logger, ...extra });
+  const det = createDetector({ honeytokens: DVAA_HONEYTOKENS, logger, toolExecution: 'client', ...extra });
   return { det, logger };
+}
+
+/** Real DVAA captures: DVAA runs tools IN-PROCESS, so response-side tool findings are post-execution alerts. */
+export function dvaaInProcess(extra = {}) {
+  return dvaaDetector({ toolExecution: 'in_process', ...extra });
 }
 
 export const toolCall = (id, name, args) => ({ id, type: 'function', function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) } });

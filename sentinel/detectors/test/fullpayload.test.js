@@ -40,7 +40,8 @@ test('injection instruction hidden mid-document (outside head/tail 8 KiB) in a 5
   assert.equal(d.action, 'block');
   const inj = d.findings.find((f) => f.ruleId === 'inbound.exfil_instruction');
   assert.ok(inj);
-  assert.match(inj.evidence, /ignore previous instructions.*names destination\(s\) collector\.evil\.test/);
+  assert.match(inj.evidence, /ignore previous instructions.*never named: collector\.evil\.test/);
+  assert.equal(inj.direction, 'request');
   const payee = d.findings.find((f) => f.reason === 'payee_not_confirmed');
   assert.ok(payee);
   assert.match(payee.evidence, /collector\.evil\.test appears only in web_fetch result/);

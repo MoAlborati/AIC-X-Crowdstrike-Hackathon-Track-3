@@ -122,14 +122,36 @@ export function extractMarkdownLinks(text) {
 }
 
 /**
- * Linear tokenizer: maximal runs of [A-Za-z0-9+/=_.~-]. Regex `/[...]+/g` matches a maximal run and
- * resumes after it, so it never backtracks across the input. Yields {token, index}.
+ * Linear tokenizer: maximal runs of [A-Za-z0-9+/=_.~-], one charCode pass (no regex, no backtracking).
+ * Returns an array of {token, index} for runs >= MIN_TOKEN_EMIT chars. A one-entry memo lets decodedVariants() and findSecretShapes()
+ * share the same tokenization of the same string (they run back to back on every variant).
  */
-const TOKEN_RE = /[A-Za-z0-9+/=_.~-]+/g;
-export function* tokens(text) {
-  TOKEN_RE.lastIndex = 0;
-  let m;
-  while ((m = TOKEN_RE.exec(text)) !== null) yield { token: m[0], index: m.index };
+const TOKEN_CHAR = new Uint8Array(128);
+for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_.~-') TOKEN_CHAR[ch.charCodeAt(0)] = 1;
+let memoText = null;
+let memoTokens = null;
+export const MIN_TOKEN_EMIT = 8; // no caller uses a shorter token (secret tests >= 8, decoding >= 12)
+export function tokens(text) {
+  if (text === memoText) return memoTokens;
+  const out = [];
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    let c = text.charCodeAt(i);
+    if (c >= 128 || TOKEN_CHAR[c] === 0) {
+      i++;
+      continue;
+    }
+    const start = i;
+    do {
+      i++;
+      c = i < n ? text.charCodeAt(i) : 0;
+    } while (i < n && c < 128 && TOKEN_CHAR[c] === 1);
+    if (i - start >= MIN_TOKEN_EMIT) out.push({ token: text.slice(start, i), index: start });
+  }
+  memoText = text;
+  memoTokens = out;
+  return out;
 }
 
 /** Shannon entropy in bits/char. Linear in token length. */

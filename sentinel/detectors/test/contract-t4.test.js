@@ -28,7 +28,7 @@ test('every finding from live + T1 captures + fail-closed paths renders through 
     const det = createDetector({ honeytokens: DVAA_HONEYTOKENS, logger: quietLogger(), agent: inp.agent });
     const d = det.inspect({ sessionId: inp.id, request: inp.request, response: inp.response });
     for (const f of d.findings) {
-      const alert = buildAlert(f, { onWarning: () => {} });
+      const alert = buildAlert(det.toAlertVerdict(f), { onWarning: () => {} });
       const json = JSON.stringify(alert);
       for (const t of DVAA_HONEYTOKENS) assert.ok(!json.includes(t.value), `${inp.id}/${f.ruleId} leaked ${t.id}`);
       assert.equal(alert.RuleId, f.ruleId);

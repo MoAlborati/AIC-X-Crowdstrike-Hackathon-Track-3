@@ -18,7 +18,7 @@
 
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
-import { resolveBounds, SentinelBoundError, DetectorOverflowError, ScannerTimeoutError } from './bounds.js';
+import { resolveBounds, SentinelBoundError, DetectorOverflowError, ScannerTimeoutError, PolicyError } from './bounds.js';
 import { HoneytokenRegistry } from './honeytokens.js';
 import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './policy.js';
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
@@ -28,6 +28,7 @@ import {
 } from './text.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
+let warmedUp = false;
 
 // T4 categories (sentinel/alerts/mapping.js CATEGORY_MAP keys). Findings with no exact T4 category use
 // the closest existing one and carry `proposedCategory` (explained in the PR; schema not forked).
@@ -57,12 +58,34 @@ export function createDetector(opts = {}) {
   const bounds = resolveBounds(opts.bounds);
   const policy = validatePolicy(opts.policy ?? {});
   const now = opts.now ?? Date.now;
+  // Where the agent's tools execute. "in_process" (DVAA: tools run inside the agent before it replies) |
+  // "client" (standard OpenAI tool calling: the client executes the returned tool_calls).
+  const toolExecution = opts.toolExecution ?? 'in_process';
+  if (!['in_process', 'client'].includes(toolExecution)) throw new PolicyError([`toolExecution must be in_process|client`]);
   const logger = opts.logger ?? { error: (o) => console.error(JSON.stringify(o)), warn: (o) => console.warn(JSON.stringify(o)) };
   const registry = opts.registry ?? new HoneytokenRegistry({ maxCanaries: bounds.maxCanaries, canaryTtlMs: bounds.canaryTtlMs, now });
   for (const t of opts.honeytokens ?? []) registry.addStatic(t);
   const store = new SessionStore({ maxSessions: bounds.maxSessions, sessionTtlMs: bounds.sessionTtlMs, maxLedgerKeysPerSession: bounds.maxLedgerKeysPerSession, now });
 
+  // JIT warm-up, once per process: the first inspection in a fresh process runs ~2x slower (cold JIT),
+  // which would spend the fail-closed time budget on the proxy's first real request.
+  let warming = false;
+  if (!warmedUp && opts.warmup !== false) {
+    warmedUp = true;
+    warming = true;
+    const pad = 'warmup row,customer@example.test,4242 4242 4242 4242,QUFBQUFBQUFBQUFB eyJhbGciOi.eyJzdWIi.c2ln\n'.repeat(400);
+    for (let i = 0; i < 3; i++) {
+      inspectRaw({ sessionId: `__warmup_${i}`, request: { messages: [{ role: 'user', content: `warm https://a.test ${pad}` }, { role: 'tool', content: pad }] }, response: { choices: [{ message: { role: 'assistant', content: pad, tool_calls: [{ id: 'w', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'https://a.test/x?q=1', body: pad }) } }] } }] } });
+    }
+    store.sessions.clear();
+    warming = false;
+  }
+
   function inspect(input) {
+    return inspectRaw(input);
+  }
+
+  function inspectRaw(input) {
     const t0 = performance.now();
     const ctx = {
       sessionId: String(input?.sessionId ?? 'unknown-session'),
@@ -72,6 +95,7 @@ export function createDetector(opts = {}) {
       layerMs: { bounds: 0, honeytoken: 0, taint: 0, egress: 0, mandate: 0, velocity: 0 },
       fired: new Set(),
       timestamp: new Date(now()).toISOString(),
+      hasResponse: input?.response != null,
     };
     try {
       return run(input, ctx);
@@ -88,6 +112,7 @@ export function createDetector(opts = {}) {
   }
 
   function checkBudget(ctx, phase) {
+    if (warming) return;
     const el = performance.now() - ctx.t0;
     if (el > bounds.timeBudgetMs) {
       throw new ScannerTimeoutError({ bound: `timeBudgetMs (after ${phase})`, payload_size: Math.round(el), cap: bounds.timeBudgetMs, action: 'block' });
@@ -165,48 +190,83 @@ export function createDetector(opts = {}) {
         }
       }
     });
-    // Inbound screening (full payload, every message): instruction-like phrases in untrusted text, and in
-    // principal turns themselves (benchmarks and DVAA paste retrieved content into the user role). A
-    // principal turn carrying injection phrases is SUSPECT: it cannot widen the mandate (ambiguity ->
-    // narrower), so destinations named only there stay unconfirmed.
+    // ======== REQUEST DIRECTION (pre-forward: the only point that can PREVENT an in-process tool) ========
+    // Inputs: the principal-derived mandate, destination provenance (a destination named only in untrusted
+    // content), canary/secret exfil intent, injection markers. Full scan of every message.
+    //
+    // Pass 1: injection markers per text. A principal turn carrying injection phrases is SUSPECT: it cannot
+    // widen the mandate (ambiguity -> narrower), so destinations named only there stay unconfirmed.
     const inboundTexts = [
       ...untrusted.map((u) => ({ label: u.label, text: u.text, toolCallId: u.toolCallId, principal: false })),
       ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
-      const phrases = findInjectionPhrases(u.text);
-      if (!phrases.length) continue;
-      if (u.principal) u.ref.suspect = true;
-      if (!flags.untrustedInput) path.sources.push({ kind: 'source', label: `${u.label}${u.principal ? ' (instruction-bearing, treated as untrusted)' : ''}`, toolCallId: u.toolCallId, trust: 'untrusted' });
-      flags.untrustedInput = true;
-      const dests = [...extractUrls(u.text).map((x) => x.host), ...extractEmails(u.text).map((x) => x.email)];
-      const tokensHit = registry.scan(u.text).map((h) => h.entry.id);
-      const exfil = dests.length > 0 || tokensHit.length > 0;
-      const action = exfil ? policy.inbound.exfilInstruction : policy.inbound.injection;
-      push(ctx, {
-        ruleId: exfil ? 'inbound.exfil_instruction' : u.principal ? 'inbound.instruction_in_principal_turn' : 'taint.instruction_in_untrusted_content',
-        action,
-        mode: policy.mode,
-        evidence:
-          `instruction-like phrases in ${u.label} (${u.text.length} chars, full scan): ${phrases.slice(0, 5).map((p) => `"${p}"`).join(', ')}` +
-          (dests.length ? `; names destination(s) ${[...new Set(dests)].slice(0, 5).join(', ')}` : '') +
-          (tokensHit.length ? `; carries honeytoken(s) ${tokensHit.slice(0, 5).join(', ')}` : ''),
-        originatedIn: u.label,
-        reason: exfil ? 'exfil_instruction_inbound' : 'instruction_in_untrusted_content',
-      });
+      u.phrases = findInjectionPhrases(u.text);
+      if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
     const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
     const shingles = buildShingleIndex(untrusted, bounds.shingleChars);
     ctx.layerMs.taint += performance.now() - ts;
-    checkBudget(ctx, 'history');
 
-    // ---- mandate grant (principal-only), verified before use ----------------------------------
+    // Mandate grant (principal-only, suspect turns excluded), HMAC-verified before use.
     ts = performance.now();
     session.grant = deriveGrant({ principalText, policy, session, maxGrantEntries: bounds.maxGrantEntries, now: now() });
     if (!verifyGrant(session.grant, session.key)) throw new Error('mandate grant failed HMAC verification');
     const grant = session.grant;
     ctx.layerMs.mandate += performance.now() - ts;
+    checkBudget(ctx, 'history');
 
+    // Pass 2: per untrusted (or suspect) text, decide pre-forward.
+    ts = performance.now();
+    for (const u of inboundTexts) {
+      if (u.principal && !u.ref.suspect) continue; // a clean principal turn is the mandate, not a threat
+      const phrases = u.phrases;
+      const tokensHit = registry.scan(u.text);
+      const secrets = findSecretShapes(u.text, { maxTokenChars: bounds.maxTokenChars }).filter((x) => STRONG_SECRET_KINDS.has(x.kind));
+      const named = [
+        ...extractUrls(u.text).map((x) => ({ type: 'http', destination: x.host })),
+        ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email })),
+      ];
+      const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
+      const staged = tokensHit.length > 0 || secrets.length > 0;
+      if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) continue;
+      if (!flags.untrustedInput) path.sources.push({ kind: 'source', label: `${u.label}${u.principal ? ' (instruction-bearing, treated as untrusted)' : ''}`, toolCallId: u.toolCallId, trust: 'untrusted' });
+      flags.untrustedInput = true;
+      // Block pre-forward when instructions (or a staged secret + exfil verb) point at a destination the
+      // principal never named, or carry planted secrets. Instructions alone only raise risk.
+      const exfil = unconfirmed.length > 0 || staged;
+      const reasonCodes = [
+        ...(phrases.length ? ['injection_markers'] : []),
+        ...(unconfirmed.length ? ['payee_not_confirmed'] : []),
+        ...(tokensHit.length ? ['honeytoken_in_untrusted_content'] : []),
+        ...(secrets.length ? ['secret_in_untrusted_content'] : []),
+      ];
+      const dest = unconfirmed[0];
+      push(ctx, {
+        ruleId: exfil ? 'inbound.exfil_instruction' : u.principal ? 'inbound.instruction_in_principal_turn' : 'taint.instruction_in_untrusted_content',
+        action: exfil ? policy.inbound.exfilInstruction : policy.inbound.injection,
+        mode: policy.mode,
+        direction: 'request',
+        sinkEnt: dest ? { type: dest.type, destination: dest.destination } : undefined,
+        evidence:
+          `pre-forward scan of ${u.label} (${u.text.length} chars, full scan)` +
+          (phrases.length ? `; injection markers: ${phrases.slice(0, 5).map((p) => `"${p}"`).join(', ')}` : '') +
+          (unconfirmed.length ? `; names destination(s) the principal never named: ${unconfirmed.slice(0, 5).map((d) => d.destination).join(', ')}${unconfirmed.length > 5 ? ` (+${unconfirmed.length - 5} more)` : ''}` : '') +
+          (tokensHit.length ? `; carries honeytoken(s) ${[...new Set(tokensHit.map((h) => h.entry.id))].slice(0, 5).join(', ')}` : '') +
+          (secrets.length ? `; carries secret-shaped value(s): ${[...new Set(secrets.map((x) => x.kind))].join(', ')}` : ''),
+        originatedIn: u.label,
+        reason: exfil ? 'exfil_instruction_inbound' : 'instruction_in_untrusted_content',
+        reasonCodes,
+        dimension: unconfirmed.length ? 'destination' : null,
+        canary: tokensHit[0] ? { id: tokensHit[0].entry.id, value: tokensHit[0].entry.value } : undefined,
+      });
+    }
+    ctx.layerMs.taint += performance.now() - ts;
+
+    // ======== RESPONSE DIRECTION ========
+    // With toolExecution "in_process" (DVAA) the tools below ALREADY RAN inside the agent before this
+    // response reached the proxy: findings are alerts + evidence (postExecution), never claimed prevention.
+    // With "client" (standard OpenAI tool calling) the calls are still pending and blocking prevents them.
     // ---- response tool calls, in order --------------------------------------------------------
     const blocked = new Set();
     for (const tc of respCalls) {
@@ -402,7 +462,16 @@ export function createDetector(opts = {}) {
   // ---- finding construction (T4 verdict shape) --------------------------------------------------
   function push(ctx, f) {
     const rule = RULES[f.ruleId];
-    const enforced = f.action !== 'alert';
+    // Direction + honest prevention claim. Request-side findings act before the agent runs. A response-side
+    // finding on a TOOL CALL can only prevent if the client executes tools (toolExecution "client"); with
+    // "in_process" agents (DVAA) the tool already ran -> alert + evidence only (postExecution).
+    // Reply-content findings prevent disclosure to the client either way (the proxy withholds the reply).
+    const direction = f.direction ?? (f.call || f.sinkEnt ? 'response' : 'request');
+    const isContent = f.call?.name === 'assistant_response';
+    const postExecution = direction === 'response' && !isContent && !f.failClosed && toolExecution === 'in_process';
+    const would = f.action !== 'alert';
+    const action = postExecution ? 'alert' : f.action;
+    const enforced = action !== 'alert';
     const disposition = !enforced ? 'allow' : f.mode === 'report-only' ? 'report' : 'block';
     ctx.fired.add(f.ruleId);
     const entities = {
@@ -416,7 +485,9 @@ export function createDetector(opts = {}) {
       `Instruction/data originated in ${f.originatedIn ?? 'an unattributed source'}` +
       (f.call ? ` → influenced ${f.call.name}(${preview(f.call.args)})` : '') +
       (f.sinkEnt ? ` toward ${f.sinkEnt.destination}` : '') +
-      ` → ${disposition === 'block' ? 'blocked' : disposition === 'report' ? 'would be blocked (report-only)' : 'alerted'} by ${f.reason ?? decided}` +
+      (postExecution
+        ? ` → detected AFTER in-process execution (alert + evidence only; the request-side check is the preventive control) by ${f.reason ?? decided}`
+        : ` → ${disposition === 'block' ? (direction === 'request' ? 'blocked before reaching the agent' : 'blocked') : disposition === 'report' ? 'would be blocked (report-only)' : 'alerted'} by ${f.reason ?? decided}`) +
       ` in session ${ctx.sessionId}${f.canarySession && f.canarySession !== ctx.sessionId ? ` (canary belongs to session ${f.canarySession})` : ''}.`;
     const finding = {
       category: rule.category,
@@ -432,9 +503,13 @@ export function createDetector(opts = {}) {
       // T3 extras (ignored by T4's validator; consumed by T5/T7):
       reason: f.reason ?? null,
       dimension: f.dimension ?? null,
-      enforcement: f.action, // block | hold | alert  (hold -> DENY until S5 approval exists)
-      wouldBlock: enforced,
+      enforcement: action, // block | hold | alert  (hold -> DENY until S5 approval exists)
+      wouldBlock: would,
       mode: f.mode,
+      direction, // request (pre-forward) | response (post-agent)
+      prevents: enforced && disposition === 'block' && !postExecution,
+      postExecution,
+      ...(f.reasonCodes ? { reasonCodes: f.reasonCodes } : {}),
       ...(rule.proposedCategory ? { proposedCategory: rule.proposedCategory } : {}),
     };
     ctx.findings.push(finding);
@@ -448,13 +523,18 @@ export function createDetector(opts = {}) {
       fired: [...ctx.fired].some((r) => RULES[r].layer === layer),
       latencyMs: round(ms),
     }));
-    // Every honeytoken that fired in this decision, so T4 redacts it anywhere in any alert (argsPreview,
-    // evidence). Bounded by the number of findings, independent of registry size.
-    const hitCanaries = [...new Map(ctx.findings.filter((f) => f.canary).map((f) => [f.canary.value, f.canary])).values()];
+    // SECRET-FREE VERDICTS (PR #14 review): a decision may reach a client (T2 refusal body) or a log.
+    // Canaries are carried as {id, sha256} only; every string is passed through redactText (honeytoken
+    // values, secret/PII shapes, URL query strings). toAlertVerdict() rehydrates canary values from the
+    // registry for T4's buildAlert, which redacts them again in the rendered alert.
     for (const f of ctx.findings) {
       f.detectionLatencyMs = latency;
       f.layers = layers;
-      if (hitCanaries.length) f.canaries = hitCanaries;
+      if (f.canary) {
+        const e = registry.byId(f.canary.id);
+        f.canary = { id: f.canary.id, sha256: e?.sha256 ?? null };
+      }
+      sanitizeFinding(f, registry, bounds);
     }
     const block = ctx.findings.some((f) => f.disposition === 'block');
     const wouldBlock = ctx.findings.some((f) => f.wouldBlock);
@@ -468,7 +548,8 @@ export function createDetector(opts = {}) {
       wouldAction: wouldBlock ? 'block' : 'allow',
       failClosed,
       ...(error ? { error } : {}),
-      blockedToolCallIds: [...(blocked ?? [])],
+      blockedToolCallIds: [...new Set(ctx.findings.filter((f) => f.disposition === 'block' && f.entities.toolCall && f.entities.toolCall.name !== 'assistant_response').map((f) => f.entities.toolCall.id))],
+      toolExecution,
       findings: ctx.findings,
       taint: flags ?? null,
       grant: grant ? { tools: grant.tools, destinations: grant.destinations, maxAmount: grant.maxAmount, expires: grant.expires, template: grant.template } : null,
@@ -478,8 +559,10 @@ export function createDetector(opts = {}) {
 
   function failClosed(ctx, err) {
     const isBound = err instanceof SentinelBoundError;
-    const details = isBound ? err.toJSON() : { error: err?.name ?? 'Error', bound: null, payload_size: null, cap: null, action: 'block', message: String(err?.message ?? err).slice(0, 500) };
-    logger.error({ level: 'ERROR', event: 'sentinel.detector.fail_closed', sessionId: ctx.sessionId, ...details });
+    // Static codes only: a JSON.parse message quotes the input, so raw error text never enters a verdict/log.
+    const code = err instanceof SyntaxError ? 'malformed_json' : err instanceof TypeError ? 'malformed_input' : 'internal_error';
+    const details = isBound ? err.toJSON() : { error: err?.name === 'SyntaxError' || err?.name === 'TypeError' ? err.name : 'Error', bound: null, payload_size: null, cap: null, action: 'block', code };
+    if (!warming) logger.error({ level: 'ERROR', event: 'sentinel.detector.fail_closed', sessionId: ctx.sessionId, ...details });
     if (!ctx.agent) ctx.agent = { name: 'unknown-agent' };
     const ruleId = err instanceof DetectorOverflowError ? 'bounds.scan_cap_exceeded' : 'failclosed.detector_error';
     ctx.findings = [];
@@ -487,19 +570,37 @@ export function createDetector(opts = {}) {
     push(ctx, {
       ruleId,
       action: 'block',
+      failClosed: true,
+      direction: ctx.hasResponse ? 'response' : 'request',
       mode: 'enforce', // dead-man switch: fail-closed blocks even in report-only mode
       evidence: isBound
         ? `${details.error}: ${details.bound} payload_size=${details.payload_size} cap=${details.cap} action=${details.action} — payload refused in full, never truncated`
-        : `detector error (${details.error}): ${details.message} — egress denied (fail-closed)`,
+        : `detector error (${details.error}: ${details.code}) — egress denied (fail-closed)`,
       originatedIn: 'detector bounds',
       reason: isBound ? details.error : 'detector_error',
     });
     return finish(ctx, { payloadBytes: isBound && details.bound === 'maxPayloadBytes' ? details.payload_size : null, failClosed: true, error: details });
   }
 
+  /**
+   * T4 adapter: a finding from inspect() plus the canary VALUE (looked up by id) that T4's buildAlert needs
+   * to hash and redact. Use only to call buildAlert; never log or return the result.
+   */
+  function toAlertVerdict(finding) {
+    const v = structuredClone(finding);
+    if (v.canary?.id) {
+      const e = registry.byId(v.canary.id);
+      if (!e) throw new Error('toAlertVerdict: canary id not in registry');
+      v.canary = { id: e.id, value: e.value };
+      v.canaries = [v.canary];
+    }
+    return v;
+  }
+
   return {
     inspect,
     inspectOrThrow,
+    toAlertVerdict,
     registry,
     sessions: store,
     policy,
@@ -529,17 +630,87 @@ function parseArgs(raw) {
 }
 
 // Short human label for a call's args. Never serializes the whole args object (it can be ~1 MiB and is
-// rendered once per finding): only the first two keys, each value cut to 60 chars.
+// rendered once per finding): first two keys only; URLs shown as origin+path (query dropped), other
+// strings cut to 40 chars. sanitizeFinding() then redacts secrets in the label.
 function preview(args) {
   if (!args || typeof args !== 'object') return '';
   const parts = [];
   for (const k in args) {
     if (parts.length === 2) break;
     const v = args[k];
-    const sv = typeof v === 'string' ? v : v && typeof v === 'object' ? (Array.isArray(v) ? `[${v.length} items]` : '{…}') : String(v);
-    parts.push(`${k}=${sv.length > 60 ? `${sv.slice(0, 60)}…` : sv}`);
+    let sv = typeof v === 'string' ? v : v && typeof v === 'object' ? (Array.isArray(v) ? `[${v.length} items]` : '{…}') : String(v);
+    if (typeof v === 'string' && /^https?:\/\//.test(v)) sv = stripQuery(v.slice(0, 2048));
+    parts.push(`${k}=${sv.length > 40 ? `${sv.slice(0, 40)}…` : sv}`);
   }
   return parts.join(', ');
+}
+
+function stripQuery(url) {
+  const q = url.search(/[?#]/);
+  return q === -1 ? url : `${url.slice(0, q)}?[REDACTED:query]`;
+}
+
+/**
+ * Remove secret material from every string in a finding (in place). Linear: one registry scan + one
+ * secret-shape scan per string; strings are short except argsPreview, which is rebuilt as a key/length
+ * summary instead of raw arguments.
+ */
+function sanitizeFinding(f, registry, bounds) {
+  const tc = f.entities?.toolCall;
+  if (tc) tc.argsPreview = safeArgsSummary(tc.argsPreview);
+  if (f.entities?.sink?.destination) f.entities.sink.destination = redactText(stripQuery(f.entities.sink.destination), registry, bounds);
+  f.evidence = redactText(f.evidence, registry, bounds);
+  for (const k of ['originatedIn', 'influencedToolCall', 'narrative']) if (f.caseCard?.[k]) f.caseCard[k] = redactText(f.caseCard[k], registry, bounds);
+  for (const h of f.taintPath ?? []) h.label = redactText(h.label, registry, bounds);
+}
+
+/** `{"url":"https://h/p?[REDACTED:query]","body":"<2310 chars>"}` — keys and shapes, never raw values. */
+function safeArgsSummary(raw) {
+  let args;
+  try {
+    args = JSON.parse(raw);
+  } catch {
+    return `<${String(raw ?? '').length} chars, unparsed>`;
+  }
+  if (!args || typeof args !== 'object') return `<${typeof args}>`;
+  const out = {};
+  let n = 0;
+  for (const k in args) {
+    if (n++ === 16) {
+      out['…'] = `${Object.keys(args).length - 16} more keys`;
+      break;
+    }
+    const v = args[k];
+    out[k] = typeof v === 'string' ? (/^https?:\/\//.test(v) ? stripQuery(v.slice(0, 512)) : `<${v.length} chars>`) : Array.isArray(v) ? `<array ${v.length}>` : v && typeof v === 'object' ? '<object>' : typeof v;
+  }
+  return JSON.stringify(out);
+}
+
+/** Replace honeytokens, secret/PII shapes and URL queries in `s` with static `[REDACTED:<kind>]` markers. */
+function redactText(s, registry, bounds) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  const spans = [];
+  for (const h of registry.scan(s, { all: true })) spans.push([h.index, h.index + h.entry.value.length, `[REDACTED:honeytoken:${h.entry.id}]`]);
+  for (const x of findSecretShapes(s, { maxTokenChars: bounds.maxTokenChars })) {
+    if (x.kind === 'private_key') continue; // header text only, not key material
+    spans.push([x.index, x.index + x.value.length, `[REDACTED:${x.kind}]`]);
+  }
+  for (const x of findSsns(s)) spans.push([x.index, x.index + x.value.length, '[REDACTED:ssn]']);
+  for (const x of findCardNumbers(s)) spans.push([x.index, x.index + x.value.length, '[REDACTED:card_number]']);
+  for (const u of extractUrls(s)) {
+    const q = u.url.search(/[?#]/);
+    if (q !== -1 && !u.url.slice(q).startsWith('?[REDACTED')) spans.push([u.index + q, u.index + u.url.length, '?[REDACTED:query]']);
+  }
+  if (!spans.length) return s;
+  spans.sort((a, b) => a[0] - b[0]);
+  let out = '';
+  let at = 0;
+  for (const [a, b, rep] of spans) {
+    if (b <= at) continue;
+    out += s.slice(at, Math.max(at, a)) + (a >= at ? rep : '');
+    at = Math.max(at, b);
+  }
+  return out + s.slice(at);
 }
 
 function sinkEntity(call, isSink) {
@@ -547,6 +718,13 @@ function sinkEntity(call, isSink) {
   if (d) return { type: d.type, destination: d.url ?? d.destination };
   const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : isSink ? 'tool' : 'tool';
   return { type: t, destination: `${call.name} (no network destination)` };
+}
+
+const EXFIL_VERBS = ['send', 'post ', 'upload', 'forward', 'submit', 'email', 'e-mail', 'transmit', 'exfiltrate', 'report ', 'sync ', 'share ', 'export', 'curl ', 'wget '];
+/** Linear: lower-case once, indexOf per verb. */
+function hasExfilVerb(text) {
+  const l = text.toLowerCase();
+  return EXFIL_VERBS.some((v) => l.indexOf(v) !== -1);
 }
 
 function destOk(d, grant, policy, toolName) {

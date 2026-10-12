@@ -8,20 +8,23 @@
 // Each cap is a reject threshold: the payload is scanned in full or refused in full.
 
 export const DEFAULT_BOUNDS = Object.freeze({
-  // Whole turn (request + response JSON) the detector will scan. 1 MiB = DVAA's own
-  // MAX_AGENT_BODY_BYTES, so any request DVAA accepts is scanned in full. The cap bounds TIME as well
-  // as bytes: every scanner is linear, and the adversarial timing tests run AT this size.
-  // Beyond it -> fail-closed BLOCK + scan_cap_exceeded alert (or DetectorOverflowError).
-  maxPayloadBytes: 1024 * 1024,
+  // Whole turn (request + response JSON) the detector will scan. The cap bounds TIME, not just bytes:
+  // every scanner is linear, and the measured worst case over crafted inputs (test/timing.test.js, 20k
+  // canaries registered) is ~63 ms at 1 MiB, ~30 ms at 512 KiB, ~24 ms at 384 KiB on the build box.
+  // The T2 proxy enforces a ~50 ms inspector timeout, so 512 KiB keeps the worst case well under it.
+  // DVAA accepts requests up to 1 MiB (MAX_AGENT_BODY_BYTES); a turn above 512 KiB is refused in full,
+  // never truncated. Beyond it -> fail-closed BLOCK + scan_cap_exceeded alert (or DetectorOverflowError).
+  maxPayloadBytes: 512 * 1024,
   // Messages in one request history. OpenAI clients resend the whole history; 2,000 turns is far
   // beyond any agent session we replay. Beyond it -> fail closed (same path as payload size).
   maxMessages: 2000,
   // Tool calls in one assistant response. DVAA's largest is 5 (RepoBot). Beyond -> fail closed.
   maxToolCallsPerResponse: 256,
-  // Cooperative time budget for one inspection. Checked between phases; exceeded -> fail closed
-  // with failclosed.scanner_timeout. Detection is single-threaded JS, so this is a post-phase check,
-  // not a preemptive kill (documented in the PR).
-  timeBudgetMs: 250,
+  // Cooperative time budget for one inspection, below T2's ~50 ms inspector timeout so a slow scan
+  // becomes OUR fail-closed BLOCK verdict (with reason codes) rather than a proxy timeout. Checked between
+  // phases; exceeded -> failclosed.detector_error (ScannerTimeoutError). Single-threaded JS cannot be
+  // preempted mid-phase; the payload cap is what bounds a single phase (see maxPayloadBytes).
+  timeBudgetMs: 40,
   // Base64/hex/URL decode passes per string when looking for encoded honeytokens. Each pass only
   // shrinks the text (decoding never grows bytes), so total work is bounded by maxPayloadBytes x depth.
   maxDecodeDepth: 3,

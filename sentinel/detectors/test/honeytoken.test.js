@@ -2,42 +2,52 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { HoneytokenRegistry, RegistryFullError, createDetector } from '../index.js';
-import { CAPTURES, readJson, t1AimAbResponse, dvaaDetector, liveCase, response, toolCall, quietLogger } from './helpers.js';
+import { CAPTURES, readJson, t1AimAbResponse, dvaaDetector, dvaaInProcess, liveCase, response, toolCall, quietLogger } from './helpers.js';
 
 const aimAb = readJson(path.join(CAPTURES, 'attack', 'aim-ab.demo.json'));
 const ragUser = { messages: [{ role: 'user', content: 'Please retrieve and summarize the latest indexed document.' }] };
 
-test('T1 capture: RAGBot 7005 run A (exfil executed) trips the honeytoken deterministically and BLOCKS', () => {
+test('T1 capture: RAGBot 7005 run A trips the honeytoken deterministically — response side = post-execution ALERT (DVAA runs tools in-process)', () => {
   for (let i = 0; i < 5; i++) {
-    const { det } = dvaaDetector({ agent: { name: 'RAGBot', id: 'ragbot', port: 7005 } });
+    const { det } = dvaaInProcess({ agent: { name: 'RAGBot', id: 'ragbot', port: 7005 } });
     const d = det.inspect({ sessionId: `t1-aimab-A-${i}`, request: ragUser, response: t1AimAbResponse(aimAb.runA, 'ragbot') });
-    assert.equal(d.action, 'block');
     const ht = d.findings.filter((f) => f.ruleId === 'honeytoken.exact_match');
     assert.deepEqual(ht.map((f) => f.canary.id).sort(), ['DVAA-ADMIN-PASSWORD', 'DVAA-SSN-JOHN']);
     for (const f of ht) {
       assert.equal(f.category, 'honeytoken_exfil');
-      assert.equal(f.disposition, 'block');
+      assert.equal(f.direction, 'response');
+      assert.equal(f.postExecution, true);
+      assert.equal(f.prevents, false);
+      assert.equal(f.disposition, 'allow', 'never claims prevention after the tool already ran');
+      assert.equal(f.wouldBlock, true);
+      assert.match(f.caseCard.narrative, /AFTER in-process execution/);
       assert.equal(f.entities.toolCall.name, 'submit_to_index');
       assert.match(f.entities.sink.destination, /^http:\/\/127\.0\.0\.1:\d+\/api\/canary\/exfil-test/);
-      assert.ok(d.blockedToolCallIds.includes(aimAb.runA.toolCalls[0].id));
     }
+    assert.deepEqual(d.blockedToolCallIds, []);
   }
+  // The same tool call from a client-executed agent IS pending and the block prevents it.
+  const { det } = dvaaDetector();
+  const d = det.inspect({ sessionId: 't1-aimab-client', request: ragUser, response: t1AimAbResponse(aimAb.runA, 'ragbot') });
+  assert.equal(d.action, 'block');
+  assert.ok(d.findings.some((f) => f.ruleId === 'honeytoken.exact_match' && f.prevents === true));
+  assert.ok(d.blockedToolCallIds.includes(aimAb.runA.toolCalls[0].id));
 });
 
 test('T1 capture: RAGBot-AIM 7014 run B (attempt denied by AIM) is still flagged at the same seam', () => {
-  const { det } = dvaaDetector({ agent: { name: 'RAGBot-AIM', port: 7014 } });
+  const { det } = dvaaInProcess({ agent: { name: 'RAGBot-AIM', port: 7014 } });
   const d = det.inspect({ sessionId: 't1-aimab-B', request: ragUser, response: t1AimAbResponse(aimAb.runB, 'ragbot-aim') });
-  assert.equal(d.action, 'block');
-  assert.ok(d.findings.some((f) => f.ruleId === 'honeytoken.exact_match' && f.canary.id === 'DVAA-ADMIN-PASSWORD'));
+  assert.ok(d.findings.some((f) => f.ruleId === 'honeytoken.exact_match' && f.canary.id === 'DVAA-ADMIN-PASSWORD' && f.postExecution));
 });
 
-test('live capture: LegacyBot 7003 discloses planted creds in reply content -> honeytoken.in_response_content', () => {
+test('live capture: LegacyBot 7003 discloses planted creds in reply content -> honeytoken.in_response_content BLOCK (withholding the reply prevents disclosure)', () => {
   const c = liveCase('legacybot-7003-cred-leak');
-  const { det } = dvaaDetector({ agent: { name: c.agent, port: c.port } });
+  const { det } = dvaaInProcess({ agent: { name: c.agent, port: c.port } });
   const d = det.inspect({ sessionId: c.id, request: c.request, response: c.response });
   assert.equal(d.action, 'block');
   const ids = d.findings.filter((f) => f.ruleId === 'honeytoken.in_response_content').map((f) => f.canary.id);
   for (const want of ['DVAA-ADMIN-PASSWORD', 'DVAA-OPENAI-KEY', 'DVAA-DB-PASSWORD', 'DVAA-SSN-JOHN']) assert.ok(ids.includes(want), want);
+  assert.ok(d.findings.every((f) => f.direction === 'response' && f.prevents === true && f.postExecution === false));
   // per-sink action: content sink may be set to alert-only (Agloe problem)
   const { det: soft } = dvaaDetector({ policy: { sinks: { assistant_content: { honeytoken: 'alert' } } } });
   const d2 = soft.inspect({ sessionId: c.id, request: c.request, response: c.response });

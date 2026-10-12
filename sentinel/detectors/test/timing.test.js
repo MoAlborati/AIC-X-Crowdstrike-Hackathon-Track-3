@@ -10,7 +10,10 @@ import { findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, fin
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
+// T2's inspector timeout is ~50 ms: the WHOLE inspection must finish inside our own fail-closed budget.
+const TOTAL_BUDGET_MS = DEFAULT_BOUNDS.timeBudgetMs;
 const MAX = DEFAULT_BOUNDS.maxPayloadBytes;
+const SCANNER_INPUT = 1024 * 1024; // scanners alone are held to 50 ms at 2x the cap
 // The adversarial string appears twice (untrusted tool output + sink args), so each copy is ~45% of the cap.
 const ADVERSARIAL = {
   jwt_prefix: 'eyJ',
@@ -24,6 +27,7 @@ const ADVERSARIAL = {
   pem: '-----BEGIN ',
   percent: '%4',
   base64_run: 'QUFB',
+  base64_tokens: 'QUFBQUFBQUFBQUFB ',
   hex_run: '41',
   card_digits: '4242 ',
   ssn_like: '123-45-',
@@ -35,14 +39,14 @@ const ADVERSARIAL = {
 const fill = (u) => u.repeat(Math.ceil((MAX * 0.45) / u.length)).slice(0, Math.floor(MAX * 0.45));
 
 function detectorWithBigRegistry() {
-  const det = createDetector({ honeytokens: DVAA_HONEYTOKENS, logger: quietLogger(), bounds: { timeBudgetMs: 100000 } });
+  const det = createDetector({ honeytokens: DVAA_HONEYTOKENS, logger: quietLogger(), bounds: { timeBudgetMs: 100000 } }); // measure, don't fail closed
   for (let i = 0; i < 20000; i++) det.mintCanary(`s${i % 64}`, 'web_fetch', i % 3 === 0 ? 'aws_key' : 'api_key');
   return det;
 }
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-test('every detector layer < 50 ms on adversarial inputs at max payload size (20k canaries registered)', () => {
+test('whole inspection < 40 ms budget (and every layer < 50 ms) on adversarial inputs at the payload cap (20k canaries)', { timeout: 60000 }, () => {
   const det = detectorWithBigRegistry();
   const report = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
@@ -67,13 +71,13 @@ test('every detector layer < 50 ms on adversarial inputs at max payload size (20
     const layers = Object.fromEntries(Object.entries(layerRuns).map(([k, v]) => [k, median(v)]));
     report.push({ name, total: median(totals), ...layers });
     for (const [layer, ms] of Object.entries(layers)) assert.ok(ms < LAYER_BUDGET_MS, `${name}: layer ${layer} took ${ms} ms`);
-    assert.ok(median(totals) < DEFAULT_BOUNDS.timeBudgetMs, `${name}: total ${median(totals)} ms >= time budget`);
+    assert.ok(median(totals) < TOTAL_BUDGET_MS, `${name}: total ${median(totals)} ms >= ${TOTAL_BUDGET_MS} ms budget`);
   }
   console.log(`# adversarial timing @ ${MAX} B cap (median of 3, ms):`);
   for (const r of report) console.log(`#   ${r.name.padEnd(15)} total=${r.total} ${Object.entries(r).filter(([k]) => !['name', 'total'].includes(k)).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 });
 
-test('every text scanner alone is linear: < 50 ms on 1 MiB of its own worst-case input', () => {
+test('every text scanner alone is linear: < 50 ms on 1 MiB (2x the cap) of its own worst-case input', { timeout: 15000 }, () => {
   const scanners = {
     findSecretShapes: [findSecretShapes, ['eyJ', 'eyJab.', 'sk-', 'AKIA', 'ghp_', '-----BEGIN ']],
     extractUrls: [extractUrls, ['http://', 'https://a', 'http://@']],
@@ -87,7 +91,7 @@ test('every text scanner alone is linear: < 50 ms on 1 MiB of its own worst-case
   };
   for (const [name, [fn, units]] of Object.entries(scanners)) {
     for (const u of units) {
-      const s = u.repeat(Math.ceil(MAX / u.length)).slice(0, MAX);
+      const s = u.repeat(Math.ceil(SCANNER_INPUT / u.length)).slice(0, SCANNER_INPUT);
       const runs = [];
       for (let r = 0; r < 3; r++) {
         const t = performance.now();
@@ -95,15 +99,15 @@ test('every text scanner alone is linear: < 50 ms on 1 MiB of its own worst-case
         runs.push(performance.now() - t);
       }
       const ms = median(runs);
-      assert.ok(ms < LAYER_BUDGET_MS, `${name}(${JSON.stringify(u)} x ${MAX}) took ${ms.toFixed(1)} ms`);
+      assert.ok(ms < LAYER_BUDGET_MS, `${name}(${JSON.stringify(u)} x ${SCANNER_INPUT}) took ${ms.toFixed(1)} ms`);
     }
   }
 });
 
-test('honeytoken index stays O(1) per position with 50k canaries sharing the "sk-proj-" prefix', () => {
+test('honeytoken index stays O(1) per position with 50k canaries sharing the "sk-proj-" prefix', { timeout: 15000 }, () => {
   const det = createDetector({ logger: quietLogger(), bounds: { timeBudgetMs: 100000 } });
   for (let i = 0; i < 50000; i++) det.mintCanary(`s${i}`, 't', 'api_key');
-  const s = 'sk-proj-'.repeat(Math.floor(MAX / 8));
+  const s = 'sk-proj-'.repeat(Math.floor(SCANNER_INPUT / 8));
   const runs = [];
   for (let r = 0; r < 3; r++) {
     const t = performance.now();
