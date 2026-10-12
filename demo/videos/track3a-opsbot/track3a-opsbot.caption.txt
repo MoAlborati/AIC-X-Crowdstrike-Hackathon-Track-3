@@ -1,0 +1,1 @@
+Track 3 Path A (OpsBot) · SHA cb2b7f5 (v1.0-submission) · node track3a/run-demo.mjs: our own agent attacked (indirect + direct injection) and defended in layers — undefended -> chat proxy -> + egress guard -> hardened -> full. Table shows attacks stopped, 0 benign false positives, and per-layer latency. All on 127.0.0.1, FAKE honeytokens.

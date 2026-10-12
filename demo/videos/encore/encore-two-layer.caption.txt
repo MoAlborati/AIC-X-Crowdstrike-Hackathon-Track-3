@@ -1,0 +1,1 @@
+Encore — "the 403 that lied" · SHA cb2b7f5 (v1.0-submission) · scripts/encore-two-layer.sh observe then block, live in an isolated docker sandbox: observe mode shows Layer 1 return a 403 while the key still reaches the attacker (2 canary hits) — the 403 lied; block mode: Layer 2 egress inspector denies 3x, attacker receives 0 hits. FAKE DVAA credentials only.

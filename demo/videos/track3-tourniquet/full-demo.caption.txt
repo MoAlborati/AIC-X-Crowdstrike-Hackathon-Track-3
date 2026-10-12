@@ -1,0 +1,1 @@
+Track 3 (Tourniquet, 3B) · recorded on SHA 1146e14 (the SentinelProxy->Tourniquet rebrand build; runtime identical to the submission) · combined terminal+dashboard walkthrough (1080p). Includes the LIVE Beat 4b egress run. Frames show the local build path /home/gingy/crowdstrike-video2 (cosmetic) and only FAKE DVAA honeytokens — no real secrets. Backup/fallback reel.
