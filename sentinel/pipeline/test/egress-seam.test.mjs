@@ -104,6 +104,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
   process.env.SENTINEL_CAPTURES_DIR = path.join(outDir, 'captures');
   process.env.SENTINEL_ALERTS_DIR = path.join(outDir, 'alerts');
   process.env.SENTINEL_HIDE_PLACEHOLDERS = '1';
+  process.env.SENTINEL_HIDE_STAGE = '1'; // T5-stage recordings (sentinel/dashboard/stage) are not pipeline output
   const server = dash.server.createServer();
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
@@ -112,7 +113,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
     const eg = list.captures.find((c) => c.id === `live/${EGRESS_SESSION}`);
     assert.ok(eg, 'egress incident listed next to the chat-proxy sessions');
     assert.ok(!eg.error && eg.placeholder === false, JSON.stringify(eg));
-    assert.equal(list.captures.length, SESSIONS + 1);
+    assert.equal(list.captures.length, SESSIONS + 1, list.captures.map((c) => c.id).join(', '));
     const r = await fetch(`${base}/api/replay?id=${encodeURIComponent(`live/${EGRESS_SESSION}`)}&run=run`);
     assert.equal(r.status, 200);
     const rp = await r.json();
@@ -131,7 +132,7 @@ test('T5 dashboard (real server): egress incident replays, no PLACEHOLDER banner
     for (const a of chat.alerts) assert.match(a.caseCard.narrative, /response-side · alert_only/);
   } finally {
     await new Promise((r) => server.close(r));
-    for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_PLACEHOLDERS']) {
+    for (const k of ['SENTINEL_CAPTURES_DIR', 'SENTINEL_ALERTS_DIR', 'SENTINEL_HIDE_PLACEHOLDERS', 'SENTINEL_HIDE_STAGE']) {
       if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
     }
   }

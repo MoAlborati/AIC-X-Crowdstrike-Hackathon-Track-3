@@ -70,7 +70,9 @@ test('HTTP: /api/captures and /api/replay hide placeholders unless ?dev=1', asyn
     assert.ok(dev.captures.some(c => c.source === 'placeholder'));
     const r = await (await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runA`)).json();
     assert.equal(r.alertSource.placeholder, false);
-    assert.equal(r.alerts.length, 0);
+    // T5-stage: the stage view shows the REAL T3 replay verdicts (sentinel/dashboard/alerts), never placeholders.
+    assert.ok(r.alerts.length >= 1);
+    assert.match(r.alertSource.origin, /^sentinel\/dashboard\/alerts\//);
     const rd = await (await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runA&dev=1`)).json();
     assert.equal(rd.alertSource.placeholder, true);
     assert.equal((await fetch(`${base}/api/replay?id=placeholder/data-rich-orders&run=run`)).status, 404);

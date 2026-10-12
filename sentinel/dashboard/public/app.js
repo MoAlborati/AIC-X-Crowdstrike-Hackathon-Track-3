@@ -1,8 +1,9 @@
 // Dashboard controller. Fetches /api/* and drives the replay player.
 // All capture/alert text is inserted as DOM text nodes (textContent); no data is ever parsed as markup.
-import { renderGraph, fmtBytes, nodeSubtitle } from './graph.js';
+import { renderGraph, fmtBytes, nodeSubtitle, STAGE_MIN_ZOOM } from './graph.js';
 import { viewAt, twinPair, latestGate } from './replay-view.js';
 import { headlineView } from './headline-view.js';
+import { parseDeepLink, deepLinkSearch, chooseInitial, stageOptions, cleanNarrative, sinkLabel, excerpt, warningSummary, alertClipboardText } from './stage-view.js';
 
 const $ = (id) => document.getElementById(id);
 // ?dev=1 shows placeholder captures/alerts. Without it the server hides them, so the stage captures never
@@ -21,7 +22,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 
-const state = { captures: [], replay: null, step: -1, timer: null, selected: null };
+const state = { captures: [], stage: [], stageMode: false, replay: null, step: -1, timer: null, selected: null, docOpen: false };
 // Rapid capture switches race their /api/replay fetches; only the newest request may render.
 const replayGate = latestGate();
 
@@ -44,6 +45,14 @@ function banner(kind, title, text) {
 }
 function clearBanners() {
   $('banners').replaceChildren();
+}
+// All replay warnings collapse into one line that expands on click (they are kept, never dropped).
+function warningsBanner(warnings) {
+  const summary = warningSummary(warnings);
+  if (!summary) return;
+  $('banners').append(h('details', { class: 'banner banner-warn warn-group', role: 'status' },
+    h('summary', {}, h('strong', {}, '⚠ '), summary, h('span', { class: 'muted' }, ' · click to expand')),
+    h('ul', {}, ...warnings.map(w => h('li', {}, w)))));
 }
 
 async function getJson(url) {
@@ -69,30 +78,58 @@ async function loadList() {
     return;
   }
   state.captures = r.body.captures;
+  state.stage = r.body.stage ?? [];
+  const link = parseDeepLink(location.search);
+  state.stageMode = link.stage;
+  document.documentElement.classList.toggle('stage-mode', state.stageMode);
   $('bounds').textContent = `Bounds (fail-loud, never truncated): ${Object.entries(r.body.bounds).map(([k, v]) => `${k}=${Number(v).toLocaleString('en-US')}`).join(' · ')}`;
   const sel = $('capture');
   sel.replaceChildren();
-  const groups = new Map();
-  for (const c of state.captures) {
-    const g = c.source === 'placeholder' ? 'Placeholder fixtures'
-      : c.id.startsWith('variants/') ? `T6 eval corpus (${c.expectedLabel ?? 'unlabeled'})`
-        : c.id.startsWith('benign/') ? 'Benign captures (T1)' : 'Attack captures (T1)';
-    if (!groups.has(g)) groups.set(g, h('optgroup', { label: g }));
-    const label = c.error ? `⚠ ${c.id} — ${c.error}` : `${c.title ?? c.id}${c.placeholder ? ' [PLACEHOLDER]' : ''}`;
-    groups.get(g).append(h('option', { value: c.id, disabled: Boolean(c.error) }, label));
+  if (state.stageMode) {
+    // Stage mode: exactly the three stage runs, in demo order. A missing one stays listed, disabled.
+    for (const o of stageOptions(state.stage)) sel.append(h('option', { value: o.value, disabled: o.disabled }, o.label));
+    const missing = state.stage.filter(x => x.error);
+    if (missing.length) banner('error', `${missing.length} stage capture(s) missing.`, missing.map(x => `${x.label}: ${x.error}`).join(' | '));
+    $('run-label').hidden = true;
+  } else {
+    const groups = new Map();
+    for (const c of state.captures) {
+      const g = c.source === 'placeholder' ? 'Placeholder fixtures'
+        : c.source === 'stage' ? 'Stage recordings'
+          : c.id.startsWith('variants/') ? `T6 eval corpus (${c.expectedLabel ?? 'unlabeled'})`
+            : c.id.startsWith('benign/') ? 'Benign captures (T1)' : 'Attack captures (T1)';
+      if (!groups.has(g)) groups.set(g, h('optgroup', { label: g }));
+      const label = c.error ? `⚠ ${c.id} — ${c.error}` : `${c.title ?? c.id}${c.placeholder ? ' [PLACEHOLDER]' : ''}`;
+      groups.get(g).append(h('option', { value: c.id, disabled: Boolean(c.error) }, label));
+    }
+    for (const g of groups.values()) sel.append(g);
   }
-  for (const g of groups.values()) sel.append(g);
   const broken = state.captures.filter(c => c.error);
-  if (broken.length) banner('error', `${broken.length} capture(s) failed to load.`, broken.map(c => `${c.id}: ${c.error}`).join(' | '));
-  const params = new URLSearchParams(location.search);
-  const want = params.get('id');
-  const first = state.captures.find(c => c.id === want && !c.error) ?? state.captures.find(c => !c.error);
-  if (first) {
-    sel.value = first.id;
-    fillRuns(first, params.get('run'));
-    const st = params.get('step');
-    await loadReplay(st === 'last' ? Infinity : st != null && /^\d+$/.test(st) ? Number(st) - 1 : 0);
+  if (broken.length && !state.stageMode) banner('error', `${broken.length} capture(s) failed to load.`, broken.map(c => `${c.id}: ${c.error}`).join(' | '));
+  const pick = chooseInitial(link, state.captures, state.stage);
+  if (pick.warning) state.linkWarning = pick.warning;
+  if (pick.id) {
+    if (state.stageMode) {
+      sel.value = `stage:${pick.stageKey}`;
+      fillRuns(state.captures.find(c => c.id === pick.id), pick.run);
+    } else {
+      sel.value = pick.id;
+      fillRuns(state.captures.find(c => c.id === pick.id), pick.run);
+    }
+    await loadReplay(link.step);
+  } else if (pick.warning) {
+    banner('error', 'Deep link:', pick.warning);
   }
+}
+
+/** Capture id for the current dropdown value (stage options map to a capture id + run). */
+function currentCapture() {
+  const v = $('capture').value;
+  if (v.startsWith('stage:')) {
+    const s = state.stage.find(x => `stage:${x.key}` === v);
+    return { id: s?.id ?? '', run: s?.run ?? '' };
+  }
+  return { id: v, run: $('run').value };
 }
 
 function fillRuns(c, want) {
@@ -102,8 +139,8 @@ function fillRuns(c, want) {
 }
 
 $('capture').addEventListener('change', async () => {
-  const c = state.captures.find(x => x.id === $('capture').value);
-  fillRuns(c);
+  const { id, run } = currentCapture();
+  fillRuns(state.captures.find(x => x.id === id), state.stageMode ? run : null);
   await loadReplay();
 });
 $('run').addEventListener('change', () => loadReplay());
@@ -134,9 +171,12 @@ async function loadReplay(initialStep = 0) {
   const token = replayGate.begin();
   stop();
   clearBanners();
-  const id = $('capture').value;
-  const run = $('run').value;
-  history.replaceState(null, '', `?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}`);
+  const { id, run } = currentCapture();
+  history.replaceState(null, '', deepLinkSearch({ capture: id, run, stage: state.stageMode, dev: DEV }));
+  if (state.linkWarning) {
+    banner('warn', 'Deep link:', state.linkWarning);
+    state.linkWarning = null;
+  }
   const r = await getJson(api(`/api/replay?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}`));
   if (!replayGate.isCurrent(token)) return; // a newer loadReplay superseded this one
   if (!r.ok) {
@@ -150,10 +190,11 @@ async function loadReplay(initialStep = 0) {
   const rp = r.body;
   state.replay = rp;
   state.selected = null;
+  state.docOpen = false;
   if (rp.capture.placeholder || rp.alertSource.placeholder) {
     banner('placeholder', 'PLACEHOLDER DATA.', [rp.capture.placeholderNote, rp.alertSource.note, rp.alertSource.placeholder ? `Alerts from ${rp.alertSource.origin}.` : null].filter(Boolean).join(' '));
   }
-  for (const w of rp.warnings) banner('warn', 'Replay warning:', w);
+  warningsBanner(rp.warnings);
   const invalid = rp.alerts.filter(a => a.invalid);
   if (invalid.length) banner('error', `${invalid.length} alert(s) failed T4 schema validation.`, 'Shown in the feed and flagged, not dropped.');
 
@@ -161,7 +202,8 @@ async function loadReplay(initialStep = 0) {
   const L = rp.metrics.detectionLatencyMs;
   $('latency').textContent = L.n ? `${L.median} ms` : '—';
   $('latency-note').textContent = L.n ? `median of ${L.n} alert(s) · p95 ${L.p95} ms · max ${L.max} ms (T4 DetectionLatencyMs)` : 'no detector verdicts for this run';
-  $('alert-source').textContent = `Alerts: ${rp.alertSource.origin} · validator: ${rp.alertSource.validator}`;
+  $('alert-source').textContent = `Alerts: ${alertSourceLabel(rp.alertSource)} · T4 schema-validated`;
+  $('alert-source').title = `${rp.alertSource.origin} · validator: ${rp.alertSource.validator}`;
   renderTwin(rp);
   setStep(rp.timeline.length ? initialStep : -1);
 }
@@ -172,12 +214,20 @@ function setStep(s) {
   state.step = Math.max(-1, Math.min(s, rp.timeline.length - 1));
   const v = viewAt(rp, state.step);
   $('stepinfo').textContent = `step ${v.step + 1} / ${rp.timeline.length}`;
+  const cur0 = currentCapture();
+  history.replaceState(null, '', deepLinkSearch({ capture: cur0.id, run: cur0.run, step: v.step, stage: state.stageMode, dev: DEV }));
   renderTimeline(rp, v);
   renderFeed(rp, v);
   renderGauge(v.trust);
-  renderGraph($('graph'), rp, { revealed: v.revealed, focus: v.focus, selected: state.selected, onSelect: (n) => selectNode(n) });
+  renderGraph($('graph'), rp, { revealed: v.revealed, focus: v.focus, selected: state.selected, onSelect: (n) => selectNode(n), fitWidth: $('graph-scroll').clientWidth - 18, minZoom: STAGE_MIN_ZOOM });
+  if (!state.selected) renderSourcePreview(rp);
+  // Keep the current step visible inside its own pane only; never scroll the page under the presenter.
   const cur = document.querySelector('#timeline .current');
-  cur?.scrollIntoView({ block: 'nearest' });
+  const pane = cur?.closest('.pane');
+  if (cur && pane && pane.scrollHeight > pane.clientHeight) {
+    const top = cur.offsetTop - pane.offsetTop;
+    if (top < pane.scrollTop || top > pane.scrollTop + pane.clientHeight - cur.offsetHeight) pane.scrollTop = Math.max(0, top - pane.clientHeight / 2);
+  }
   // Keep the current step's node in view inside the graph's own scroller (never scrolls the page).
   // Prefer a malicious / truncation-marker node so the final step lands on the interesting part.
   const focusNode = document.querySelector('#graph .node.focus.f-malicious, #graph .node.focus.f-truncated, #graph .node.focus');
@@ -229,8 +279,10 @@ function alertCard(a) {
       h('span', { class: 'alert-lat' }, a.latencyMs != null ? `${a.latencyMs} ms` : '— ms')),
     a.invalid ? h('p', { class: 'invalid-note' }, `Schema problems: ${a.problems.join('; ')}`) : null,
     h('div', { class: 'casecard' },
-      h('div', { class: 'cc-title' }, 'Case card'),
-      h('p', { class: 'narrative' }, cc.narrative ?? '—'),
+      h('div', { class: 'cc-head' },
+        h('div', { class: 'cc-title' }, 'Case card'),
+        h('button', { class: 'copy-btn', title: 'Copy the T4 alert (sentinel.alert/1.0.0, ATLAS/OWASP tags, redacted) for a SOC ticket', onclick: (ev) => copyAlert(a, ev.currentTarget) }, '⧉ Copy alert JSON')),
+      h('p', { class: 'narrative' }, cleanNarrative(cc.narrative) ?? '—'),
       h('ol', { class: 'cc-chain' },
         h('li', {}, h('b', {}, 'Originated in '), cc.originatedIn ?? '—'),
         h('li', {}, h('b', {}, 'Influenced '), cc.influencedToolCall ?? '—'),
@@ -243,13 +295,14 @@ function alertCard(a) {
           h('td', {}, l.layer ?? ''), h('td', {}, l.rule ?? ''), h('td', {}, l.truncated ? `${l.omitted} omitted` : l.fired ? '✔ fired' : '– no'), h('td', { class: 'num' }, l.latencyMs ?? '')))))),
     h('details', { class: 'path' },
       h('summary', {}, `Taint path (${a.taintPath.length} hops${a.taintPathTruncated ? ', truncated by T4' : ''})`),
-      h('ol', {}, ...a.taintPath.map(p => h('li', { class: `hop hop-${p.kind}` }, p.kind === 'truncated' ? `⋯ ${p.omittedHops ?? '?'} hops omitted` : `${p.kind}: ${p.label}`)))),
+      h('ol', {}, ...a.taintPath.map(p => h('li', { class: `hop hop-${p.kind}` }, p.kind === 'truncated' ? `⋯ ${p.omittedHops ?? '?'} hops omitted` : `${p.kind}: ${cleanNarrative(p.label)}`)))),
     h('footer', { class: 'tags' },
       a.technique.id ? h('span', { class: 'tag' }, `${a.technique.id} ${a.technique.name ?? ''}`) : null,
       ...a.tags.owaspLlm.map(t => h('span', { class: 'tag' }, t)),
       ...a.tags.owaspAgentic.map(t => h('span', { class: 'tag' }, t)),
       a.tags.oasb ? h('span', { class: 'tag' }, a.tags.oasb) : null,
-      a.entities.sink?.destination ? h('span', { class: 'tag sink' }, `sink ${a.entities.sink.destination}`) : null));
+      a.entities.sink?.destination ? h('span', { class: 'tag sink' }, `sink ${sinkLabel(a.entities.sink.type, a.entities.sink.destination)}`) : null),
+    h('div', { class: 'copy-status', role: 'status', 'aria-live': 'polite' }));
 }
 
 function renderTwin(rp) {
@@ -262,15 +315,93 @@ function renderTwin(rp) {
   }
   box.hidden = false;
   const side = (r, title) => h('div', { class: `twin-side ${r.outcome.exfilExecuted ? 'bad' : 'good'}` },
-    h('div', { class: 'twin-title' }, title),
+    h('div', { class: 'twin-title' }, title, r.key === rp.run.key ? h('span', { class: 'twin-now' }, 'on screen') : null),
     h('div', { class: 'twin-agent' }, r.label),
     h('div', { class: 'twin-out' }, r.outcome.exfilExecuted ? '✖ data left the sandbox' : r.outcome.blocked ? '✔ action denied' : '– no exfil recorded'),
     r.outcome.denialReason ? h('div', { class: 'twin-reason' }, r.outcome.denialReason) : null,
     r.outcome.trustScore != null ? h('div', { class: 'twin-trust' }, `AIM trust score ${r.outcome.trustScore}`) : null,
-    r.key !== rp.run.key ? h('button', { class: 'linkish', onclick: () => { $('run').value = r.key; loadReplay(); } }, 'replay this run →') : h('span', { class: 'muted' }, 'viewing'));
+    r.key !== rp.run.key ? h('button', { class: 'linkish', onclick: () => switchRun(r.key) }, 'replay this run →') : null);
   box.replaceChildren(
-    h('div', { class: 'twin-head' }, 'AIM twin contrast · same agent code, guard off vs on (recorded by DVAA)'),
-    h('div', { class: 'twin-grid' }, side(pair.vuln, 'Unprotected'), side(pair.prot, 'AIM-protected twin')));
+    h('div', { class: 'twin-head' }, pair.prot.twinTitle
+      ? `Contrast · same attack: vulnerable agent direct vs ${pair.prot.twinTitle} (recorded)`
+      : 'AIM twin contrast · same agent code, guard off vs on (recorded by DVAA)'),
+    h('div', { class: 'twin-grid' }, side(pair.vuln, 'Unprotected'), side(pair.prot, pair.prot.twinTitle ?? 'AIM-protected twin')));
+}
+
+/** Human label for where the alerts came from (the raw path stays in the tooltip). */
+function alertSourceLabel(src) {
+  const o = String(src?.origin ?? '');
+  if (src?.placeholder) return 'PLACEHOLDER fixtures (not detector output)';
+  if (o === 'embedded in capture') return 'recorded with this capture (live SentinelProxy run)';
+  if (o === 'none') return 'none recorded';
+  if (o.startsWith('sentinel/dashboard/alerts/')) return 'real T3 detector, replayed over the recorded traffic';
+  if (o.startsWith('sentinel/scoring/')) return 'T7 scoring replay';
+  return 'live pipeline (SentinelProxy + T3)';
+}
+
+function switchRun(key) {
+  if (state.stageMode) {
+    const s = state.stage.find(x => !x.error && x.id === state.replay?.capture.id && x.run === key);
+    if (s) $('capture').value = `stage:${s.key}`;
+    else {
+      $('capture').value = '';
+      $('run').value = key;
+      state.stageMode = false; // leaving the stage set: fall back to the normal run selector
+      document.documentElement.classList.remove('stage-mode');
+      $('run-label').hidden = false;
+    }
+  }
+  $('run').value = key;
+  loadReplay();
+}
+
+async function copyAlert(a, btn) {
+  const status = btn.closest('.alert').querySelector('.copy-status');
+  const { id, run } = currentCapture();
+  status.className = 'copy-status';
+  status.textContent = 'Preparing redacted export…';
+  let text;
+  try {
+    const r = await getJson(api(`/api/alert-export?id=${encodeURIComponent(id)}&run=${encodeURIComponent(run)}&alert=${encodeURIComponent(a.id)}`));
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.body.error ?? 'export refused'}`);
+    text = alertClipboardText(r.body);
+    await navigator.clipboard.writeText(text);
+    const kb = (new TextEncoder().encode(text).length / 1024).toFixed(1);
+    status.textContent = `✔ Copied ${kb} KB · sentinel.alert/1.0.0 · T4-validated · redacted (${r.body.redaction.canaryValuesChecked} recorded secrets checked)${r.body.placeholder ? ' · PLACEHOLDER alert' : ''}`;
+    status.classList.add('ok');
+  } catch (err) {
+    if (text) {
+      // Clipboard blocked (permissions / insecure context): show the JSON selected for manual copy.
+      const ta = h('textarea', { class: 'copy-fallback', readonly: true, rows: 8 });
+      ta.value = text;
+      status.replaceChildren(`Clipboard unavailable (${err.message}). Select-all is done; press Ctrl/Cmd+C.`, ta);
+      ta.focus();
+      ta.select();
+    } else {
+      status.textContent = `✖ Export failed: ${err.message}`;
+      status.classList.add('err');
+    }
+  }
+}
+
+/** With no node selected, the detail pane previews the untrusted source document (excerpt + marker). */
+function renderSourcePreview(rp) {
+  const d = $('detail');
+  const src = rp.graph.nodes.find(n => n.lane === 'untrusted' && n.kind === 'tool_result' && n.recorded !== false && n.text)
+    ?? rp.graph.nodes.find(n => n.kind === 'user_message' && /BEGIN INDEXED DOCUMENT|INSTRUCTIONS/i.test(n.text ?? ''));
+  if (!src) {
+    d.replaceChildren(h('p', { class: 'muted' }, 'Select a node to see its recorded content.'));
+    return;
+  }
+  const ex = excerpt(src.text, 220);
+  const full = state.docOpen || !ex.marker;
+  d.replaceChildren(
+    h('div', { class: 'src-head' }, h('span', { class: 'side-tag att' }, 'SOURCE'), h('h3', {}, src.label),
+      src.recorded === 'reconstructed' ? h('span', { class: 'muted' }, ' · rebuilt from DVAA template (not byte-recorded)') : null),
+    h('pre', { class: 'node-text src-text' }, full ? src.text : ex.text),
+    ex.marker ? h('button', { class: 'linkish trunc-marker', onclick: () => { state.docOpen = !state.docOpen; renderSourcePreview(rp); } },
+      full ? '▲ collapse' : ex.marker) : null,
+    h('p', { class: 'muted' }, 'Click any graph node for its recorded content.'));
 }
 
 function renderGauge(t) {
@@ -293,7 +424,7 @@ function renderGauge(t) {
   }
   const txt = mk('text', { x: cx, y: cy - 6, 'text-anchor': 'middle', class: 'gauge-num' });
   txt.textContent = v == null ? '—' : String(v);
-  const band = v == null ? '' : v >= 70 ? ' (healthy)' : v >= 40 ? ' (degraded)' : ' (compromised)';
+  const band = v == null ? '' : t.protected ? ' (protected)' : v >= 70 ? ' (healthy)' : v >= 40 ? ' (degraded)' : ' (compromised)';
   $('gauge-text').textContent = `${v == null ? '' : `${v}/100${band} · `}${t.note}`;
 }
 
@@ -304,7 +435,7 @@ function selectNode(n) {
     ['kind', n.kind.replace(/_/g, ' ')], ['lane', n.lane], ['trust', n.trust], ['tool call id', n.toolCallId],
     ['rows', n.rowCount != null ? n.rowCount.toLocaleString('en-US') : null], ['size', n.bytes != null ? fmtBytes(n.bytes) : null],
     ['decision', n.decision], ['destination', n.destination], ['flags', n.flags?.length ? n.flags.join(', ') : null],
-    ['omitted hops', n.omittedHops],
+    ['omitted hops', n.omittedHops], ['provenance', n.provenance],
   ].filter(([, v]) => v != null && v !== '');
   d.replaceChildren(
     ...[h('h3', {}, n.label),
@@ -347,3 +478,10 @@ document.addEventListener('keydown', (e) => {
 
 loadScoring();
 loadList();
+
+// Re-fit the incident graph to its pane when the window (or the screen-share viewport) changes size.
+let resizeTimer = null;
+addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (state.replay) setStep(state.step); }, 120);
+});
