@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
+  findInjectionPhrases, phrasesOnlyQuotedReported, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -244,7 +244,7 @@ export function createDetector(opts = {}) {
         });
       }
       if (u.principal && !u.ref.suspect) continue; // a clean principal turn is the mandate, not a threat
-      const phrases = u.phrases;
+      let phrases = u.phrases;
       // Honeytokens in raw AND decoded forms (%-decoded up to maxDecodeDepth, \u/\x, base64, hex): the
       // tripwire decodes on its own and never relies on downstream alert redaction.
       const tokensHit = [];
@@ -262,6 +262,10 @@ export function createDetector(opts = {}) {
       ];
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
+      // Quoted/reported mention (security-awareness memo): every lexicon phrase is in quotes in a reporting
+      // context and every named destination is a "report ... to" mailbox. Not an instruction to the agent.
+      // Untrusted content only; never with a staged secret/honeytoken (see phrasesOnlyQuotedReported).
+      if (phrases.length && !u.principal && !staged && phrasesOnlyQuotedReported(u.text, phrases, named)) phrases = [];
       if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) {
         // Review S4: untrusted content that tells the agent to SEND something to a destination the
         // principal never named (exfil verb right before the destination) is at least REPORTED, even

@@ -519,6 +519,66 @@ export function findInjectionPhrases(text) {
   return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
 }
 
+// ---- quoted / reported injection phrases (mention, not use) --------------------------------------
+// A security-awareness memo QUOTES an injection phrase ("attackers may write 'ignore your instructions'")
+// and names a REPORTING mailbox ("report such emails to security@..."). That is a mention, not an
+// instruction to the agent. Deliberately narrow; ALL of these must hold, otherwise the lexicon stands:
+//   1. every occurrence of every matched phrase sits inside quote marks or a code span;
+//   2. a reporting/awareness cue appears within REPORT_CUE_WINDOW chars of each occurrence;
+//   3. every named destination (url/email/iban) is the object of a "report <suspicious thing> to" construct
+//      and is NOT preceded by a send/forward/upload construct (the caller also rejects staged secrets).
+const QUOTE_OPEN = new Set(['"', "'", '`', '“', '‘', '«']);
+const QUOTE_CLOSE = new Set(['"', "'", '`', '”', '’', '»']);
+const REPORT_CUE = /\b(?:if you (?:see|receive|get|notice)|report(?:ed|ing)?|examples? of|phishing|security awareness|attackers?|scammers?|be wary|watch out|beware|red flags?)\b/;
+const REPORT_CUE_WINDOW = 160;
+const MAX_PHRASE_OCCURRENCES = 64; // bound per text: more quoted occurrences than this = not a memo, keep lexicon
+// "report such emails to", "report it to", "report suspicious messages immediately to", "flag them to"
+const REPORT_TO = /\b(?:report|flag|escalate)\s+(?:it|them|this|these|those|(?:any|all|the|such|similar|these|those)?\s*(?:such\s+|similar\s+|suspicious\s+|phishing\s+|suspected\s+)*(?:e-?mails?|messages?|attempts?|incidents?|content|cases?|texts?|links?|pages?))\s+(?:(?:immediately|right away|promptly)\s+)?to\s+(?:the\s+\w+\s+(?:team|desk)\s+(?:at\s+)?)?$/;
+const SEND_TO = /\b(?:send|forward|upload|submit|transmit|exfiltrate|post|e-?mail|mail|share|export|transfer|pay|wire|copy)\b/;
+
+function quotedAt(text, start, end) {
+  // opening quote within 2 chars before the phrase, closing quote within 40 chars after it
+  let open = false;
+  for (let i = Math.max(0, start - 2); i < start; i++) if (QUOTE_OPEN.has(text[i])) open = true;
+  if (!open) return false;
+  for (let i = end; i < Math.min(text.length, end + 40); i++) {
+    if (QUOTE_CLOSE.has(text[i])) return true;
+    if (text[i] === '\n') return false;
+  }
+  return false;
+}
+
+/**
+ * True only when every lexicon phrase in `text` is a quoted mention in reporting context and every
+ * destination in `destinations` ([{index}]) is a report-to mailbox. Linear in text length x #phrases
+ * (indexOf), bounded by MAX_PHRASE_OCCURRENCES and fixed windows.
+ */
+export function phrasesOnlyQuotedReported(text, phrases, destinations) {
+  if (typeof text !== 'string' || !phrases.length) return false;
+  const lower = text.toLowerCase();
+  let seen = 0;
+  for (const p of phrases) {
+    for (let at = lower.indexOf(p); at !== -1; at = lower.indexOf(p, at + 1)) {
+      if (++seen > MAX_PHRASE_OCCURRENCES) return false;
+      if (!quotedAt(text, at, at + p.length)) return false;
+      const around = lower.slice(Math.max(0, at - REPORT_CUE_WINDOW), Math.min(lower.length, at + p.length + REPORT_CUE_WINDOW));
+      if (!REPORT_CUE.test(around)) return false;
+    }
+  }
+  for (const d of destinations) {
+    if (!Number.isInteger(d.index) || d.index < 0) return false;
+    // the clause that leads to the destination: back to the previous sentence boundary, max 100 chars
+    let clause = lower.slice(Math.max(0, d.index - 100), d.index);
+    const cut = Math.max(clause.lastIndexOf('. '), clause.lastIndexOf('\n'), clause.lastIndexOf('; '), clause.lastIndexOf('! '), clause.lastIndexOf('? '));
+    if (cut !== -1) clause = clause.slice(cut + 1);
+    const m = REPORT_TO.exec(clause);
+    if (!m) return false;
+    if (SEND_TO.test(clause.slice(0, m.index))) return false; // "send the files and report them to" -> not a mention
+
+  }
+  return true;
+}
+
 // ---- lookalike destinations ----------------------------------------------------------------------
 
 const CONFUSABLES = { '0': 'o', '1': 'l', '3': 'e', '5': 's', '7': 't', '8': 'b', rn: 'm', vv: 'w', 'і': 'i', 'о': 'o', 'а': 'a', 'е': 'e', 'с': 'c', 'р': 'p' };
