@@ -9,6 +9,8 @@
 #   env: DVAA_IMAGE (default dvaa-t1-dvaa; build with scripts/setup-dvaa.sh up)
 #        EGRESS_PROJECT (default sentinel-egress)  EGRESS_LOG_DIR (default sentinel/egress/.logs)
 #        EGRESS_KEEP=1 to leave the stack up afterwards
+#        EGRESS_REFRESH_EVIDENCE=1 to overwrite the committed sentinel/egress/evidence-*.jsonl (only on a clean run;
+#        default writes .eval/egress-demo/evidence-*.jsonl so demo/run-demo.sh claim checks never read a stray run)
 #        EGRESS_TURN_LOG=<file> appends one JSON line per driven agent turn (agent, port, t0/t1 epoch ms,
 #          full user message + reply) for scripts/stage-egress-capture.sh; stdout is unchanged
 #
@@ -127,7 +129,18 @@ run_mode() {
       echo "RESULT repobot block: PREVENTED (bootstrap fetch + credential post denied; attacker received nothing)"
     else echo "RESULT repobot block: UNEXPECTED (hits=$rhits deny_alerts=$rdeny)"; FAIL=1; fi
   fi
-  cp "$log" "$EGRESS_LOG_DIR/../evidence-$mode.jsonl" 2>/dev/null || true
+  # The committed evidence (sentinel/egress/evidence-*.jsonl) is read by demo/run-demo.sh's spoken-claim checks, so a
+  # default run never overwrites it: it writes to .eval/ instead. EGRESS_REFRESH_EVIDENCE=1 refreshes the committed
+  # files, and only from a run with no UNEXPECTED result. A custom EGRESS_LOG_DIR keeps its copy next to that dir.
+  local ev_dir="$EGRESS_LOG_DIR/.."
+  if [ "$EGRESS_LOG_DIR" = "$ROOT/sentinel/egress/.logs" ]; then
+    if [ "${EGRESS_REFRESH_EVIDENCE:-0}" = 1 ] && [ "$FAIL" = 0 ]; then ev_dir="$ROOT/sentinel/egress"
+    else ev_dir="$ROOT/.eval/egress-demo"; mkdir -p "$ev_dir"
+      [ "${EGRESS_REFRESH_EVIDENCE:-0}" = 1 ] && echo "WARN not refreshing committed evidence: this run had an UNEXPECTED result"
+    fi
+  fi
+  cp "$log" "$ev_dir/evidence-$mode.jsonl" 2>/dev/null || true
+  echo "evidence: $ev_dir/evidence-$mode.jsonl"
 }
 
 bypass_check() {

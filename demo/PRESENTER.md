@@ -30,8 +30,10 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
   - Beat 4b: `http://127.0.0.1:9100/?stage=1&capture=egress-blocked&step=last`
   - Beat 5a: **no tab.** Slide 6 only.
 - [ ] **T-5: warm the live Beat 4b run.** `scripts/encore-two-layer.sh block` once (cold start about 22 s; it must
-      end `ENCORE PASS`). This caches images and layers so the run inside Beat 4/4b finishes in about 20 s. Never run
-      the `observe` control on stage: it is recorded only.
+      end `ENCORE PASS`). This caches images and layers so the run inside Beat 4/4b finishes in about 14 s on the stage
+      Mac (Catherine, 2/2 warm runs; about 20 s on WSL). It must also leave no `sentinel-encore` stack up: a leftover
+      stack holding `10.231.53.0/24` makes the live run fall back to the recording. Never run the `observe` control on
+      stage: it is recorded only. If you ever describe it, its `disp=block` means "would block, recorded only", never "blocked".
 - [ ] Have the fallback video open in QuickTime, paused at 0:00: `~/Desktop/fallback-demo.mov` (the one name used
       everywhere; see **After** and `demo/slides/VIDEO-CHECKLIST.md`).
 - [ ] Quit Slack, Mail, Messages and anything else that pops up. Turn on **Do Not Disturb** (Control Center → Focus).
@@ -139,7 +141,7 @@ doesn't read words." Then point at the egress guard: it decides on the destinati
 ### Encore (only if asked): both layers, one attack
 
 **This now runs live inside the talk as Beat 4b** (`run-demo.sh` starts it at Beat 4). Re-run it by hand only if a judge
-asks to see it again, or asks "what about attacks the chat proxy can't see?": `scripts/encore-two-layer.sh block`. It takes about 25 s on its own compose project (`sentinel-encore`, net
+asks to see it again, or asks "what about attacks the chat proxy can't see?": `scripts/encore-two-layer.sh block`. It takes about 14 s warm on the stage Mac (about 20 s on WSL) on its own compose project (`sentinel-encore`, net
 `10.231.53.0/24`, override with `ENCORE_PROJECT` / `ENCORE_NET`) and only removes its own containers.
 - What happens: a benign "review my repo" turn passes the chat proxy. RepoBot reads DVAA's poisoned `AGENTS.md`
   and tries to POST fake credentials out. The egress inspector denies it (`destination_not_allowlisted`,
