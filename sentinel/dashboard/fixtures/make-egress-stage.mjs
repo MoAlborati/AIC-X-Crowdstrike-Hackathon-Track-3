@@ -22,6 +22,14 @@ import { redactDeep } from '../../alerts/redact.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUT = path.join(HERE, '..', 'stage', 'egress-blocked-t12.json');
 
+const UNATTRIBUTED = 'unattributed agent turn (no single chat-proxy exchange in flight)';
+function attributeToTurn(alert, turn) {
+  const label = `${turn.agent} :${turn.port} agent turn (in flight when the call was denied)`;
+  const sub = (s) => (typeof s === 'string' ? s.split(UNATTRIBUTED).join(label) : s);
+  for (const hop of alert.TaintPath ?? []) if (hop.Kind === 'source') hop.Label = sub(hop.Label);
+  if (alert.CaseCard) { alert.CaseCard.OriginatedIn = sub(alert.CaseCard.OriginatedIn); alert.CaseCard.Narrative = sub(alert.CaseCard.Narrative); }
+  return alert;
+}
 const die = (msg) => { process.stderr.write(`make-egress-stage: ${msg}\n`); process.exit(1); };
 const [outDir, demoLog, turnLog, outFile = DEFAULT_OUT] = process.argv.slice(2);
 if (!outDir || !demoLog || !turnLog) die('usage: make-egress-stage.mjs <pipeline-out-dir> <egress-demo.log> <turns.jsonl> [out.json]');
@@ -65,6 +73,11 @@ const outside = allAlerts.filter((a) => inTurns(a) === 0);
 const ambiguous = allAlerts.filter((a) => inTurns(a) > 1);
 if (ambiguous.length) die(`${ambiguous.length} alert(s) fall in several turn windows`);
 if (!alerts.some((a) => a.RuleId === 'egress.honeytoken_match')) die('no honeytoken exfil deny fell inside a driven agent turn');
+
+// The inspector cannot see which chat turn issued a call, so T4 labels the source "unattributed agent turn".
+// Each staged alert falls in exactly one recorded turn window (checked above), so name that turn on the
+// case card. The graph resolves the same hop to the same turn's user message. Only this label string changes.
+for (const a of alerts) attributeToTurn(a, turns.find((t) => { const at = Date.parse(a.Timestamp); return at >= t.t0 && at <= t.t1; }));
 
 const inWindow = (t) => alerts.filter((a) => { const at = Date.parse(a.Timestamp); return at >= t.t0 && at <= t.t1; }).length;
 const doc = {

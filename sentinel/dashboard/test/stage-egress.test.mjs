@@ -79,4 +79,10 @@ test('stage 4 file: real block run provenance, no honeytoken value anywhere', as
   const values = [...loadEgressHoneytokens(), ...DVAA_HONEYTOKENS].map(h => h.value).filter(v => typeof v === 'string' && v.length >= 6);
   assert.ok(values.length >= 2, 'honeytoken list loaded');
   for (const v of values) assert.ok(!raw.includes(v), `honeytoken value leaked into the stage file (${v.length} chars)`);
+  // Case cards name the agent turn in flight (same turn the graph resolves the source hop to), never "unattributed".
+  assert.doesNotMatch(raw, /unattributed/i);
+  for (const a of doc.alerts.run) {
+    const turn = doc.exchanges.find(e => { const at = Date.parse(a.Timestamp); return at >= e.sentinel.turnWindow.t0 && at <= e.sentinel.turnWindow.t1; });
+    assert.equal(a.CaseCard.OriginatedIn, `${turn.sentinel.agent} agent turn (in flight when the call was denied)`);
+  }
 });
