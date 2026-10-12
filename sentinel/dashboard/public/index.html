@@ -34,28 +34,37 @@
 
   <div id="banners"></div>
 
-  <section class="headline" aria-label="Headline metrics">
-    <div class="tile pair">
-      <div>
-        <div class="tile-label">Detection rate</div>
-        <div class="tile-value" id="det-rate">—</div>
-      </div>
-      <div class="pair-sep" aria-hidden="true"></div>
-      <div>
-        <div class="tile-label">Benign false-positive rate</div>
-        <div class="tile-value" id="fp-rate">—</div>
-      </div>
-      <div class="tile-note" id="scoring-note"></div>
+  <section class="headline-main" aria-label="Headline metrics (T7 scoring)">
+    <div class="big-tile" id="tile-det">
+      <div class="big-label">Detected</div>
+      <div class="big-sub">any finding fired</div>
+      <div class="big-value" id="det-rate">—</div>
+      <div class="big-base" id="det-base"></div>
+      <div class="big-fp" id="det-fp"></div>
     </div>
+    <div class="big-tile" id="tile-prev">
+      <div class="big-label">Prevented</div>
+      <div class="big-sub">stopped before forwarding</div>
+      <div class="big-value" id="prev-rate">—</div>
+      <div class="big-base" id="prev-base"></div>
+      <div class="big-fp" id="prev-fp"></div>
+    </div>
+    <div class="big-tile" id="tile-lat">
+      <div class="big-label">In-detector latency</div>
+      <div class="big-sub">median per case, detector only</div>
+      <div class="big-value" id="t7-lat">—</div>
+      <div class="big-base" id="lat-base"></div>
+      <div class="big-fp" id="lat-fp"></div>
+    </div>
+    <div class="lens-note" id="lens-note" role="status" hidden></div>
+    <div class="tile-note headline-note" id="scoring-note"></div>
+  </section>
+
+  <section class="headline" aria-label="Replay metrics">
     <div class="tile">
-      <div class="tile-label">Detection latency (this run)</div>
+      <div class="tile-label">In-detector latency (this run)</div>
       <div class="tile-value" id="latency">—</div>
       <div class="tile-note" id="latency-note"></div>
-    </div>
-    <div class="tile">
-      <div class="tile-label">Dashboard replay build</div>
-      <div class="tile-value" id="buildms">—</div>
-      <div class="tile-note" id="graph-size"></div>
     </div>
     <div class="tile gauge-tile">
       <div class="tile-label">Agent trust score</div>
@@ -79,7 +88,7 @@
 
   <section class="graph-wrap" aria-labelledby="graph-h">
     <div class="graph-head">
-      <h2 id="graph-h">Incident graph</h2>
+      <h2 id="graph-h">Incident graph <span class="muted graph-size" id="graph-size"></span></h2>
       <div class="legend" aria-label="Legend">
         <span><i class="sw sw-taint"></i> taint path (detector)</span>
         <span><i class="sw sw-gt"></i> DVAA ground truth</span>

@@ -1,6 +1,6 @@
 // SentinelProxy T3 — every cap the detector enforces, in one place, plus the fail-loud error types.
 //
-// Firm rule (bounded + fail-loud): every input the detector scans or accumulates has a hard cap. On
+// Team rule (bounded + fail-loud): every input the detector scans or accumulates has a hard cap. On
 // overflow the detector RAISES (these errors) or returns a fail-closed BLOCK verdict carrying
 // {payload_size, cap, action}, and logs it at ERROR. It never truncates silently. DVAA's own
 // `detectionText()` keeps only the first and last 8 KiB of a long input and drops the middle; that
@@ -8,25 +8,32 @@
 // Each cap is a reject threshold: the payload is scanned in full or refused in full.
 
 export const DEFAULT_BOUNDS = Object.freeze({
-  // Whole turn (request + response JSON) the detector will scan. The cap bounds TIME, not just bytes:
-  // every scanner is linear, and the measured worst case over crafted inputs (test/timing.test.js, 20k
-  // canaries registered) is ~63 ms at 1 MiB, ~30 ms at 512 KiB, ~24 ms at 384 KiB on the build box.
-  // The T2 proxy enforces a ~50 ms inspector timeout, so 512 KiB keeps the worst case well under it.
-  // DVAA accepts requests up to 1 MiB (MAX_AGENT_BODY_BYTES); a turn above 512 KiB is refused in full,
-  // never truncated. Beyond it -> fail-closed BLOCK + scan_cap_exceeded alert (or DetectorOverflowError).
-  maxPayloadBytes: 512 * 1024,
+  // Whole turn (request + response JSON) the detector will scan. The response phase scans the parked
+  // request together with the response, so the cap is the proxy's request cap (limits.maxRequestBytes,
+  // 1 MiB, = DVAA's MAX_AGENT_BODY_BYTES) plus 1 MiB of response. Every scanner is linear; measured worst
+  // case over crafted inputs (test/timing.test.js, 20k canaries) is ~63 ms per MiB on the build box, i.e.
+  // ~130 ms at this cap: far inside the runtime budget below. Benign data-rich tool outputs (483 KB order
+  // listings, review T3-fix B3) are scanned in full. Beyond it -> fail-closed BLOCK + scan_cap_exceeded,
+  // never truncated.
+  maxPayloadBytes: 2 * 1024 * 1024,
   // Messages in one request history. OpenAI clients resend the whole history; 2,000 turns is far
   // beyond any agent session we replay. Beyond it -> fail closed (same path as payload size).
   maxMessages: 2000,
   // Tool calls in one assistant response. DVAA's largest is 5 (RepoBot). Beyond -> fail closed.
   maxToolCallsPerResponse: 256,
-  // Cooperative time budget for one inspection, below T2's ~50 ms inspector timeout so a slow scan
-  // becomes OUR fail-closed BLOCK verdict (with reason codes) rather than a proxy timeout. Checked between
-  // phases; exceeded -> failclosed.detector_error (ScannerTimeoutError). Single-threaded JS cannot be
-  // preempted mid-phase; the payload cap is what bounds a single phase (see maxPayloadBytes).
-  timeBudgetMs: 40,
+  // RUNTIME fail-closed time budget for one inspection (NOT the performance target). It is derived from
+  // the proxy's real inspector deadline: sentinelInspector({ inspectorTimeoutMs }) sets it to 80% of that
+  // limit, and the proxy's abort `signal` is honoured at every checkpoint. The default assumes the shipped
+  // proxy config (sentinel/config/sentinel.config.json limits.inspectorTimeoutMs = 5000 -> 4000 ms).
+  // The old value (40 ms) came from a wrong ~50 ms proxy-timeout assumption and failed benign 483 KB tool
+  // outputs closed under load (review B3). The separate PERFORMANCE bound (whole inspection < 40 ms on
+  // adversarial inputs at 384 KiB) is asserted in test/timing.test.js; it is a speed target, not a
+  // reason to block traffic. Checked between phases; exceeded -> failclosed.detector_error.
+  timeBudgetMs: 4000,
   // Base64/hex/URL decode passes per string when looking for encoded honeytokens. Each pass only
   // shrinks the text (decoding never grows bytes), so total work is bounded by maxPayloadBytes x depth.
+  // Hitting the depth while the text still decodes further is NOT a silent stop: the decision records
+  // decodeDepthExhausted: true and a report-disposition finding (T3-SPEC MAX_DECODE_DEPTH).
   maxDecodeDepth: 3,
   // Minimum length of a base64 / hex run worth decoding. Shorter runs carry too few bytes to hold a
   // honeytoken (minimum token length is 8).
@@ -37,7 +44,10 @@ export const DEFAULT_BOUNDS = Object.freeze({
   canaryTtlMs: 24 * 60 * 60 * 1000,
   // Session store (mandate grant + HMAC key + cumulative ledger). Idle sessions past TTL are evicted
   // (their history is over, not truncated); if still full -> LedgerFullError -> fail closed.
-  maxSessions: 10000,
+  // Only requests that carry tool calls allocate a session (review B2): plain chat traffic never touches
+  // the store, so benign volume cannot fill it. Sessions are keyed by x-sentinel-session or a stable
+  // conversation hash (never the per-request id).
+  maxSessions: 100000,
   sessionTtlMs: 60 * 60 * 1000,
   // Distinct tools tracked per session in the cumulative ledger. Beyond -> LedgerFullError.
   maxLedgerKeysPerSession: 512,

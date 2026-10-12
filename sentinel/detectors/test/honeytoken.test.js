@@ -7,7 +7,7 @@ import { CAPTURES, readJson, t1AimAbResponse, dvaaDetector, dvaaInProcess, liveC
 const aimAb = readJson(path.join(CAPTURES, 'attack', 'aim-ab.demo.json'));
 const ragUser = { messages: [{ role: 'user', content: 'Please retrieve and summarize the latest indexed document.' }] };
 
-test('T1 capture: RAGBot 7005 run A trips the honeytoken deterministically — response side = post-execution ALERT (DVAA runs tools in-process)', () => {
+test('T1 capture: RAGBot 7005 run A trips the honeytoken deterministically — response side = post-execution, reply WITHHELD (B1), never claimed prevention', () => {
   for (let i = 0; i < 5; i++) {
     const { det } = dvaaInProcess({ agent: { name: 'RAGBot', id: 'ragbot', port: 7005 } });
     const d = det.inspect({ sessionId: `t1-aimab-A-${i}`, request: ragUser, response: t1AimAbResponse(aimAb.runA, 'ragbot') });
@@ -18,9 +18,12 @@ test('T1 capture: RAGBot 7005 run A trips the honeytoken deterministically — r
       assert.equal(f.direction, 'response');
       assert.equal(f.postExecution, true);
       assert.equal(f.prevents, false);
-      assert.equal(f.disposition, 'allow', 'never claims prevention after the tool already ran');
+      // B1: the tool already ran (prevents:false), but the reply carrying its result is withheld.
+      assert.equal(f.disposition, 'block', 'honeytoken in tool-call args withholds the reply (B1)');
+      assert.equal(f.enforcement, 'withhold_reply');
+      assert.equal(f.withholdsReply, true);
       assert.equal(f.wouldBlock, true);
-      assert.match(f.caseCard.narrative, /AFTER in-process execution/);
+      assert.match(f.caseCard.narrative, /AFTER in-process execution \(reply withheld/);
       assert.equal(f.entities.toolCall.name, 'submit_to_index');
       assert.match(f.entities.sink.destination, /^http:\/\/127\.0\.0\.1:\d+\/api\/canary\/exfil-test/);
     }

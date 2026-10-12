@@ -1,208 +1,161 @@
-# SentinelProxy — proxy skeleton (T2)
+# SentinelProxy — reverse proxy (T2)
 
-A reverse proxy in front of **one** DVAA agent's OpenAI-compatible `POST /v1/chat/completions`
-(DVAA is the organizer-provided, intentionally vulnerable sandbox on `127.0.0.1`). It logs every
-exchange in full, runs a pluggable inspector **before forwarding** and **after the reply**, and in
-`block` mode turns an inspector "block" into a structured refusal. Zero dependencies, Node ≥ 24, ESM.
+A reverse proxy in front of a DVAA agent's OpenAI-compatible HTTP API (DVAA is the organizer-provided,
+intentionally vulnerable sandbox on `127.0.0.1`). It logs every exchange in full, runs the inspector set
+**before forwarding** and **after the reply**, and in `block` mode turns a flagged verdict into a
+structured refusal. Zero dependencies, ESM (`.mjs`), Node ≥ 24 (≥ 22 runs with a warning in `scripts/eval.sh`).
+
+This is the canonical proxy (PR #14, issue #37). The PR #21 `.js` proxy was retired. Its live-DVAA
+replay tests, CLI flags, config checks and inspector isolation were ported here (see "Ported from #21").
 
 ```
-client ──▶ read body (cap) ──▶ inspectRequest ──▶ forward (timeout, response cap) ──▶ inspectResponse ──▶ capture ──▶ reply
-                │ over cap: 413          │ block-mode block: 403 (DVAA never called)        │ block-mode block: 403
+client ─▶ admission (maxInFlight, clientTimeoutMs) ─▶ read body (cap) ─▶ decode content-encoding (cap)
+       ─▶ request inspectors (deadline) ─▶ write-ahead capture ─▶ forward (timeout, response cap)
+       ─▶ decode ─▶ response inspectors (deadline) ─▶ capture ─▶ reply
 ```
 
 ## Run
 
 ```bash
-# DVAA fleet must be up (scripts/setup-dvaa.sh up); then:
-node sentinel/proxy/cli.js                                   # sentinel/config/proxy.json → :8005 → RAGBot :7005, observe
-node sentinel/proxy/cli.js --mode block --target-port 7014   # same file, different agent + mode, no code edits
-SENTINEL_MODE=block SENTINEL_TARGET_PORT=7022 node sentinel/proxy/cli.js
-node sentinel/proxy/cli.js --inspector ./my-inspector.js     # ESM module, default export = inspector
+scripts/eval.sh up                                             # DVAA fleet (docker project dvaa-t1)
+node sentinel/proxy/cli.mjs                                    # sentinel/config/sentinel.config.json → :8080 → RAGBot :7005, observe
+node sentinel/proxy/cli.mjs --mode block --target-port 7014    # same file, different agent + mode, no code edits
+SENTINEL_MODE=block SENTINEL_TARGET_PORT=7022 node sentinel/proxy/cli.mjs
+node sentinel/proxy/cli.mjs --inspector ./my-inspector.mjs     # extra inspector, runs AFTER the shipped set
 
-curl -s localhost:8005/v1/chat/completions -H 'content-type: application/json' \
+curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   --data-binary @captures/benign/7005_ragbot.req.json
-curl -s localhost:8005/sentinel/health
 ```
 
-Bad config exits with code 2 and lists **every** problem at once (`ConfigError.issues`).
+The first stdout line is machine-readable:
+`{"event":"listening","host","port","mode","target","inspectors":["substring","sentinel-t3",...],"capture","overrides"}`.
+A bad config exits with code 2 and lists **every** problem at once (`ConfigError.issues`).
 
-## Config — `sentinel/config/proxy.json`
+## Config — `sentinel/config/sentinel.config.json` (loader: `sentinel/config/load.mjs`)
 
-All fields are required. Unknown keys are errors (catches typos). Precedence: **CLI flag > env > file**.
-`--config <file>` / `SENTINEL_CONFIG` picks the file. A relative `sink.path` in the file resolves against
-the file's directory. A relative path from env or CLI resolves against the current working directory.
+Precedence: **CLI flag > env > file**. `--config <file>` / `SENTINEL_CONFIG` picks the file. Unknown
+keys are errors (typo guard). Keys starting with `_` are comments. A relative `capture.path` resolves
+against the repo root, whatever the cwd. Listen and target hosts must be loopback; there is no opt-out.
 
-| field | env | flag | shipped value |
-|---|---|---|---|
-| `listen.host` / `listen.port` | `SENTINEL_LISTEN_HOST` / `_PORT` | `--listen-host` / `--listen-port` | `127.0.0.1` / `8005` (`0` = ephemeral) |
-| `target.host` / `target.port` / `target.name` | `SENTINEL_TARGET_HOST` / `_PORT` / `_NAME` | `--target-host` / `--target-port` / `--target-name` | `127.0.0.1` / `7005` / `RAGBot` |
-| `mode` | `SENTINEL_MODE` | `--mode` | `observe` (`observe` \| `block`) |
-| `limits.maxRequestBytes` | `SENTINEL_MAX_REQUEST_BYTES` | `--max-request-bytes` | 1 MiB |
-| `limits.maxResponseBytes` | `SENTINEL_MAX_RESPONSE_BYTES` | `--max-response-bytes` | 4 MiB |
-| `limits.upstreamTimeoutMs` | `SENTINEL_UPSTREAM_TIMEOUT_MS` | `--upstream-timeout-ms` | 15000 |
-| `limits.inspectorTimeoutMs` | `SENTINEL_INSPECTOR_TIMEOUT_MS` | `--inspector-timeout-ms` | 500 |
-| `limits.maxInFlight` | `SENTINEL_MAX_IN_FLIGHT` | `--max-in-flight` | 32 |
-| `sink.path` | `SENTINEL_SINK_PATH` | `--sink-path` | `sentinel/proxy/.capture/exchanges.jsonl` (gitignored) |
-| `sink.maxFileBytes` / `sink.maxFiles` | `SENTINEL_SINK_MAX_FILE_BYTES` / `_MAX_FILES` | `--sink-max-file-bytes` / `--sink-max-files` | 64 MiB / 5 |
+| field | env | flag | shipped value | hard ceiling |
+|---|---|---|---|---|
+| `listen.host` / `listen.port` | `SENTINEL_LISTEN_HOST` / `_PORT` | `--listen-host` / `--listen-port` | `127.0.0.1` / `8080` (`0` = ephemeral) | loopback only |
+| `target.host` / `target.port` | `SENTINEL_TARGET_HOST` / `_PORT` | `--target-host` / `--target-port` | `127.0.0.1` / `7005` | loopback only |
+| `mode` | `SENTINEL_MODE` | `--mode` | `observe` (`observe` \| `block`) | |
+| `limits.maxRequestBytes` | `SENTINEL_MAX_REQUEST_BYTES` | `--max-request-bytes` | 1 MiB | 16 MiB |
+| `limits.maxResponseBytes` | `SENTINEL_MAX_RESPONSE_BYTES` | `--max-response-bytes` | 8 MiB | 64 MiB |
+| `limits.upstreamTimeoutMs` | `SENTINEL_UPSTREAM_TIMEOUT_MS` | `--upstream-timeout-ms` | 30000 | 120000 |
+| `limits.inspectorTimeoutMs` | `SENTINEL_INSPECTOR_TIMEOUT_MS` | `--inspector-timeout-ms` | 5000 | 10000 |
+| `limits.clientTimeoutMs` | `SENTINEL_CLIENT_TIMEOUT_MS` | `--client-timeout-ms` | 30000 | 300000 |
+| `limits.maxInFlight` | `SENTINEL_MAX_IN_FLIGHT` | `--max-in-flight` | 64 | 1024 |
+| `capture.path` | `SENTINEL_CAPTURE_PATH` | `--capture-path` | `sentinel/proxy/logs/proxy-capture.jsonl` (gitignored, 0600) | |
+| `capture.maxFileBytes` | `SENTINEL_CAPTURE_MAX_FILE_BYTES` | `--capture-max-file-bytes` | 512 MiB | 1 GiB |
+| `inspect.flagSubstrings` | | | `[]` | |
 
-## Bounds — every cap, why that value, what happens beyond it
+## Bounds and failure modes
 
-Nothing in the proxy is silently truncated. Every overflow is rejected and logged at `ALERT` level with
-`{size, cap, action}`. A `{size, cap, action}` that is shown as "at-least" (`sizeKnown: "at-least"`)
-means the body was streamed without a `content-length` header. Reading stopped at the cap, so the true
-size is unknown.
+Nothing is silently truncated. Every overflow is refused and ALERTed (stderr + capture JSONL).
 
-| bound | value | why | beyond it |
-|---|---|---|---|
-| `maxRequestBytes` | 1 MiB (ceiling 16 MiB) | Equals DVAA's own `MAX_AGENT_BODY_BYTES` (`src/index.js`). DVAA would return 413 above it anyway, and it keeps T3's full-payload scan bounded. That is 64× the 16 KiB where DVAA's head/tail scanner starts skipping the middle. | **Both modes:** `413 request_too_large`, ALERT log `{size, sizeKnown, cap, action:"reject"}`, plus a `ScanCapExceeded` AIDR alert (`scan_cap_exceeded`, OASB `context-overflow`). The body past the cap is never buffered. The capture record has `request.body:null` and `bodyNotCaptured:{reason,size,cap,action}`, and DVAA is never contacted. |
-| `maxResponseBytes` | 4 MiB (ceiling 64 MiB) | DVAA replies are around 0.3–3 KB. 4 MiB leaves headroom for BYOK-LLM replies while bounding memory per exchange. | **Both modes:** the upstream is aborted. The client gets `502 response_too_large` with an ALERT `{size, sizeKnown, cap, action:"reject"}` and a `ScanCapExceeded` alert (`proxy.response_body_cap`). An uninspected reply is never passed through. |
-| `upstreamTimeoutMs` | 15 s (ceiling 120 s) | Canned DVAA answers in under 5 ms. The BYOK LLM path can take seconds. | `504 upstream_timeout`, ALERT log, upstream socket destroyed. A closed port gives `502 upstream_unreachable`. |
-| `inspectorTimeoutMs` | 500 ms (ceiling 10 s) | The demo budget is sub-30 ms detection, so 500 ms catches a wedged detector without false-tripping. | The inspector is treated as failed (see below). |
-| `maxInFlight` | 32 (ceiling 1024) | Memory bound: 32 × (1 + 4) MiB is at most 160 MiB of buffered bodies. Also the keep-alive socket pool size. | `503 proxy_overloaded`, ALERT `{size, cap, action:"reject"}`. The rejected body is discarded, not buffered. |
-| `sink.maxFileBytes` | 64 MiB (ceiling 1 GiB) | The floor is validated: `≥ 2·(maxRequestBytes+maxResponseBytes) + 256 KiB`, so a worst-case JSON-escaped record always fits one file. | Rotation: `x.jsonl → x.jsonl.1 → …` (INFO `sink_rotated`). A single record still too big (unreachable under the floor) is replaced by a stub `{captureFailed:{size,cap,action:"stub-record-written"}}` plus an ALERT. A partial line is never written. |
-| `sink.maxFiles` | 5 (ceiling 100) | Bounded disk: 5 × 64 MiB = 320 MiB. | The oldest file is deleted and a WARN `sink_rotated_out {file, bytes, action:"delete-oldest"}` is logged naming it. |
-| headers | Node default 16 KiB | `http.maxHeaderSize`. | Node answers `431` before the handler runs. |
-| rejected-body drain | 2 s (`REJECT_DRAIN_MS`) | Lets the client finish its upload and read the 413/503 instead of a TCP reset. Data is discarded, not buffered. | The socket is destroyed. |
-
-**Resolution vs display:** none of these caps feed a decision on partial data. A body over the cap is
-rejected, never inspected in part. The inspector always gets the **complete** request and response.
+| bound | beyond it |
+|---|---|
+| `maxRequestBytes` | `413 request_too_large`, never forwarded, ALERT `{payload_size, cap, action}`. Declared `Content-Length` over the cap with `Expect: 100-continue` is refused before upload. An over-cap upload is drained (not buffered) up to `DRAIN_LIMIT_BYTES` (16 MiB) so the client reads the 413, then the socket is closed. |
+| `maxResponseBytes` | `502 response_too_large`, upstream aborted, the reply is never returned uninspected. |
+| decoded size (gzip/deflate/br) | Bounded by the same caps (zip-bomb safe). Over the cap: 413/502. More than `MAX_ENCODING_LAYERS` (4), unknown or corrupt codings: block mode refuses (`uninspectable_encoding`), observe forwards + ALERT. |
+| `inspectorTimeoutMs` | block: `503 inspector_timeout` (fail closed); observe: forwarded + ALERT. |
+| `upstreamTimeoutMs` | `504 upstream_timeout`; a closed port gives `502 upstream_unreachable`. |
+| `clientTimeoutMs` | Slow-drip clients get `408 client_timeout` + ALERT, never forwarded. |
+| `maxInFlight` | `503 overloaded` + ALERT, body discarded unread. Open sockets are capped at `4 × maxInFlight` (each drop ALERTed). |
+| `capture.maxFileBytes` | The sink refuses the write (`CaptureFullError`) → `503 capture_unavailable`. Nothing is forwarded without a write-ahead record, and nothing is returned unlogged. There is no rotation: evidence is never deleted to make room. |
 
 ## Failure semantics
 
 | failure | `block` mode | `observe` mode |
 |---|---|---|
-| inspector throws / rejects / times out / returns a malformed Decision | **fail closed:** `503 inspector_failed`, ALERT `inspector_failed {phase, kind, action:"deny"}`. On the request phase DVAA is not called. | forwarded unchanged, ALERT `inspector_failed {action:"forward"}` |
-| inspector says `block` | `403 request_blocked` / `response_blocked` + AIDR alert (disposition `Blocked`) | forwarded unchanged. WARN `would_block`, alert disposition `ReportOnly`, `outcome.wouldBlock:true` |
-| capture sink write fails (disk full, permissions) | `503 capture_failed`: no unaudited delivery | delivered. ALERT `sink_write_failed {action:"deliver-unaudited"}` |
-| any other route or method | `404 route_not_proxied` (not forwarded, so nothing bypasses inspection) | same |
+| inspector throws / malformed verdict / deadline | `503 inspector_error` / `inspector_timeout` (fail closed) | forwarded unchanged + ALERT |
+| verdict flagged | `403 flagged_request` (DVAA never called) / `403 flagged_response` | forwarded unchanged + would-block ALERT |
+| verdict `alert:true` or disposition `report` (not flagged) | ALERT `detector_alert`, never refused | same |
+| capture write fails | `503 capture_unavailable` | `503 capture_unavailable` (no unaudited side effect) |
 
-## Refusal shape (block path)
+Every path is inspected and forwarded; there is no allow-list that a path variant could bypass.
+
+## Refusal shape
 
 ```json
-{
-  "error": { "message": "SentinelProxy refused this request: …", "type": "sentinel_refusal", "code": "request_blocked" },
-  "sentinel": {
-    "requestId": "…", "mode": "block", "phase": "request|response|upstream|proxy", "action": "block",
-    "code": "request_blocked|response_blocked|inspector_failed|request_too_large|response_too_large|upstream_timeout|upstream_unreachable|upstream_error|proxy_overloaded|capture_failed",
-    "reason": "…", "details": { … },
-    "alerts": [ { "AlertId", "DetectName", "Category", "RuleId", "Severity", "SeverityName", "Tactic", "TacticId",
-                  "Technique", "TechniqueId", "PatternDispositionDescription", "Timestamp", "SchemaVersion" } ]
-  }
-}
+{ "error": { "type": "sentinel_blocked", "code": "flagged_request", "message": "SentinelProxy refused this request: flagged_request" },
+  "sentinel": { "request_id": "…", "blocked": true, "mode": "block", "phase": "request|response|forward|capture|proxy",
+                "reason": "<REFUSAL_CODES>", "verdict_count": 1, "detail": { "payload_size": 0, "cap": 0, "upstream_tool_calls_already_executed": true } } }
 ```
 
-The `error` object follows the OpenAI error shape, so OpenAI-style clients surface it. The refusal carries
-only the **classification** fields of each alert (`REFUSAL_ALERT_FIELDS`). The full AIDR alert, with
-evidence, entities, taint path and case card, is written to the capture sink. The caller may be the
-hijacked agent itself, and echoing evidence back would make the refusal a second exfil channel: the
-live test found a URL-encoded honeytoken in `ArgsPreview` that the T4 redactor does not decode.
+The refusal carries only static codes (`REFUSAL_CODES`), the request id and numeric/boolean details.
+Verdict content, detector reasons and error text go to the log only. The caller may be the hijacked
+agent, and echoing evidence back would make the refusal a second exfil channel.
 
-## Inspector hook (T3 implements this) — `inspector.js`
+## Inspector hook — `inspectors.mjs`
 
-```js
-export default {
-  name: 'sentinel-detectors',
-  inspectRequest(ctx)  { /* pre-forward  */ return { action: 'block', reason, verdict } | undefined },
-  inspectResponse(ctx) { /* post-response */ return { action: 'allow' } | undefined },
-};
-```
+`async inspector({ phase, method, path, headers, body, rawBody, contentEncoding, requestId, status?, signal }) → verdict | null`
 
-- **`ctx` (request):** `{phase, requestId, sessionId, mode, target, method, path, headers, body: Buffer, text, json, limits}`.
-- **`ctx` (response):** the request fields, plus `request:{headers,body,text,json}`,
-  `response:{status,headers,body,text,json}`, `dvaa` (the reply's `dvaa{}` block or `null`) and `toolCalls`
-  (`choices[0].message.tool_calls`).
-- **Decision:** `{action: 'allow'|'block', reason?, ruleId?, verdict?}`. `verdict` is a **sentinel/alerts
-  verdict** (`VERDICT_SHAPE` in `sentinel/alerts/schema.js`). The proxy fills in:
-  - `disposition`: `block` in block mode, `report` in observe mode, `allow` for an allow decision
-  - `detectionLatencyMs`: measured, if absent
-  - `entities.agent`: the configured target
-  - `entities.session`: `x-sentinel-session-id` header, or the request id
-
-  It then calls `buildAlert()`. If `buildAlert` rejects the verdict, the proxy logs `alert_build_failed`
-  and still enforces the decision.
-- Default inspector: `NOOP_INSPECTOR` (allow everything).
-- Session correlation: clients may send `x-sentinel-session-id`. `x-sentinel-*` headers are stripped
-  before forwarding.
-- A synchronous infinite loop inside an inspector cannot be pre-empted in-process. Inspectors must bound
-  their own work (T3's caps).
+- `body` is the FULL decoded body; `rawBody` the wire bytes. Both, and `headers`, are **copies**: an
+  inspector that mutates them cannot change what is forwarded, returned or captured.
+- Verdict: `{flagged: boolean}` and/or `{disposition}` (T4 `DISPOSITIONS`, case-insensitive). Optional
+  `alert: true` logs evidence without refusing. Anything else is malformed and fails closed in block mode.
+- Shipped set (`default-inspectors.mjs`): T2 substring inspector (body, URL in every decoded spelling,
+  headers) + T3 `sentinelInspector`. Verdicts and alerts are redacted (honeytokens) before logging.
 
 ## What the proxy can and cannot prevent (DVAA runs tools server-side)
 
-DVAA agents execute their tool calls **inside the agent process, before replying**. For example,
-RAGBot's `submit_to_index` performs the HTTP POST and then reports it in `tool_calls` and in
-`dvaa{exfilAttempted, exfilExecuted, exfilTargetUrl, exfilResult}`. The live test replays
-`captures/variants/fixtures/evasion/eva-pos-middle-001.json` and shows the reply already says
-`exfilExecuted:true` by the time the proxy sees it.
+DVAA agents execute tool calls **inside the agent process, before replying**. The live replay test
+(`test/live-replay.test.mjs`) sends `captures/variants/fixtures/evasion/eva-pos-middle-001.json` as the user
+turn (`dvaaUserTurnRequest`, #30) and the reply already says `exfilAttempted:true` when the proxy sees it.
 
-- **Request hook = prevention.** A request blocked pre-forward never reaches DVAA, so no tool runs. This
-  is the only point where SentinelProxy can *stop* a DVAA-side exfil. It needs a decision from the inbound
-  text alone (the user turn, and any RAG or tool content the client embeds in it).
-- **Response hook = containment + detection, not prevention.** Blocking the reply keeps the tainted output
-  (secrets echoed in content, tool arguments, follow-on instructions) from reaching the client or the next
-  agent hop, and raises the alert. But any tool DVAA already executed **has already happened**. The
-  refusal says so: `details.upstreamToolCallsAlreadyExecuted: true`.
-- **Out of reach:** tool I/O that DVAA performs internally without echoing it in the reply. Anything not
-  sent to `/v1/chat/completions` (other routes are refused, not proxied). Clients that talk to DVAA ports
-  directly (the proxy only protects traffic routed through it).
+- **Request hook = prevention.** A request blocked pre-forward never reaches DVAA, so no tool runs. The
+  same live test shows real T3 refusing that request in block mode with no write-ahead record.
+- **Response hook = containment + detection.** Blocking the reply keeps tainted output from the client,
+  but the tool already ran. The refusal says so: `detail.upstream_tool_calls_already_executed: true`.
+- **Out of reach:** tool I/O DVAA performs without echoing it, and clients that bypass the proxy. The
+  egress guard (`sentinel/egress`, T12) covers the tool boundary.
 
-## Capture sink format — one JSON line per exchange
+## Capture format — one JSON line per record (`capture-sink.mjs`, 0600)
 
-`{schema:"sentinel.capture/1.0.0", ts, requestId, sessionId, mode, target, request:{method,path,headers,body},
-response:{status,headers,body}|null, inspector:{name,request,response}, outcome:{status,action,code,phase,wouldBlock},
-alerts:[full AIDR alerts], events:[loud events], timings:{totalMs,upstreamMs,proxyOverheadMs,inspectRequestMs,inspectResponseMs}}`
-
-- **Bodies:** `{bytes, sha256, encoding:"utf8", text}`, or `encoding:"base64"` when the bytes are not
-  valid UTF-8. `decodeBody()` returns the exact wire bytes.
-- **Write order:** the record is written synchronously **before** the reply is sent.
-- **`proxyOverheadMs`:** `totalMs − upstreamMs`, measured before the sink write.
+- `type:"request"`: write-ahead record, on disk before the upstream sees the request.
+- `type:"exchange"`: `{request_id, mode, target, request:{method,path,headers,body,decoded_body?}, response:{status,headers,body}, upstream_response?, verdicts, action, latency_ms, timings:{total_ms, upstream_ms, proxy_overhead_ms}}`.
+- `type:"alert"`: redacted alert records.
+- Bodies: `{encoding:"utf8"|"base64", bytes, sha256, data}`. `decodeBody()` (server.mjs) returns the exact wire bytes.
 
 ## Proxy-added latency (measured)
 
-`node sentinel/proxy/bench/latency.js --n 300`: real RAGBot :7005, Node v26.10.0. 300 interleaved
-direct/proxied pairs per payload, keep-alive, no-op inspector, sink on.
+`node sentinel/proxy/bench/latency.mjs --n 100`: real RAGBot :7005, Node v22.22.3, shipped inspector set
+(substring + T3), 100 interleaved direct/proxied pairs per payload, keep-alive.
 
-| payload | direct median / p95 | proxied median / p95 | **proxy-added median / p95** |
-|---|---|---|---|
-| benign capture (158 B) | 0.284 / 0.401 ms | 0.495 / 0.758 ms | **0.209 / 0.377 ms** |
-| T6 corpus, 400 tool rows (79 KB) | 1.415 / 3.972 ms | 2.644 / 4.946 ms | **1.012 / 2.524 ms** |
+| payload | **proxy-added median / p95** |
+|---|---|
+| benign capture (158 B) | **1.28 / 1.69 ms** |
+| T6 corpus, 400 tool rows (79 KB) | **5.86 / 7.45 ms** |
 
-The in-process overhead (`timings.proxyOverheadMs`, n=640) is a median of 0.193 ms and a p95 of
-0.55 ms. That is the proxy's share of the sub-30 ms budget. T3's detectors add their own time on top.
+In-process overhead (`timings.proxy_overhead_ms`, n=240): median 2.93 ms, p95 4.95 ms, including T3 detection.
 
 ## Tests
 
 ```bash
-cd sentinel/proxy && node --test "test/*.test.js"     # needs the DVAA fleet; FAILS (never skips) if it is down
+cd sentinel/proxy && node --test "test/*.test.mjs"
+SENTINEL_REQUIRE_DVAA=1 node --test "test/*.test.mjs"   # what scripts/eval.sh sets when the fleet is up
 ```
 
-The live tests talk to the real DVAA fleet:
-- every `captures/benign/*` replayed against its own agent port
-- the >8KB (≈70 KB) corpus request logged byte-for-byte
-- the T6 evasion capture, for the response hook and its real `dvaa{}` block
-- request caps: oversize (declared and chunked) and boundary
-- the response cap, against a real reply
-- the CLI started with flags and env only
+Live seams (`live-replay.test.mjs`, `live-dvaa.test.mjs`, `latency-live.test.mjs`) talk to the real DVAA
+fleet. With `SENTINEL_REQUIRE_DVAA=1` a down agent is a FAILURE, otherwise a loud SKIP. They cover:
+every `captures/benign/*` replayed against its own agent port, the 70 KB corpus logged byte-for-byte, a
+non-UTF-8 body, the T6 evasion replay in observe and block mode, the response hook on DVAA's real
+`dvaa{}` block, the request-cap boundary, the response cap on a real reply, and the CLI started with
+flags + env only. Other suites use a real local HTTP upstream; only dependencies are stubbed.
 
-Only dependencies are stubbed: a misbehaving inspector, a hanging or closed upstream port, a failing sink.
-`test/helpers.js#markerInspector` is a dependency stub standing in for T3, not a mock of the proxy.
+## Ported from #21 (issue #37)
 
-## SE gate (`gates/se-gate.md`) — PASS
+Ported: CLI flags for every config field (CLI > env > file, `source.overrides`), `--inspector`, all
+config issues reported at once, unknown-key rejection, hard ceilings, inspector isolation (copies),
+`sha256` per captured body + `decodeBody()`, `timings`, `upstream_tool_calls_already_executed`, the live
+DVAA replay suite (`dvaaUserTurnRequest`), and the live latency bench.
 
-- [x] Ticket T2, DoD 2 (foundation), deps T1 (merged). File scope `sentinel/proxy/`, `sentinel/config/` is
-  disjoint from T3 (`sentinel/detectors/`), T4 (`sentinel/alerts/`, imported read-only), T5 and T6.
-- [x] Acceptance is concrete and tested: observe passthrough is byte-identical, full-body capture,
-  block-mode refusal, config switching without code edits.
-- [x] Real seam: DVAA `POST /v1/chat/completions` on RAGBot :7005, plus every benign-capture agent (7001,
-  7002, 7003, 7005, 7014, 7022). Captures come from `captures/benign/`, `captures/variants/corpus/` and
-  `captures/variants/fixtures/evasion/eva-pos-middle-001.json`. The verdict follows the
-  `sentinel/alerts` `VERDICT_SHAPE`.
-- [x] Every assembled or scanned input has a cap: request body, response body, header size, in-flight
-  count, sink file and file count, upstream and inspector time. See the Bounds table.
-- [x] Overflow is fail-loud with `{size, cap, action}`, never silently truncated. An over-cap body is
-  rejected, not head/tail-cut (DVAA's 8KB anti-pattern).
-- [x] Each cap documents its value, why, and what happens beyond it (the table above, mirrored in the PR
-  "Bounds introduced").
-- [x] No decision runs on a capped scan: the inspector gets complete bodies or none. The proxy has no
-  display caps.
-- [x] Data-rich validation: a ≈70 KB request built from the T6 corpus (22 KB KB doc + 400-row tool output)
-  with a marker outside the head/tail 8 KB, the 22 KB evasion fixture, and a 1 MiB+1 oversize body.
+Not ported (weaker than, or in conflict with, the `.mjs` design): `/sentinel/health` and the
+`/v1/chat/completions` route allow-list (`.mjs` inspects every path), alert classification fields in the
+refusal body (`.mjs` returns static codes only), size-based sink rotation that deletes the oldest
+capture file (`.mjs` refuses loudly at the cap instead), the no-op default inspector (`.mjs` ships
+T2 + T3), `target.name`, and `x-sentinel-session-id` stripping.
