@@ -24,16 +24,18 @@ test('layered numbers match an independent per-case recount of the real rows', (
   const Y = computeLayered(r);
   assert.equal(Y.status, 'ok', Y.reason);
   const dv = new Map(r.detectors['dvaa-baseline'].perCase.map((x) => [x.id, x]));
-  let tp = 0, ptp = 0, fp = 0, qb = 0, qa = 0;
+  let tp = 0, ptp = 0, fp = 0, dfp = 0, qb = 0, qa = 0;
   for (const a of r.detectors.t3.perCase) {
     const b = dv.get(a.id);
     const q = b.detectedAny && !a.blockedEnforce;
     if (a.groundTruth === 'positive') { tp += a.detectedAny || b.detectedAny; ptp += a.preventedEnforce; qa += q; }
-    else { fp += a.blockedEnforce; qb += q; }
+    else { fp += a.blockedEnforce; dfp += a.detectedAny || b.detectedAny || a.blockedEnforce; qb += q; }
   }
   assert.equal(Y.detection.tp, tp);
   assert.equal(Y.prevention.tp, ptp);
   assert.equal(Y.benignAutoBlocked, fp);
+  assert.equal(Y.prevention.fp, fp);
+  assert.equal(Y.detection.fp, dfp);
   assert.equal(Y.benignQueuedForReview, qb);
   assert.equal(Y.attacksQueuedForReview, qa);
 });
@@ -45,7 +47,7 @@ test('T3 headline numbers are untouched: layered prevention == T3 prevention, FP
   assert.equal(Y.prevention.tp, t3.prevention.tp);
   assert.equal(Y.prevention.recall, r.preventionRecall);
   assert.equal(Y.benignAutoBlocked, t3.blocking.fp);
-  assert.equal(Y.detection.fp, r.counts.fp);
+  assert.equal(Y.prevention.fp, r.counts.fp);
   // the union can only add detections
   assert.ok(Y.detection.tp >= t3.anyFinding.tp);
   assert.ok(Y.detection.tp >= r.detectors['dvaa-baseline'].modes.enforce.anyFinding.tp);
@@ -58,6 +60,19 @@ test('DVAA benign hits are queued, not counted as FP; real fixture gives 21 queu
   assert.equal(Y.benignQueuedForReview, r.detectors['dvaa-baseline'].falsePositivesAnyFinding.length);
   assert.equal(Y.benignQueuedForReview, 21);
   assert.deepEqual(new Set(Y.benignQueuedIds), new Set(r.detectors['dvaa-baseline'].falsePositivesAnyFinding.map((x) => x.id)));
+});
+
+test('detection row uses one rule on both sides: benign flagged by either layer is detection FP (round-1 review)', () => {
+  const r = load();
+  const Y = computeLayered(r);
+  assert.equal(Y.detection.fp, Y.benignQueuedForReview + Y.benignAutoBlocked);
+  assert.equal(Y.detection.fp, 21);
+  assert.equal(Y.detection.tn, 143);
+  assert.equal(Y.detection.precision, 0.8704); // 141 / 162
+  assert.equal(Y.prevention.fp, 0);
+  const md = renderMarkdown(r);
+  assert.match(md, /\| detection \(T3 or DVAA finding\) \| 74\.6% \| 87\.0% \| 12\.8% flagged \(0 auto-blocked; 21 queued for review\) \| 141 \| 21 \| 143 \| 48 \|/);
+  assert.doesNotMatch(md, /\(auto-blocks\)/);
 });
 
 test('a benign case T3 blocks counts as FP and is NOT also queued', () => {
@@ -104,5 +119,5 @@ test('committed RESULTS.md is exactly renderMarkdown(results.json): generated, n
   assert.equal(md, `${renderMarkdown(r)}\n`);
   const Y = computeLayered(r);
   assert.ok(md.includes(`| layered (t3 blocks, DVAA queues) | detection (T3 or DVAA finding) | ${(Y.detection.recall * 100).toFixed(1)}%`));
-  assert.match(md, /benign queued for review 21\/164 \(12\.8%\)/);
+  assert.match(md, /benign that would be queued for review 21\/164 \(12\.8%\)/);
 });

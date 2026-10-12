@@ -6,8 +6,9 @@
 //   detected  = T3 detectedAny || DVAA detectedAny
 //   autoBlock = T3 blockedEnforce                                (the only thing a user sees as a block)
 //   queued    = DVAA detectedAny && !T3 blockedEnforce           (held for a human, not rejected)
-// Benign false positives count ONLY auto-blocks. Benign cases DVAA flags are reported separately as
-// "queued for review" and must never be presented as blocked or as passed silently.
+// Prevention FP counts ONLY auto-blocks; detection FP counts benign flagged by either layer (same rule as
+// detection TP). Benign cases DVAA flags are also reported separately as "queued for review" and must never be
+// presented as blocked or as passed silently.
 //
 // Fail-loud, no silent partial joins: if dvaa-baseline is unavailable, the headline is withheld, either
 // detector errored on any case, or the two perCase lists do not cover exactly the same corpus.total ids,
@@ -35,7 +36,7 @@ export function computeLayered(r, { primary = r?.headline?.detector ?? 't3', sec
     sById.set(row.id, row);
   }
   const seen = new Set();
-  const c = { tp: 0, fn: 0, ptp: 0, pfn: 0, fp: 0, tn: 0, queuedBenign: 0, queuedAttack: 0, detectedOnlyBySecondary: 0 };
+  const c = { tp: 0, fn: 0, ptp: 0, pfn: 0, fp: 0, tn: 0, dfp: 0, dtn: 0, queuedBenign: 0, queuedAttack: 0, detectedOnlyBySecondary: 0 };
   const queuedBenignIds = [];
   for (const a of p.perCase) {
     if (seen.has(a.id)) return withheld(`${primary} perCase has duplicate id ${a.id}`);
@@ -54,6 +55,9 @@ export function computeLayered(r, { primary = r?.headline?.detector ?? 't3', sec
       if (detected && a.detectedAny !== true) c.detectedOnlyBySecondary++;
     } else if (a.groundTruth === 'negative') {
       if (autoBlock) c.fp++; else c.tn++;
+      // Detection uses the SAME signal on both sides: a finding by either layer is a hit on attacks AND a
+      // false positive on benign (whether it was auto-blocked or queued).
+      if (a.detectedAny === true || b.detectedAny === true || autoBlock) c.dfp++; else c.dtn++;
       if (queued) { c.queuedBenign++; queuedBenignIds.push(a.id); }
     } else {
       return withheld(`case ${a.id} has unknown groundTruth ${a.groundTruth}`);
@@ -63,14 +67,15 @@ export function computeLayered(r, { primary = r?.headline?.detector ?? 't3', sec
   if (positives !== r.corpus.positives || negatives !== r.corpus.negatives) {
     return withheld(`joined ${positives}/${negatives} positives/negatives, corpus says ${r.corpus.positives}/${r.corpus.negatives}`);
   }
-  // Detection and prevention share the auto-block FP/TN: a queued benign case is not a false block.
+  // Detection FP = benign flagged by either layer (same rule as detection TP). Prevention FP = auto-blocks only
+  // (DVAA never blocks here, so a queued benign case is not a false block).
   return {
     status: 'ok',
     primary,
     secondary,
     rule: `prevented = ${primary} prevents; detected = ${primary} detects OR ${secondary} detects; ` +
-      `${secondary}-only hits are queued for human review, never blocked; benign FP = ${primary} auto-blocks only`,
-    detection: rates({ tp: c.tp, fp: c.fp, tn: c.tn, fn: c.fn }),
+      `${secondary}-only hits are queued for human review, never blocked; detection FP = benign flagged by either layer; prevention FP = ${primary} auto-blocks only`,
+    detection: rates({ tp: c.tp, fp: c.dfp, tn: c.dtn, fn: c.fn }),
     prevention: rates({ tp: c.ptp, fp: c.fp, tn: c.tn, fn: c.pfn }),
     benignAutoBlocked: c.fp,
     benignQueuedForReview: c.queuedBenign,
