@@ -14,17 +14,19 @@
 # SentinelProxy runs in a throwaway container that shares the DVAA container's network namespace,
 # so the demo's 127.0.0.1 canary and the proxy see the same loopback as the agents.
 #
-# Detector: until `origin/t3-detector-core` exists, the proxy uses T2's substring inspector with
-# the STAND-IN needle list in standin-inspector.config.json. That proves the proxy's block path,
-# not detection quality. If the T3 branch exists, this script refuses to run on the stand-in
-# (fail loud) unless SENTINEL_ALLOW_STANDIN=1. A T3 ref paired with the stand-in config is always
+# Detector: by default the proxy runs exactly as shipped (post-#41): `node sentinel/proxy/cli.mjs` with
+# sentinel/config/sentinel.config.json, which registers [substring, sentinel-t3]. The shipped config has
+# no flagSubstrings, so T3 makes the decision. The old STAND-IN needle list (standin-inspector.config.json,
+# T2 substring only) is still selectable via SENTINEL_CONFIG. It proves the block path, not detection quality,
+# and the original stand-in run is kept as a test fixture in tests/fixtures/standin-run/. If the T3 branch
+# exists, this script refuses to run on the stand-in (fail loud) unless SENTINEL_ALLOW_STANDIN=1. A T3 ref paired with the stand-in config is always
 # refused. run-meta.json's "inspector" is derived from the detector field the proxy actually
 # logged, never from the ref name, and build-contrast.mjs fails if the two disagree.
 #
 # Usage: captures/contrast/run-contrast.sh [OUT_DIR]   (default: captures/contrast/runs)
 # Env:   DVAA_CONTAINER (dvaa-t1-dvaa-1)  DVAA_IMAGE (dvaa-t1-dvaa)
 #        SENTINEL_REF   (origin/main)            PROXY_PORT (7099, inside the DVAA netns)
-#        SENTINEL_CONFIG (captures/contrast/standin-inspector.config.json)
+#        SENTINEL_CONFIG (sentinel/config/sentinel.config.json; stand-in: captures/contrast/standin-inspector.config.json)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,7 +35,7 @@ CONTAINER="${DVAA_CONTAINER:-dvaa-t1-dvaa-1}"
 IMAGE="${DVAA_IMAGE:-dvaa-t1-dvaa}"
 SENTINEL_REF="${SENTINEL_REF:-origin/main}"
 PROXY_PORT="${PROXY_PORT:-7099}"
-SENTINEL_CONFIG="${SENTINEL_CONFIG:-$HERE/standin-inspector.config.json}"
+SENTINEL_CONFIG="${SENTINEL_CONFIG:-$REPO/sentinel/config/sentinel.config.json}"
 OUT="$(mkdir -p "${1:-$HERE/runs}" && cd "${1:-$HERE/runs}" && pwd)"
 PROXY_NAME="t8-sentinel-proxy-$$"
 
@@ -70,7 +72,8 @@ done
 WORK="$(mktemp -d)"
 cleanup() { docker rm -f "$PROXY_NAME" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
-git -C "$REPO" archive "$SENTINEL_REF" sentinel/proxy sentinel/config sentinel/alerts | tar -x -C "$WORK"
+# sentinel/detectors: the shipped CLI imports T3 via sentinel/proxy/default-inspectors.mjs (#41).
+git -C "$REPO" archive "$SENTINEL_REF" sentinel/proxy sentinel/config sentinel/alerts sentinel/detectors | tar -x -C "$WORK"
 cp "$SENTINEL_CONFIG" "$WORK/contrast.config.json"
 mkdir -p "$WORK/out" && chmod 777 "$WORK/out"
 
