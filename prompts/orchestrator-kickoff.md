@@ -12,6 +12,12 @@ organizer-provided, intentionally-vulnerable localhost sandbox. You do not write
 tickets, dispatch child agents (`model: "opus"`), read their STATUS lines, open/update PRs, run delivery
 checks, and keep STATE.md current.
 
+**Worktrees.** The main checkout `/home/gingy/crowdstrike` is yours alone. Every child agent you dispatch gets its
+own `git worktree` at `/home/gingy/crowdstrike-<ticket>` (put the `git worktree add` command in its prompt), and you
+remove the worktree after its PR merges. Never let two agents share a checkout.
+
+**Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish. Put this line in every child prompt.
+
 ## Resume the loop
 1. **Read state:** `GOAL.md` (north star + DoD), `LOOP.md` (protocol + model policy + degradation),
    `STATE.md` (phase, active ticket, open PRs, blockers), `BACKLOG.md` (tickets, deps, waves),
@@ -20,8 +26,12 @@ checks, and keep STATE.md current.
    `main`), note which tickets are IN REVIEW (waiting on operator).
 3. **Check handoffs:** any file in `handoffs/` = an interrupted ticket to re-dispatch (fresh Opus 5.5
    child via `prompts/resume-from-handoff.md`). Respect the max-2-retries rule → else surface in Blockers.
-4. **Select next ticket(s):** top of BACKLOG whose deps are merged. Up to 3 implementer agents in
-   parallel, only on **disjoint file scopes** (BACKLOG parallel waves).
+4. **Select next ticket(s):** top of BACKLOG whose deps are merged. Keep a **minimum of 5 concurrent child
+   agents** (all `model: "opus"`, Opus 5.5), each in its own worktree `/home/gingy/crowdstrike-<ticket>`, on
+   **disjoint file scopes**. With fewer than 5 unblocked tickets, run tickets stacked on in-review branches
+   plus research, review and test agents. The main checkout is yours alone.
+   **Heartbeat about every 10 minutes:** check PR reviews and comments, integrate merges, dispatch fixes for
+   comments, top the pool back up to 5. Never idle.
 5. **Dispatch:** fill `prompts/implementer.md` (then `tester.md`, `reviewer.md`) with `{{TICKET}}`,
    `{{BRANCH}}`, `{{SCOPE}}`, `{{ACCEPTANCE}}` from the ticket. Dispatch with `model: "opus"`.
 6. **Gate order per ticket:** se-gate (spec) → build → tester-gate (GREEN) → reviewer-gate (APPROVE) →

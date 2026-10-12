@@ -13,12 +13,31 @@
 ## Blockers / needs operator
 - [ ] **Operator to review/merge the T0 setup PR** (`t0-goal-loop-setup`). Loop starts T1 after merge.
 - [ ] Confirm autonomy level: start executing T1 now, or hold until T0 merges? (default: start on go.)
-- [ ] Confirm DVAA is runnable on the build machine (Node >=24 / Docker).
+- [ ] Confirm DVAA is runnable on the build machine (Node >=24 / Docker). *Host has Node 22 (< 24), so T1 retry uses Docker.*
 
 ## Backlog pointer
 See BACKLOG.md. Next unblocked ticket: **T1 — Verify target + capture exploits** (no deps).
 
 ## Decision Log (append-only, newest first)
+- 2026-10-12 — **Concurrency floor (operator directive):** replaces the "at most 3 implementer agents" cap with
+  **minimum 5 concurrent child agents**, all Opus 5.5, each in its own worktree on a disjoint file scope. When fewer than 5
+  tickets are unblocked, run tickets stacked on in-review branches plus research, review and test agents. The orchestrator is always
+  working and runs a **~10-minute heartbeat** that checks PR reviews and comments (LOOP.md §Parallelism, §How the loop keeps
+  running; AGENTS.md; prompts/orchestrator-kickoff.md; BACKLOG parallel-waves note).
+- 2026-10-12 — **Worktree rule:** every concurrently running ticket MUST use its own `git worktree` at
+  `/home/gingy/crowdstrike-<ticket>`, and the main checkout is orchestrator-only. Cause: an incident where agents shared the main checkout
+  and a commit landed on another agent's branch (LOOP.md §Worktrees, AGENTS.md, all `prompts/*.md`).
+- 2026-10-12 — **Cost-waiver line** added to every `prompts/*.md`: the operator has waived cost limits, so child agents ignore COST
+  hook messages and finish (cost hooks had cut several T0c research reports short, and many of their citations are unverified).
+- 2026-10-12 — **T1 attempt 1 ended DEGRADED:** a safety-classifier stop, plus the build machine's Node 22 is below DVAA's
+  required Node ≥24. Re-dispatched with DVAA run **via Docker** instead of the host Node.
+- 2026-10-12 — T0c adjacent-knowledge round 2 (`planning/ADJACENT.md` §10, PR stacked on #2): eight more domains plus
+  an empirical transfer-cases study. **Framing revised:** matching actor roles is neither necessary nor sufficient. The predictors are a
+  comparable choke point and adversary adaptation relative to feedback, and actor roles mainly locate the choke point. Backlog: T3 gains
+  the **user-turn mandate** (signed `{tool, destination, max_amount, expires}` from principal turns only), merged with
+  destination provenance and per-tool policy into one `policy.json`. T7 gains **per-rule override-rate tracking**
+  (CPOE 49–96% overrides, so hard-block a narrow tier, human-only override). New stretch tickets: S10 tool-manifest lockfile + capability
+  diff, S11 counterfactual re-plan explainer (MELON, ICML 2025), S12 cross-session campaign correlation.
 - 2026-10-12 — T0b adjacent-knowledge analysis (`planning/ADJACENT.md`, PR stacked on #1): a field counts as adjacent
   by structural match (confused-deputy triad, shared data/control channel, choke point, adaptive adversary),
   not surface similarity. Top sources are software injection and BEC; immunology and HACCP are narrative only. Folded the convergent

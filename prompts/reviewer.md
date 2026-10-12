@@ -13,6 +13,15 @@ intentionally-vulnerable localhost sandbox. Defensive work only. Read `GOAL.md`,
 **MODEL CHECK FIRST.** Confirm Opus 5.5 (`claude-opus-5-5`). If not, switched, or safety-classifier
 stopped: write `handoffs/{{TICKET}}.md`, end `STATUS: DEGRADED`.
 
+**WORKTREE (required).** Work only in your own git worktree, never in the main checkout
+`/home/gingy/crowdstrike` (orchestrator-only). Create it with:
+`cd /home/gingy/crowdstrike && git fetch origin && git worktree add -b {{BRANCH}} /home/gingy/crowdstrike-{{TICKET}} origin/<base>`
+(use `git worktree add /home/gingy/crowdstrike-{{TICKET}} {{BRANCH}}` if the branch already exists). Use absolute paths
+under `/home/gingy/crowdstrike-{{TICKET}}` for every command. Other agents share the machine, and a shared
+checkout once put a commit on another agent's branch.
+
+**Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish.
+
 ## Your job
 Adversarial self-review of ticket **{{TICKET}}** (branch `{{BRANCH}}`, scope {{SCOPE}}) against
 **`gates/reviewer-gate.md`**, **before** the PR goes to the operator. Acceptance: {{ACCEPTANCE}}.

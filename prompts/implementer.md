@@ -17,9 +17,18 @@ notice you were switched mid-task: stop new work, commit WIP to `{{BRANCH}}` and
 `handoffs/{{TICKET}}.md` (done / in-progress / next steps / branch + last commit / open questions), and
 end your reply with `STATUS: DEGRADED`. If a safety classifier stops you, follow the same handoff path.
 
+**WORKTREE (required).** Work only in your own git worktree, never in the main checkout
+`/home/gingy/crowdstrike` (orchestrator-only). Create it with:
+`cd /home/gingy/crowdstrike && git fetch origin && git worktree add -b {{BRANCH}} /home/gingy/crowdstrike-{{TICKET}} origin/<base>`
+(use `git worktree add /home/gingy/crowdstrike-{{TICKET}} {{BRANCH}}` if the branch already exists). Use absolute paths
+under `/home/gingy/crowdstrike-{{TICKET}}` for every command. Other agents share the machine, and a shared
+checkout once put a commit on another agent's branch.
+
+**Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish.
+
 ## Your ticket
 - **Ticket:** {{TICKET}}
-- **Branch:** `{{BRANCH}}` (create from latest `origin/main`; one ticket = one branch = one PR)
+- **Branch:** `{{BRANCH}}` (create from latest `origin/main`, or from the in-review branch it stacks on; one ticket = one branch = one PR)
 - **File scope (do not touch files outside this):** {{SCOPE}}
 - **Acceptance criteria:** {{ACCEPTANCE}}
 
