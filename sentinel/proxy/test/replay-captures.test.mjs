@@ -102,7 +102,8 @@ test('T4-shaped verdict (sentinel/alerts sample) blocks via disposition and neve
     const r = await post(`${url}/v1/chat/completions`, { messages: [] });
     assert.equal(r.status, 403);
     const body = JSON.parse(r.body);
-    assert.deepEqual(body.sentinel.verdicts, [{ detector: sample.ruleId, reasons: [] }]);
+    assert.equal(body.sentinel.verdict_count, 1);
+    assert.equal(body.sentinel.verdicts, undefined, 'verdict content stays in the log');
     assert.ok(!r.body.includes(sample.canary.value), 'canary value must not be echoed');
     assert.ok(!r.body.includes(sample.entities.sink.destination), 'sink destination must not be echoed');
     assert.equal(up.received.length, 0);

@@ -55,7 +55,10 @@ export function makeConfig(overrides = {}) {
     listen: { host: '127.0.0.1', port: 0 },
     target: { host: '127.0.0.1', port: 7005 },
     mode: 'observe',
-    limits: { maxRequestBytes: 1048576, maxResponseBytes: 8388608, upstreamTimeoutMs: 5000 },
+    limits: {
+      maxRequestBytes: 1048576, maxResponseBytes: 8388608, upstreamTimeoutMs: 5000,
+      inspectorTimeoutMs: 2000, clientTimeoutMs: 10000, maxInFlight: 64,
+    },
     capture: { path: join(dir, 'capture.jsonl'), maxFileBytes: 536870912 },
     inspect: { flagSubstrings: [] },
   };
@@ -119,6 +122,27 @@ export function post(url, body, { headers = {}, chunked = false, paced = false }
     } else {
       req.end(buf);
     }
+  });
+}
+
+/**
+ * General request: any method, full path incl. query string, arbitrary headers, optional body.
+ * Returns status, headers and exact body bytes.
+ */
+export function send(url, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const buf = body === undefined ? null : (Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body)));
+    const h = { ...headers };
+    if (buf) h['content-length'] = buf.length;
+    const req = http.request({ host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method, headers: h, agent }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end(buf ?? undefined);
   });
 }
 

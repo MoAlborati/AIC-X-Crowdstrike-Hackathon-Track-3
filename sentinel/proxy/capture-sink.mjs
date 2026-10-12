@@ -5,8 +5,13 @@
 // capture.maxFileBytes. When a write would push the file past that cap the sink throws
 // CaptureFullError (fail-loud) instead of dropping or truncating the record. The proxy turns that
 // into a 503 + stderr ALERT, so an exchange is never forwarded without being logged.
+//
+// The file holds full plaintext secrets, so it is owner-only: created 0600 (directory 0700 when we
+// create it), and an existing file with group/other bits is tightened to 0600 before the first write.
 
-import { appendFile, mkdir, stat } from 'node:fs/promises';
+import { appendFile, chmod, mkdir, stat } from 'node:fs/promises';
+
+export const CAPTURE_FILE_MODE = 0o600;
 import { dirname } from 'node:path';
 
 export class CaptureFullError extends Error {
@@ -30,9 +35,11 @@ export class JsonlCaptureSink {
 
   async _init() {
     if (this._bytes !== null) return;
-    await mkdir(dirname(this.path), { recursive: true });
+    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
     try {
-      this._bytes = (await stat(this.path)).size;
+      const st = await stat(this.path);
+      if ((st.mode & 0o077) !== 0) await chmod(this.path, CAPTURE_FILE_MODE);
+      this._bytes = st.size;
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
       this._bytes = 0;
@@ -51,7 +58,7 @@ export class JsonlCaptureSink {
       if (this._bytes + recordBytes > this.maxFileBytes) {
         throw new CaptureFullError({ fileBytes: this._bytes, recordBytes, cap: this.maxFileBytes });
       }
-      await appendFile(this.path, line);
+      await appendFile(this.path, line, { mode: CAPTURE_FILE_MODE });
       this._bytes += recordBytes;
     };
     const p = this._chain.then(run);

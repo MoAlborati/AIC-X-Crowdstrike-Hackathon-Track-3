@@ -5,7 +5,10 @@
   "limits": {
     "maxRequestBytes": 1048576,
     "maxResponseBytes": 8388608,
-    "upstreamTimeoutMs": 30000
+    "upstreamTimeoutMs": 30000,
+    "inspectorTimeoutMs": 5000,
+    "clientTimeoutMs": 30000,
+    "maxInFlight": 64
   },
   "capture": {
     "path": "sentinel/proxy/logs/proxy-capture.jsonl",

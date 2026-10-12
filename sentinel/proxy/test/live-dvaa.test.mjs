@@ -29,7 +29,10 @@ async function startCli(mode, flag) {
     listen: { host: '127.0.0.1', port: 0 },
     target: { host: '127.0.0.1', port: DVAA_PORT },
     mode,
-    limits: { maxRequestBytes: 1048576, maxResponseBytes: 8388608, upstreamTimeoutMs: 10000 },
+    limits: {
+      maxRequestBytes: 1048576, maxResponseBytes: 8388608, upstreamTimeoutMs: 10000,
+      inspectorTimeoutMs: 5000, clientTimeoutMs: 30000, maxInFlight: 64,
+    },
     capture: { path: capture, maxFileBytes: 536870912 },
     inspect: { flagSubstrings: flag ? [flag] : [] },
   }));

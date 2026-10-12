@@ -5,10 +5,18 @@
 //   2. Environment overrides: SENTINEL_MODE, SENTINEL_TARGET_HOST, SENTINEL_TARGET_PORT,
 //      SENTINEL_LISTEN_HOST, SENTINEL_LISTEN_PORT, SENTINEL_CAPTURE_PATH
 //
-// Validation is strict and fail-loud: an unknown mode, a non-integer port, or a missing/non-positive
-// limit throws ConfigError. We never fall back to a default silently once a value was supplied.
+// Validation is strict and fail-loud: an unknown mode, a non-integer port, a missing/non-positive
+// limit, or a NON-LOOPBACK listen/target host throws ConfigError. We never fall back to a default
+// silently once a value was supplied.
+//
+// Loopback-only (both directions): the proxy is unauthenticated and its capture log holds full
+// plaintext bodies, so it must never listen on a network-reachable address; and the only authorized
+// target is the local DVAA sandbox, so it must never forward to a remote host. Accepted hosts:
+// `localhost`, any IPv4 in 127.0.0.0/8, `::1` (any spelling), `::ffff:127.x.y.z`. There is no
+// opt-out flag on purpose.
 
 import { readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { dirname, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,11 +49,30 @@ function asPositiveInt(value, field) {
   return value;
 }
 
+/** True only for loopback hosts: `localhost`, 127.0.0.0/8, ::1, ::ffff:127.0.0.0/104. */
+export function isLoopbackHost(value) {
+  if (typeof value !== 'string') return false;
+  let h = value.trim().toLowerCase();
+  if (h === 'localhost') return true;
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+  const family = isIP(h);
+  if (family === 4) return h.split('.')[0] === '127';
+  if (family === 6) {
+    // WHATWG URL canonicalises every IPv6 spelling (0:0:0:0:0:0:0:1, ::ffff:127.0.0.1, ...).
+    const canon = new URL(`http://[${h}]/`).hostname;
+    return canon === '[::1]' || /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(canon);
+  }
+  return false; // hostnames other than localhost, 0.0.0.0, ::, LAN/public IPs, numeric shorthands
+}
+
 function asHost(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ConfigError(`${field} must be a non-empty host string, got ${JSON.stringify(value)}`);
   }
-  return value;
+  if (!isLoopbackHost(value)) {
+    throw new ConfigError(`${field} must be a loopback address (localhost, 127.0.0.0/8 or ::1), got ${JSON.stringify(value)}`);
+  }
+  return value.trim();
 }
 
 /**
@@ -90,6 +117,9 @@ export function validateConfig(raw, { baseDir = REPO_ROOT } = {}) {
       maxRequestBytes: asPositiveInt(limits.maxRequestBytes, 'limits.maxRequestBytes'),
       maxResponseBytes: asPositiveInt(limits.maxResponseBytes, 'limits.maxResponseBytes'),
       upstreamTimeoutMs: asPositiveInt(limits.upstreamTimeoutMs, 'limits.upstreamTimeoutMs'),
+      inspectorTimeoutMs: asPositiveInt(limits.inspectorTimeoutMs, 'limits.inspectorTimeoutMs'),
+      clientTimeoutMs: asPositiveInt(limits.clientTimeoutMs, 'limits.clientTimeoutMs'),
+      maxInFlight: asPositiveInt(limits.maxInFlight, 'limits.maxInFlight'),
     }),
     capture: Object.freeze({
       path: isAbsolute(capture.path) ? capture.path : resolve(baseDir, capture.path),
