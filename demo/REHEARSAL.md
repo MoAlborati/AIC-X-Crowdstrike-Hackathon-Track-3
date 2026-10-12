@@ -85,6 +85,27 @@ entry (machine, bash, node, docker context, git SHA) below. A missing component 
 | egress-demo.sh both | PASS | 41s | .eval/delivery-20261012T201502Z/egress-both.log |
 | eval.sh track3a | MISSING | - | - |
 
+#### 2026-10-12T22:36Z — PASS — `cb2b7f54706` on Linux WSL2 (delivery-gate dg3, frozen `v1.0-submission`)
+- Machine: `Linux x86_64` · bash 5.2.21(1)-release · node v24.16.0 · docker context `default` · detached at `v1.0-submission` → `cb2b7f5`
+- Logs: `.eval/delivery-20261012T223629Z/`
+
+| Step | Result | Duration | Log |
+|---|---|---|---|
+| eval.sh doctor | PASS | 1s | .eval/delivery-20261012T223629Z/eval-doctor.log |
+| eval.sh up | PASS | 1s | .eval/delivery-20261012T223629Z/eval-up.log |
+| eval.sh all | PASS | 148s | .eval/delivery-20261012T223629Z/eval-all.log |
+| run-demo.sh --check-script | PASS | 0s | .eval/delivery-20261012T223629Z/demo-check-script.log |
+| run-demo.sh --auto #1 | PASS | 21s | .eval/delivery-20261012T223629Z/demo-auto-1.log |
+| run-demo.sh --auto #2 | PASS | 22s | .eval/delivery-20261012T223629Z/demo-auto-2.log |
+| run-demo.sh --auto #3 | PASS | 21s | .eval/delivery-20261012T223629Z/demo-auto-3.log |
+| run-demo.sh --auto #4 | PASS | 28s | .eval/delivery-20261012T223629Z/demo-auto-4.log |
+| run-demo.sh --auto #5 | PASS | 20s | .eval/delivery-20261012T223629Z/demo-auto-5.log |
+| egress-demo.sh both | PASS | 41s | .eval/delivery-20261012T223629Z/egress-both.log |
+| eval.sh track3a | PASS | 2s | .eval/delivery-20261012T223629Z/eval-track3a.log |
+
+- Demo replays clean: 5/5. **VERDICT: PASS** (gate exit 0).
+- Encore: `scripts/encore-two-layer.sh block` — **PASS**, attacker **0 canary hits**, 3 inspector denies (Layer 1 chat proxy `403 flagged_response`; Layer 2 egress deny `destination_not_allowlisted` + `honeytoken_match`).
+
 <!-- delivery-gate-log:end -->
 
 ---
