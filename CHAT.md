@@ -33,12 +33,18 @@ When you post a new message, the thread becomes **unanswered** again and the orc
 Humans shouldn't paste the marker, because the poller would then treat their message as already answered.
 
 ## Under the hood
-`scripts/chat-poll.sh` polls open issues and prints one line per unanswered message:
+`scripts/chat-poll.sh` polls open issues, plus closed issues updated in the last 6h, and prints one line per
+unanswered message (newest comment without the marker, from anyone):
 ```
 CHAT_EVENT prio=URGENT|normal issue=#N from=<login> key=<issue:comment-id> title=<title>
+CHAT_EVENT prio=STALE issue=#N from=<login> key=<issue:stale> title=<title>
 ```
+- `prio=STALE`: an open issue labelled `needs-human`, or with a deadline in its title, that has had no
+  orchestrator reply for 30 min or more. It is re-emitted at most once per issue per 30 min.
+- On startup, every item that is currently unanswered or stale is emitted again. Nothing is silently marked seen.
 - `CHAT_REPO=owner/repo` targets another repo. The default is this one.
-- `CHAT_INTERVAL` sets the poll interval in seconds (default 15).
+- `CHAT_INTERVAL` sets the poll interval in seconds (default 30, minimum 30).
 - Seen-message keys live in `.chat/`, which is gitignored.
 - Issues and comments are fetched with `--paginate`, so no capped list scan drops a thread.
   A failed API call is logged to stderr, never skipped silently.
+- Test: `node --test scripts/test/chat-poll.test.mjs` (fixture JSON through a stubbed `gh`).

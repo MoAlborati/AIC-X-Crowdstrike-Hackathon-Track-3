@@ -944,3 +944,26 @@ describe('T2 <-> T4 cross-module: every T4 disposition through the real proxy', 
     assert.equal(outcomes['"hold"'], 'rejected->503');
   });
 });
+
+// Flake-fix root cause (pipeline egress-seam 212 !== 211, proxy-seam rotation): the log scrubber redacted
+// ~1 in 8,000 random request_ids (a Luhn-valid digit run across the UUID hyphens), so that alert record no
+// longer joined its exchange record. These UUIDs are ones the scrubber's payment-card pattern rewrites.
+test('alert records keep the exact request_id even when the UUID looks like a payment card to the scrubber', async () => {
+  const MANGLED = ['41812006-4939-4383-b200-5e9cf9c4a341', '05a8cdf0-e9c1-4d5e-9649-560352079702', '23702694-7103-4115-9f49-4b0e9c45662a'];
+  const up = await startUpstream(() => ({ body: leakReply() }));
+  const cfg = makeConfig({ target: { port: up.port }, mode: 'observe', inspect: { flagSubstrings: [DVAA_TOKEN] } });
+  const ids = [...MANGLED];
+  const logged = [];
+  const { proxy, url } = await startProxy(cfg, { logAlert: (a) => logged.push(a), newRequestId: () => ids.shift() });
+  try {
+    for (let i = 0; i < MANGLED.length; i++) assert.equal((await post(`${url}/v1/chat/completions`, {})).status, 200);
+  } finally { await proxy.close(); await up.close(); }
+  const recs = readCapture(cfg.capture.path);
+  const exchanges = recs.filter((r) => r.type === 'exchange').map((r) => r.request_id);
+  const alerts = recs.filter((r) => r.type === 'alert' && r.reason === 'flagged');
+  assert.deepEqual(exchanges, MANGLED);
+  assert.deepEqual(alerts.map((a) => a.request_id), MANGLED, 'every alert joins its exchange by the unredacted id');
+  assert.deepEqual(logged.filter((a) => a.reason === 'flagged').map((a) => a.request_id), MANGLED);
+  // The scrubber still runs on everything else in the alert record.
+  assert.ok(!JSON.stringify(alerts).includes(DVAA_TOKEN), 'canary still redacted in alert records');
+});

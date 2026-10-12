@@ -1,5 +1,5 @@
 // Worker for test/redact-adversarial.test.js: runs the REAL buildAlert on an adversarial verdict and
-// reports per-run wall time. Runs in a worker thread so the parent can enforce a hard deadline
+// reports per-run CPU time of this worker thread (and wall time, for the log). Runs in a worker thread so the parent can enforce a hard deadline
 // (terminate) — a superlinear regex blocks synchronously and could not be interrupted in-process.
 import { parentPort, workerData } from 'node:worker_threads';
 import { buildAlert } from '../schema.js';
@@ -36,12 +36,22 @@ function verdictFor({ fields, unit, len, canaryFlood, overlapCanaries, canaries 
 const warnings = [];
 const onWarning = (msg) => warnings.push(msg);
 buildAlert(makeVerdict('egress_secret_pattern', 1, { evidence: 'warm-up eyJ AKIA 123-45-6789' }), { onWarning });
+// CPU time, not wall clock (flake fix): under merge-gate load (~16 runnable agents) wall clock measures the
+// scheduler, not the redactor (SSN flood measured 488 ms wall vs ~20 ms CPU). threadCpuUsage bills only
+// THIS worker thread (not GC helper threads); process.cpuUsage is the fallback on Node < 22.19. A superlinear
+// regression is 10-1000x in CPU time too, so the budgets keep their meaning; the parent's DEADLINE_MS
+// wall-clock kill still catches a real hang.
+const cpuUsage = typeof process.threadCpuUsage === 'function' ? (prev) => process.threadCpuUsage(prev) : (prev) => process.cpuUsage(prev);
 const times = [];
+const walls = [];
 let last;
 for (let i = 0; i < workerData.runs; i++) {
   const v = verdictFor(workerData); // fresh verdict each run; construction is outside the timed region
+  const c0 = cpuUsage();
   const t0 = performance.now();
   last = buildAlert(v, { onWarning });
-  times.push(performance.now() - t0);
+  walls.push(performance.now() - t0);
+  const c = cpuUsage(c0);
+  times.push((c.user + c.system) / 1000);
 }
-parentPort.postMessage({ times, byKind: last.Redactions.ByKind, evidenceLen: last.Evidence?.length ?? 0 });
+parentPort.postMessage({ times, walls, byKind: last.Redactions.ByKind, evidenceLen: last.Evidence?.length ?? 0 });

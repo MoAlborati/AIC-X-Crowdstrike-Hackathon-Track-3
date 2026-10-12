@@ -76,7 +76,10 @@ Nothing is silently truncated. Every overflow is refused and ALERTed (stderr + c
 | verdict `alert:true` or disposition `report` (not flagged) | ALERT `detector_alert`, never refused | same |
 | capture write fails | `503 capture_unavailable` | `503 capture_unavailable` (no unaudited side effect) |
 
-Every path is inspected and forwarded; there is no allow-list that a path variant could bypass.
+Every path is passed to every inspector and forwarded; there is no route allow-list. Depth differs by route: T3 parses
+only `/v1/chat/completions` and `/chat/completions`. Every other route (DVAA `POST /chat`, A2A `/a2a/message`, MCP)
+gets the honeytoken backstops only: exact canary values in body, headers and URL in both phases, plus percent/hex/base64
+canaries in non-chat POST bodies (#126).
 
 ## Refusal shape
 

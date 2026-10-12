@@ -74,7 +74,7 @@ which is the setting for judging the final build.
 | `EVAL_DASHBOARD_PORT` | `9100` | Dashboard port (always bound to 127.0.0.1) |
 | `DVAA_DIR`, `DVAA_PROJECT`, `DVAA_PIN` | `.dvaa/dvaa-target`, `dvaa-t1`, pinned | Passed through to `scripts/setup-dvaa.sh` |
 
-`scripts/eval.sh track3a` runs the Track 3 Path A demo (`node track3a/run-demo.mjs`, PR #62); it prints NOT YET MERGED while `track3a/` is not on the branch, and is not part of `all` because it rewrites `track3a/runs/`. `test` also discovers suites under `track3a/` and `track1/` and reports a missing dir as `not present`.
+`scripts/eval.sh track3a` runs the Track 3 Path A demo (`node track3a/run-demo.mjs`, PR #62); it prints NOT YET MERGED while `track3a/` is not on the branch, and writes its run outputs to the gitignored `.eval/track3a/` (override `TRACK3A_OUT`; before #113 it rewrote `track3a/runs/`). It needs Node >= 24 (`nvm use 24`; v24.16.0 on the team box) and exits 2 on Node < 24, so it is not part of `all`. `test` also discovers suites under `track3a/` and `track1/` and reports a missing dir as `not present`.
 
 `scripts/eval.sh down` stops the fleet. Don't run it on a shared machine while others are using `dvaa-t1`.
 

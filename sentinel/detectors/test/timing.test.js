@@ -23,7 +23,7 @@ const PERF_INPUT = 384 * 1024;
 // gate runs ~13 agents in parallel (load ~10), and wall clock then measures the scheduler, not the
 // detector. A quadratic regression is 100x+ in CPU time too, so the bound stays strict. A generous
 // wall-clock ceiling still catches a real hang (sleep / blocking wait / lost wakeup).
-const WALL_CEILING_MS = 250;
+const WALL_CEILING_MS = 1000; // hang guard only (median of 5); the performance bound is the CPU one above
 const RUNS = 5;
 // CPU of THIS thread (process.threadCpuUsage, Node >= 22.19): process.cpuUsage() is process-wide and
 // also bills V8's parallel GC helper threads, which can exceed wall time (measured 39 ms CPU vs 35 ms wall
@@ -38,6 +38,8 @@ function measure(fn) {
   const c = cpuUsage(c0);
   return { out, cpu: (c.user + c.system) / 1000, wall };
 }
+/** CPU ms of fn() (median of `runs` is taken by the caller). */
+const cpuOf = (fn) => measure(fn).cpu;
 const MAX = PERF_INPUT;
 const SCANNER_INPUT = PERF_INPUT; // each scanner alone is held to 50 ms (a quadratic regression is 100x+ over: see PR delete-the-fix C/D/E)
 // The adversarial string appears twice (untrusted tool output + sink args), so each copy is ~45% of the cap.
@@ -72,7 +74,7 @@ function detectorWithBigRegistry() {
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-test('whole inspection < 40 ms CPU (performance bound; wall-clock ceiling 250 ms; every layer < 50 ms) on adversarial 384 KiB inputs (20k canaries)', { timeout: 60000 }, () => {
+test('whole inspection < 40 ms CPU (performance bound; wall-clock hang ceiling 1000 ms; every layer < 50 ms) on adversarial 384 KiB inputs (20k canaries)', { timeout: 60000 }, () => {
   const det = detectorWithBigRegistry();
   const report = [];
   for (const [name, unit] of Object.entries(ADVERSARIAL)) {
@@ -93,11 +95,16 @@ test('whole inspection < 40 ms CPU (performance bound; wall-clock ceiling 250 ms
       assert.equal(d.failClosed, false, `${name}: ${JSON.stringify(d.error)}`);
       totals.push(Math.round(cpu * 1000) / 1000);
       walls.push(Math.round(wall * 1000) / 1000);
-      for (const l of d.stats.layers) (layerRuns[l.layer] ??= []).push(l.latencyMs);
+      // Per-layer latency is wall clock inside the detector. Scale it by this run's CPU/wall ratio (<= 1) to
+      // estimate the layer's CPU share (flake fix: a 57 ms layer against the 50 ms bound under merge-gate load
+      // was the scheduler, not the scanner). An unloaded run has ratio ~1, so the bound is unchanged there,
+      // and a 10x layer regression is 10x in CPU as well.
+      const ratio = wall > 0 ? Math.min(1, cpu / wall) : 1;
+      for (const l of d.stats.layers) (layerRuns[l.layer] ??= []).push(Math.round(l.latencyMs * ratio * 1000) / 1000);
     }
     const layers = Object.fromEntries(Object.entries(layerRuns).map(([k, v]) => [k, median(v)]));
     report.push({ name, total: median(totals), wall: median(walls), ...layers });
-    for (const [layer, ms] of Object.entries(layers)) assert.ok(ms < LAYER_BUDGET_MS, `${name}: layer ${layer} took ${ms} ms`);
+    for (const [layer, ms] of Object.entries(layers)) assert.ok(ms < LAYER_BUDGET_MS, `${name}: layer ${layer} took ~${ms} ms CPU (wall x CPU/wall)`);
     assert.ok(median(totals) < TOTAL_BUDGET_MS, `${name}: total CPU ${median(totals)} ms >= ${TOTAL_BUDGET_MS} ms budget`);
     assert.ok(median(walls) < WALL_CEILING_MS, `${name}: wall clock ${median(walls)} ms >= ${WALL_CEILING_MS} ms ceiling (hang?)`);
   }
@@ -105,7 +112,7 @@ test('whole inspection < 40 ms CPU (performance bound; wall-clock ceiling 250 ms
   for (const r of report) console.log(`#   ${r.name.padEnd(15)} total=${r.total} wall=${r.wall} ${Object.entries(r).filter(([k]) => !['name', 'total', 'wall'].includes(k)).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 });
 
-test('every text scanner alone is linear: < 50 ms at the payload cap on its own worst-case input', { timeout: 15000 }, () => {
+test('every text scanner alone is linear: < 50 ms CPU (median of 3) at the payload cap on its own worst-case input', { timeout: 15000 }, () => {
   const scanners = {
     findSecretShapes: [findSecretShapes, ['eyJ', 'eyJab.', 'sk-', 'AKIA', 'ghp_', '-----BEGIN ']],
     extractUrls: [extractUrls, ['http://', 'https://a', 'http://@']],
@@ -122,13 +129,9 @@ test('every text scanner alone is linear: < 50 ms at the payload cap on its own 
     for (const u of units) {
       const s = u.repeat(Math.ceil(SCANNER_INPUT / u.length)).slice(0, SCANNER_INPUT);
       const runs = [];
-      for (let r = 0; r < 3; r++) {
-        const t = performance.now();
-        fn(s);
-        runs.push(performance.now() - t);
-      }
+      for (let r = 0; r < 3; r++) runs.push(cpuOf(() => fn(s)));
       const ms = median(runs);
-      assert.ok(ms < LAYER_BUDGET_MS, `${name}(${JSON.stringify(u)} x ${SCANNER_INPUT}) took ${ms.toFixed(1)} ms`);
+      assert.ok(ms < LAYER_BUDGET_MS, `${name}(${JSON.stringify(u)} x ${SCANNER_INPUT}) took ${ms.toFixed(1)} ms CPU`);
     }
   }
 });
@@ -138,12 +141,8 @@ test('honeytoken index stays O(1) per position with 50k canaries sharing the "sk
   for (let i = 0; i < 50000; i++) det.mintCanary(`s${i}`, 't', 'api_key');
   const s = 'sk-proj-'.repeat(Math.floor(SCANNER_INPUT / 8));
   const runs = [];
-  for (let r = 0; r < 3; r++) {
-    const t = performance.now();
-    det.registry.scan(s);
-    runs.push(performance.now() - t);
-  }
-  assert.ok(median(runs) < LAYER_BUDGET_MS, `registry.scan took ${median(runs).toFixed(1)} ms`);
+  for (let r = 0; r < 3; r++) runs.push(cpuOf(() => det.registry.scan(s)));
+  assert.ok(median(runs) < LAYER_BUDGET_MS, `registry.scan took ${median(runs).toFixed(1)} ms CPU`);
 });
 
 test('runtime budget: adversarial turns at the FULL 2 MiB payload cap finish far inside the runtime fail-closed budget (default 4000 ms)', { timeout: 60000 }, () => {
@@ -154,10 +153,11 @@ test('runtime budget: adversarial turns at the FULL 2 MiB payload cap finish far
     const s = unit.repeat(Math.ceil((CAP * 0.4) / unit.length)).slice(0, Math.floor(CAP * 0.4));
     const req = { messages: [{ role: 'user', content: 'process' }, { role: 'assistant', tool_calls: [{ id: 'h', type: 'function', function: { name: 'web_fetch', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'h', content: s }] };
     const res = { choices: [{ message: { role: 'assistant', content: 'ok', tool_calls: [{ id: 'c', type: 'function', function: { name: 'http_post', arguments: JSON.stringify({ url: 'http://x.test/a', body: s }) } }] } }] };
-    const d = det.inspect({ sessionId: `cap-${name}`, request: req, response: res });
+    const { out: d, cpu } = measure(() => det.inspect({ sessionId: `cap-${name}`, request: req, response: res }));
     if (d.failClosed) assert.equal(d.error.bound, 'maxPayloadBytes', `${name}: ${JSON.stringify(d.error)}`);
-    worst.push([name, d.stats.latencyMs]);
-    assert.ok(d.stats.latencyMs < DEFAULT_BOUNDS.timeBudgetMs / 4, `${name}: ${d.stats.latencyMs} ms at the 2 MiB cap`);
+    worst.push([name, Math.round(cpu * 10) / 10]);
+    // CPU ms (flake fix), 4x headroom under the wall-clock runtime budget: load inflates wall time, not work.
+    assert.ok(cpu < DEFAULT_BOUNDS.timeBudgetMs / 4, `${name}: ${cpu.toFixed(1)} ms CPU at the 2 MiB cap`);
   }
-  console.log(`# adversarial @ ${CAP} B cap (runtime budget ${DEFAULT_BOUNDS.timeBudgetMs} ms): ${worst.map(([n, ms]) => `${n}=${ms}`).join(' ')}`);
+  console.log(`# adversarial @ ${CAP} B cap (runtime budget ${DEFAULT_BOUNDS.timeBudgetMs} ms; CPU ms): ${worst.map(([n, ms]) => `${n}=${ms}`).join(' ')}`);
 });

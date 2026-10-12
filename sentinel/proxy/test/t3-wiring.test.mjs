@@ -199,7 +199,7 @@ describe('T3 options from the proxy config', () => {
     assert.equal(t3TimeBudgetMs(30), 24);
     const cfg = makeConfig({ limits: { inspectorTimeoutMs: 30 }, inspect: { flagSubstrings: ['honeytoken-cfg-1'] } });
     const { inspectors, canaries, t3 } = buildDefaultInspectors(cfg, { scrub: makeLogScrubber(defaultCanaries(cfg)) });
-    assert.equal(inspectors.length, 2);
+    assert.equal(inspectors.length, 3, 'substring backstop + non-chat canary check + T3 (#126)');
     assert.ok(canaries.some((c) => c.value === 'honeytoken-cfg-1') && canaries.some((c) => c.value === ADMIN));
     const ac = new AbortController();
     const reason = new Error('deadline');

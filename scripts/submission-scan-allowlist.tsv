@@ -14,3 +14,6 @@ sentinel/detectors/test/mandate.test.js	/home/u/wallet.json	fake file-read targe
 demo/slides/VIDEO-CHECKLIST.md	/Users/<name>/	recording instruction telling the presenter to hide their path
 scripts/eval.sh	/Users/*|	case pattern detecting Docker Desktop shared paths on macOS
 planning/CITATIONS.md	worst delivery firm in the world	verbatim news quote (DPD chatbot incident), ordinary English
+*	sk-dvaa-openai-test-key-do-not-use-in-production-12345	DVAA honeytoken (sentinel/detectors/src/honeytokens.js), fake
+*	sk-dvaa-demo-openai-key-leaked-via-env	DVAA egress demo honeytoken, fake
+track3a/*	sk-opsbot-FAKE-billing-key-7731-do-not-use	Track 3A planted honeytoken, fake

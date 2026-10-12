@@ -3,11 +3,12 @@
 //
 //   node sentinel/scoring/cli.mjs [--iterations N] [--out FILE] [--md FILE] [--no-write]
 //        [--allow-replica] [--detector-module FILE.mjs]... [--headline NAME]
-//        [--decision-log FILE.jsonl] [--rule-mode RULE=report-only]... [--set main|holdout-hf]
+//        [--decision-log FILE.jsonl] [--rule-mode RULE=report-only]... [--set main|holdout-hf|holdout-ipi]
 //
 // --set holdout-hf scores the T6c Hugging Face held-out set (captures/holdout-hf) ON ITS OWN and writes
 // captures/holdout-hf/results.json + captures/holdout-hf/SCORING.md by default. It never touches the main
 // results (sentinel/scoring/results.json), so held-out numbers are never merged into the headline.
+// --set holdout-ipi does the same for captures/holdout-ipi (LLMail-Inject + BIPIA, indirect injection).
 //
 // Exit codes: 0 scored cleanly; 1 detector errors (headline withheld), label warnings or DVAA pin drift
 // (results are still written, with the reason in headline.status / warnings); 2 bound/corpus error (nothing written).

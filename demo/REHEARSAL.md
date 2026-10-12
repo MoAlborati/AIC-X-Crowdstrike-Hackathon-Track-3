@@ -25,6 +25,9 @@ deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interac
       and prevention recall for T3 **and** DVAA's baseline, with FP. Say "8KB evasion: 2/2 fixtures", never a blanket
       "beats baseline". Quote one latency phrase: "median under a tenth of a millisecond, p95 around half a millisecond".
 - [ ] `demo/run-demo.sh --check-script` passes: every spoken line in SCRIPT.md is verbatim from the runner.
+- [ ] Pitch frame (#112/#105, PR #121): "deterministic sandbox, no LLM" said in Beat 1; "recorded" said on Beats 3,
+      3b, 4b, 5a and the recorded half of 4; no "working slice of Falcon AIDR", no "100% precision" / "0% FP" headline;
+      never say DVAA's benign FP rate inflates its prevention recall (#116).
 - [ ] Mechanisms on slide 7 (Confirmation of Payee / limited-mandate / dead-man fail-closed) are each
       actually implemented in merged T3 — drop any that isn't rather than claim it.
 
