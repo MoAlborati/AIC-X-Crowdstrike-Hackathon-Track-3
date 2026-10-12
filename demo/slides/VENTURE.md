@@ -46,6 +46,16 @@ Our edge, in four parts: **drop-in sidecar** · **default-deny egress at the too
 **Evidence (from `results.json`).** Where data actually leaves, we prevent **57 of 71** exfil attempts with **0 of 164**
 legitimate requests blocked. DVAA's own scanner prevents 64 of 71 but blocks 21 of 164.
 
+**Market evidence (public, cited; not our numbers).** The failure we stop is a shipped-product reality — EchoLeak,
+CVE-2025-32711, CVSS 9.3, exfiltrated Microsoft 365 Copilot data zero-click via a hidden email instruction
+([TechRepublic](https://www.techrepublic.com/article/news-microsoft-365-copilot-flaw-echoleak/)). The deployer, not
+the model vendor, is held liable (*Moffatt v. Air Canada*, BC tribunal, Feb 2024,
+[ABA](https://www.americanbar.org/groups/business_law/resources/business-law-today/2024-february/bc-tribunal-confirms-companies-remain-liable-information-provided-ai-chatbot/)).
+And the security market is already buying this capability: Prompt Security → SentinelOne (~$250M, Aug 2025,
+[press](https://www.sentinelone.com/press/sentinelone-to-acquire-prompt-security/)) and Lakera → Check Point (Sep 2025).
+Observe-then-block is the established SASE/SWG/DLP rollout pattern. Full brief with every citation:
+[`demo/slides/MARKET-EVIDENCE.md`](MARKET-EVIDENCE.md).
+
 ---
 
 ## Speaker notes (about 30 seconds, about 80 words)
