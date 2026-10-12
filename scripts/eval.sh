@@ -78,14 +78,15 @@ nym_rc() { if [ "$STRICT" = 1 ]; then echo 1; else echo "$RC_NYM"; fi; }
 
 # ---------------------------------------------------------------------------------------------------
 # Node selection (.nvmrc pins 24): the sentinel/detectors timing budget is calibrated on Node 24, and Node 26
-# misses it (#61). Order: `node` on PATH if it is major 24; else the newest major-24 install from nvm or a
-# keg-only Homebrew node@24 (/opt/homebrew, /usr/local); else `node` on PATH if >= 22 (WARN in doctor when
-# it is not 24); else the newest nvm/Homebrew node >= 22.
+# misses it (#61). Order: `node` on PATH if it is major 24; else the newest major-24 install from nvm,
+# $HOME/.cache/node24 (#124) or a keg-only Homebrew node@24 (/opt/homebrew, /usr/local); else `node` on PATH if
+# >= 24; else `node` on PATH if >= 22 (WARN in doctor when it is not 24); else the newest nvm/Homebrew node >= 22.
 node_major() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null; }
 NODE_NOTE=""
 node_candidates() {
   local nvm_dir="${NVM_DIR:-$HOME/.nvm}" v
-  for v in "$nvm_dir"/versions/node/v*/bin/node /opt/homebrew/opt/node@*/bin/node /usr/local/opt/node@*/bin/node \
+  for v in "$nvm_dir"/versions/node/v*/bin/node "$HOME/.cache/node24/bin/node" \
+           /opt/homebrew/opt/node@*/bin/node /usr/local/opt/node@*/bin/node \
            /opt/homebrew/bin/node /usr/local/bin/node; do
     [ -x "$v" ] && echo "$v"
   done
@@ -100,6 +101,8 @@ select_node() {
     m="$(node_major "$v")"; m="${m:-0}"
     if [ "$m" = "$NODE_PREFERRED" ]; then best="$v"; best_major="$m"; fi   # last = newest v24 (glob order)
   done < <(node_candidates)
+  # No v24 install found: a `node` on PATH that is >= 24 beats falling back to an older (22) install (#124).
+  if [ -z "$best" ] && [ "$cur_major" -ge "$NODE_PREFERRED" ]; then NODE_NOTE="node on PATH (v${cur_major}); no Node $NODE_PREFERRED install found"; return 0; fi
   if [ -z "$best" ] && [ "$cur_major" -lt "$NODE_MIN" ]; then
     while IFS= read -r v; do
       m="$(node_major "$v")"; m="${m:-0}"
