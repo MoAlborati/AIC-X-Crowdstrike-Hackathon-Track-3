@@ -7,6 +7,8 @@ Every quoted line below is copied word for word from `demo/SCRIPT.md`. The Beat 
 lines of `demo/run-demo.sh`, which prints each one in cyan, and `demo/run-demo.sh --check-script` fails if they drift.
 If you need to shorten a line, drop sentences from it. Don't reword it.
 Judge answers: [`demo/QA-PREP.md`](QA-PREP.md). Read it once before 18:00.
+Dashboard walkthrough (start/stop, the four stage tabs, the honest headline numbers, alert detail, Q&A pointers):
+[`demo/DASHBOARD-GUIDE.md`](DASHBOARD-GUIDE.md).
 All commands run from the repo root. Under Colima the repo must be somewhere under `~`, because Colima only shares `$HOME`.
 
 ## T-30 min checklist
