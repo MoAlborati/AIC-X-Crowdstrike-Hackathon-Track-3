@@ -1,0 +1,1 @@
+{"id":"chatcmpl-helperbot-1791828819232","object":"chat.completion","created":1791828819,"model":"helperbot","choices":[{"index":0,"message":{"role":"assistant","content":"[HelperBot] I'm here to help! Let me know what you need."},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}

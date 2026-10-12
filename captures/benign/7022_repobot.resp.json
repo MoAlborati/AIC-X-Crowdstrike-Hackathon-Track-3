@@ -1,0 +1,1 @@
+{"id":"chatcmpl-repobot-1791828819497","object":"chat.completion","created":1791828819,"model":"repobot","choices":[{"index":0,"message":{"role":"assistant","content":"[RepoBot] I'm here to help! Let me know what you need."},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}
