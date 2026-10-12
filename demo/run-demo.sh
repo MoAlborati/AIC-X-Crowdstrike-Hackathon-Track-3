@@ -405,43 +405,60 @@ egress_truth_cmd() {
   grep -q '^RESULT block: PREVENTED' "$EGRESS_GROUND_TRUTH" && grep -q '^RESULT repobot block: PREVENTED' "$EGRESS_GROUND_TRUTH" \
     || { echo "recorded run does not show both RAGBot and RepoBot PREVENTED"; return 1; }
 }
-# Beat 4b LIVE (critic A pass 2, #138: the climax should be live). The real scripts/egress-demo.sh in block mode on its
-# own compose project (EGRESS_PROJECT, default sentinel-egress-stage; warm it at T-5 with the same command, since cold
-# start is about 22 s). Ground truth is the attacker server's receipt: egress-demo.sh exits 0 in block mode only if the
-# canary got 0 hits for RAGBot and RepoBot AND the guard raised deny alerts. A watchdog (no `timeout` on stock macOS)
-# kills it after EGRESS_LIVE_TIMEOUT seconds (default 45), and the beat falls back to the recording (WARN).
+# Beat 4b LIVE (critic A pass 2, #138: the climax should be live; Catherine, #131). The real two-layer encore
+# (scripts/encore-two-layer.sh block, PR #139): user turn -> SentinelProxy (block) -> RepoBot 7022 -> poisoned AGENTS.md
+# -> tool egress -> egress inspector (block) -> canary. Ground truth is the canary (attacker server) log: the script exits
+# 0 in block mode only if the attacker got 0 hits AND the inspector logged a deny; exit 3 = Docker or the DVAA image is
+# missing. Cold start is about 22 s: warm it at T-5 by running the same command once. A watchdog (no `timeout` on stock
+# macOS) stops it after EGRESS_LIVE_TIMEOUT seconds (default 45) and the beat falls back to the recording (WARN).
+# rc: 0 = live PASS; 1 = live run let a secret out or the proxy prevented (spoken claim false): FAIL; 2 = infra: WARN.
+ENCORE="$REPO/scripts/encore-two-layer.sh"
 EGRESS_LIVE_DIR="$REPO/.eval/beat4b-live"
-EGRESS_LIVE_PROJECT="${EGRESS_PROJECT:-sentinel-egress-stage}"
-egress_live_available() {
-  [ "${DEMO_LIVE_EGRESS:-1}" = 1 ] || { echo "live egress disabled (DEMO_LIVE_EGRESS=0)"; return 1; }
-  [ -x "$REPO/scripts/egress-demo.sh" ] || { echo "scripts/egress-demo.sh absent"; return 1; }
-  command -v docker >/dev/null 2>&1 || { echo "no docker"; return 1; }
-  docker info >/dev/null 2>&1 || { echo "docker daemon not running"; return 1; }
-  docker image inspect "${DVAA_IMAGE:-dvaa-t1-dvaa}" >/dev/null 2>&1 \
-    || { echo "DVAA image ${DVAA_IMAGE:-dvaa-t1-dvaa} not built (scripts/eval.sh up)"; return 1; }
-}
 egress_live_cmd() {
+  [ "${DEMO_LIVE_EGRESS:-1}" = 1 ] || { echo "live egress disabled (DEMO_LIVE_EGRESS=0)"; return 2; }
+  [ -f "$ENCORE" ] || { echo "scripts/encore-two-layer.sh absent (PR #139)"; return 2; }
   mkdir -p "$EGRESS_LIVE_DIR"; : > "$EGRESS_LIVE_DIR/out.txt"
-  EGRESS_PROJECT="$EGRESS_LIVE_PROJECT" EGRESS_KEEP=1 EGRESS_LOG_DIR="$EGRESS_LIVE_DIR/logs" \
-    bash "$REPO/scripts/egress-demo.sh" block >"$EGRESS_LIVE_DIR/out.txt" 2>&1 &
+  bash "$ENCORE" block stage >"$EGRESS_LIVE_DIR/out.txt" 2>&1 &
   local pid=$! waited=0 limit="${EGRESS_LIVE_TIMEOUT:-45}" rc
   while kill -0 "$pid" 2>/dev/null; do
-    if [ "$waited" -ge "$((limit * 2))" ]; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-      echo "live egress run did not finish in ${limit}s"; return 2; fi
+    if [ "$waited" -ge "$((limit * 2))" ]; then
+      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+      echo "live run did not finish in ${limit}s"; return 2
+    fi
     sleep 0.5; waited=$((waited + 1))
   done
   wait "$pid"; rc=$?
-  grep -E '^ALERT|^RESULT (block|repobot block):|^\(no canary hits\)|^EGRESS DEMO' "$EGRESS_LIVE_DIR/out.txt"
+  grep -E '^LAYER1_PROXY_HTTP|^  PROXY|^LAYER2_EGRESS|^  (deny|forward|allow) |^GROUND_TRUTH|^ENCORE (PASS|FAIL)|^SKIP|^FAIL' "$EGRESS_LIVE_DIR/out.txt" \
+    | cut -c1-200
+  [ "$rc" = 3 ] && { echo "prerequisites missing (Docker or the DVAA image)"; return 2; }
   if [ "$rc" != 0 ]; then
-    # A RESULT line that is not PREVENTED means the guard let a secret out: a real FAIL. Anything else is infra (rc 2).
-    grep -q '^RESULT .*UNEXPECTED' "$EGRESS_LIVE_DIR/out.txt" && { echo "egress-demo.sh block: UNEXPECTED result"; return 1; }
-    echo "egress-demo.sh block exited $rc before a result (infra)"; tail -n 5 "$EGRESS_LIVE_DIR/out.txt"; return 2
+    grep -q '^GROUND_TRUTH' "$EGRESS_LIVE_DIR/out.txt" && { echo "encore block run: attacker got hits or no deny"; return 1; }
+    echo "encore exited $rc before a result (infra)"; return 2
   fi
-  # Spoken: "denied every unlisted destination, and in this run no secret reached the attacker".
-  grep -q '^RESULT block: PREVENTED' "$EGRESS_LIVE_DIR/out.txt" && grep -q '^RESULT repobot block: PREVENTED' "$EGRESS_LIVE_DIR/out.txt" \
-    || { echo "live run did not show both RAGBot and RepoBot PREVENTED"; return 1; }
-  if grep -E '^ALERT' "$EGRESS_LIVE_DIR/out.txt" | grep -vq ' deny '; then echo "live run forwarded a flagged destination"; return 1; fi
-  echo "live: attacker server got 0 canary hits; every flagged destination denied"
+  # Spoken Beat 4b: "our proxy only flags that after the tool has run" (no proxy verdict prevents), "the egress guard
+  # denied every unlisted destination" (every layer-2 decision is a deny), "no secret reached the attacker" (0 hits).
+  grep -q '^GROUND_TRUTH canary hits for [^:]*: 0 ' "$EGRESS_LIVE_DIR/out.txt" || { echo "attacker got canary hits"; return 1; }
+  if grep -E '^  PROXY' "$EGRESS_LIVE_DIR/out.txt" | grep -q 'prevents=true'; then
+    echo "the proxy prevented this run: the spoken 'only flags after the tool has run' is false"; return 1
+  fi
+  if sed -n '/^LAYER2_EGRESS:/,/^GROUND_TRUTH/p' "$EGRESS_LIVE_DIR/out.txt" | grep -E '^  (forward|allow) ' | grep -q .; then
+    echo "layer 2 forwarded a destination: 'denied every unlisted destination' is false"; return 1
+  fi
+  echo "live: proxy only alerted after the tool ran; egress denied every destination; attacker got 0 hits"
+}
+# The encore takes about 20 s even warm (it recreates its stack every run), longer than Beat 4b. So it starts in the
+# background when Beat 4 starts, runs live during Beat 4, and Beat 4b collects its result.
+EGRESS_BG_PID=""
+egress_live_start() {
+  mkdir -p "$EGRESS_LIVE_DIR"; rm -f "$EGRESS_LIVE_DIR/rc"
+  ( egress_live_cmd >"$EGRESS_LIVE_DIR/shown" 2>&1; echo $? >"$EGRESS_LIVE_DIR/rc" ) &
+  EGRESS_BG_PID=$!
+}
+egress_live_collect() {   # -> rc of egress_live_cmd (2 if it was never started)
+  [ -n "$EGRESS_BG_PID" ] || { egress_live_start; }
+  wait "$EGRESS_BG_PID" 2>/dev/null; EGRESS_BG_PID=""
+  [ -f "$EGRESS_LIVE_DIR/rc" ] && return "$(cat "$EGRESS_LIVE_DIR/rc")"
+  return 2
 }
 # =================================================================================
 
@@ -671,6 +688,7 @@ advance
 
 # ---- Beat 4 — request-side BLOCK: shipped proxy + T3 detector (#14/#24/#41) -----
 hdr "Beat 4 — DETECT -> BLOCK (green) · SentinelProxy in front of 7005"
+egress_live_start   # Beat 4b's live two-layer run starts now, in the background (about 20 s)
 say "Same agent, same document, now through SentinelProxy. First, a normal question: it passes."
 if [ -f "$PROXY_BLOCK_JSONL" ]; then
   printf '  %s$ live_proxy_start%s\n' "$B" "$Z"
@@ -713,24 +731,20 @@ advance
 hdr "Beat 4b — tool-boundary EGRESS GUARD · fail-closed on exfil"
 say "Live now, in its own sandbox: an agent that reads the poison itself."
 EGRESS_LIVE_OK=0; mkdir -p "$EGRESS_LIVE_DIR"
-printf '  %s$ scripts/egress-demo.sh block%s   (project %s, live)
-' "$B" "$Z" "$EGRESS_LIVE_PROJECT"
-if egress_live_available >"$EGRESS_LIVE_DIR/why" 2>&1; then
-  egress_live_cmd >"$EGRESS_LIVE_DIR/shown" 2>&1; elrc=$?
-  sed 's/^/    | /' "$EGRESS_LIVE_DIR/shown"
-  case "$elrc" in
-    0) EGRESS_LIVE_OK=1; ok "LIVE egress guard: attacker server got nothing"; record "Beat 4b LIVE egress block" PASS "0 canary hits, live" ;;
-    1) bad "LIVE egress guard let a secret out"; record "Beat 4b LIVE egress block" FAIL "canary hit or forwarded flagged destination" ;;
-  esac
-else
-  sed 's/^/    | /' "$EGRESS_LIVE_DIR/why"
-fi
+printf '  %s$ scripts/encore-two-layer.sh block%s   (live, started at Beat 4; warm it at T-5)\n' "$B" "$Z"
+egress_live_collect; elrc=$?
+sed 's/^/    | /' "$EGRESS_LIVE_DIR/shown"
+case "$elrc" in
+  0) EGRESS_LIVE_OK=1; ok "LIVE: both layers, attacker received 0 canary hits"; record "Beat 4b LIVE egress block" PASS "0 canary hits, live" ;;
+  1) bad "LIVE run contradicts the spoken line (see above)"; record "Beat 4b LIVE egress block" FAIL "spoken claim false on the live run" ;;
+esac
 if [ "$EGRESS_LIVE_OK" = 0 ]; then
   warn "live egress run unavailable; showing the recording"
   record "Beat 4b live egress" WARN "fell back to the recording"
   say "That live run didn't come up; this is the same run, recorded."
 fi
 say "Our proxy only flags that after the tool has run. So the egress guard denied every unlisted destination, and in this run no secret reached the attacker."
+pause_mid "the result is on screen: narrate it, then Cmd-K and Enter for the recorded evidence (unspoken)"
 if [ -f "$EGRESS_BLOCK_JSONL" ] && [ -f "$EGRESS_GROUND_TRUTH" ]; then
   run_cmd "egress guard: deny decisions at the tool boundary (sentinel/egress/evidence-block.jsonl)" egress_block_cmd
   run_cmd "ground truth: attacker server received nothing, RAGBot 7005 and RepoBot 7022 (scripts/egress-demo.sh block)" egress_truth_cmd

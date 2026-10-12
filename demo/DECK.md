@@ -102,13 +102,14 @@ organizer-provided sandbox; every secret is fake.
   ASI01 · ASI02 · OASB-1. Attacker server received nothing (RAGBot 7005 and RepoBot 7022).
 
 **Speaker notes**
-Beat 4 (1:04–1:23) + Beat 4b (1:23–1:38). The reason codes and tags on this
+Beat 4 (1:04–1:24, live) + Beat 4b (1:24–1:41, **live**: `scripts/encore-two-layer.sh block`, started in the background
+at Beat 4; the recorded egress run is the automatic fallback). The reason codes and tags on this
 slide are **not read aloud**; the spoken Beat 4 line is "the document slipped in an order to send data somewhere the user
 never named", and Beat 4b is the honest loss then the fix: the proxy only flags an in-agent read after the tool has run,
 so the egress guard denied every unlisted destination (this run: no canary hit). Dashboard tabs are stage mode at the
 last step (`?stage=1&capture=proxy-blocked&step=last`, `…egress-blocked…`), so the stat tiles never sit on screen
-during the block. The 200/403 is the only live step; say "recorded" when the screen moves to
-the alert card and the egress run. Egress default-deny is the prevention story: it stops the RepoBot exfil that the
+during the block. The 200/403 and the Beat 4b two-layer run are live; say "recorded" when the screen moves to
+the alert card or to the recorded egress evidence. Egress default-deny is the prevention story: it stops the RepoBot exfil that the
 request proxy cannot. Order matters: benign passes first, then the attack is **blocked request-side, before the request
 is forwarded** (ADJACENT §6a, FP economics). Prevention is the request-side block (T3) and the egress guard (T12). A
 response-side honeytoken tripwire fires after the tool already ran, so it is **alert-only for prevention**, but in block

@@ -1,4 +1,4 @@
-# SentinelProxy — demo script (365 spoken words, about 2:44 with transitions; hard limit 3:00)
+# SentinelProxy — demo script (372 spoken words, about 2:47 with transitions; hard limit 3:00)
 
 > Beats follow `planning/STRATEGY.md` §7. Every factual claim spoken on stage uses the "Safe slide wording" from
 > `planning/CITATIONS.md`. Don't paraphrase those claims and don't add new ones. **Never fill a metric by hand.**
@@ -29,6 +29,8 @@
   with one exception: Beat 4 sends two local `curl`s through the real shipped proxy (loopback, ephemeral port)
   to the offline DVAA sandbox, whose replies are canned, so the result is deterministic. If the proxy or 7005
   is unreachable, `run-demo.sh` says so and shows the recording instead.
+  Beat 4b also runs live: `scripts/encore-two-layer.sh block` on its own compose stack (offline DVAA, canned replies,
+  started in the background at Beat 4). If it can't run, `run-demo.sh` says so and shows the recording instead.
 - **Don't run the attacker live.** The exploit is DVAA's own bundled payload (APWN-DE-003), already
   captured in `captures/attack/aim-ab.demo.json`.
 - **Fallback:** if any command fails, switch straight to the recorded video. Don't debug on stage.
@@ -82,7 +84,7 @@ Screen layout: **left** = terminal (attacker view), **right** = dashboard (detec
 
 ## Beat sheet
 
-Spoken lines are in quotes. **365 words in total, 2:26 at 150 words per minute**, plus about 1.5 s per
+Spoken lines are in quotes. **372 words in total, 2:29 at 150 words per minute**, plus about 1.5 s per
 beat for Enter presses and tab switches (critic D, #112: the old script was 574 words, about 4:10). The time column
 is cumulative. No ticket numbers, reason codes or framework IDs are read aloud; they stay on the slides and in Q&A.
 
@@ -138,7 +140,7 @@ Frame it as a **class** of evasion, not a score. Say "2 of 2" **only if asked**:
 a weakness DVAA has on purpose. `run-demo.sh` fails this beat if the fixtures stop showing the 8 KB edge with the payload
 in the middle, or if the median latency in `results.json` reaches 0.1 ms.
 
-### Beat 4 — BLOCK, green (1:04–1:24, the one live beat) · terminal + dashboard tab `proxy-blocked`
+### Beat 4 — BLOCK, green (1:04–1:24, live) · terminal + dashboard tab `proxy-blocked`
 
 *Every quoted line in Beats 3, 3b, 4, 4b, 5a and 7 is a `say` line of `demo/run-demo.sh`, word for word; the runner
 shows each one in cyan. `demo/run-demo.sh --check-script` (also preflight row 0 of every run) fails if they drift.*
@@ -188,28 +190,46 @@ jq -rc '.runs[][] | {DetectName, RuleId, SeverityName, Atlas:.TechniqueId, Owasp
 the blocked card, not "Prevented 41.8% / DVAA 63.0%". Q&A only (QA-PREP #3): a honeytoken in a *response* means the
 tool already ran, so prevention there is alert-only, but block mode withholds the reply (T3-fix #56).
 
-### Beat 4b — Egress guard, green (1:24–1:38) · terminal, then dashboard tab `egress-blocked`
+### Beat 4b — Egress guard, LIVE, green (1:24–1:41) · terminal, then dashboard tab `egress-blocked`
 
-> "Recorded. But when the agent reads the poison itself, our proxy only flags it after the tool has run. So our egress guard denied every unlisted destination, and no secret reached the attacker."
+The climax is live (critic A pass 2, #138; Catherine, #131). `run-demo.sh` starts the real two-layer run,
+`scripts/encore-two-layer.sh block` (PR #139), **in the background when Beat 4 starts**. It takes about 20 s even when
+warm, because it recreates its own compose stack. By Beat 4b it has finished, and the runner shows its result:
+user turn → SentinelProxy (block) → RepoBot 7022 → poisoned `AGENTS.md` → tool egress → egress inspector (block) → canary.
+**Warm it at T-5** (`scripts/encore-two-layer.sh block`, once) so images and layers are cached; cold start is about 22 s.
+
+> "Live now, in its own sandbox: an agent that reads the poison itself."
+
+Screen (live): `LAYER1_PROXY_HTTP 403` with the proxy verdicts `phase=response … prevents=false` (it only flagged the
+reply after the tool ran), then `LAYER2_EGRESS:` with three `deny` lines, then
+`GROUND_TRUTH canary hits …: 0` and `ENCORE PASS`.
+
+> "Our proxy only flags that after the tool has run. So the egress guard denied every unlisted destination, and in this run no secret reached the attacker."
+
+`run-demo.sh` checks each clause against the live output and **FAILS** the beat if it is false: no proxy verdict with
+`prevents=true`, no `forward`/`allow` line in layer 2, and 0 canary hits. Then it pauses (interactive) before
+printing the recorded evidence below, which is not spoken.
+
+**Fallback (automatic):** if Docker or the DVAA image is missing, or the run doesn't finish in 45 s
+(`EGRESS_LIVE_TIMEOUT`), the runner prints `WARN live egress run unavailable` and shows the recorded run instead. Say
+this line in place of the "Live now" claim, then the second line as normal:
+
+> "That live run didn't come up; this is the same run, recorded."
 
 ```bash
-# Inspector decisions from the recorded block-mode run of scripts/egress-demo.sh (sentinel/egress/, PR #45):
+# Recorded block-mode run of scripts/egress-demo.sh (sentinel/egress/, PR #45), always printed after the live result:
 jq -rc 'select(.action=="deny") | {host, reasons, canaries:.canary_ids}' sentinel/egress/evidence-block.jsonl
 # Ground truth = what the attacker server received (not DVAA's exfilExecuted, which says true even when 403'd):
 grep -E '^RESULT|^\(no canary hits\)' demo/captures/egress-demo-block.txt
 ```
 
-Expected: denies for RAGBot 7005, RepoBot 7022's poisoned-repo `bootstrap.sh` fetch and credential post (FAKE
-credentials), and DVAA's startup telemetry; then `RESULT block: PREVENTED`, `RESULT repobot block: PREVENTED` and
-`(no canary hits)`. Point at the `PREVENTED` lines; don't explain the telemetry deny unless asked. "No secret reached
-the attacker" is about **this run** only; never generalize it to "nothing gets out". `run-demo.sh` fails
-this beat if the attacker server shows any canary hit.
+"No secret reached the attacker" is about **this run** only; never generalize it to "nothing gets out" (a split
+honeytoken sent to an allowlisted host still passes). The observe-mode control (the proxy says 403, the attacker still
+gets the key) is **recorded only**: never run `encore-two-layer.sh observe` on stage.
 
 *Dashboard (right):* `?stage=1&capture=egress-blocked&step=last`.
 
-Live encore (after the clock, about a minute, its own compose stack): `scripts/egress-demo.sh both`.
-
-### Beat 5a — Secure-by-design twin (1:38–1:50) · Slide 6 only
+### Beat 5a — Secure-by-design twin (1:41–1:53) · Slide 6 only
 
 > "Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't."
 
@@ -230,7 +250,7 @@ scripts/eval.sh contrast   # verifies the T8 A/B against DVAA's ground truth (re
 **Prevention map (Q&A):** RAGBot 7005 is blocked request-side, before forwarding. LegacyBot 7003's reply is withheld.
 RepoBot 7022 reads its payload inside the agent, so the egress guard is the control that stops it.
 
-### Beat 6 — How it works (1:50–2:03) · Slide 7
+### Beat 6 — How it works (1:53–2:06) · Slide 7
 
 > "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: any destination not on the list is denied, whatever the words say."
 
@@ -242,7 +262,7 @@ destination alone (`destination_not_allowlisted`, no canary in it), so the guard
 honeytoken, provenance and taint layers are tripwires and alerts. The honeytokens are DVAA's own known secrets, so call
 them a "known-secret tripwire".
 
-### Beat 7 — Outcome, "we attacked ourselves", close (2:03–2:44) · Slides 8 → 10
+### Beat 7 — Outcome, "we attacked ourselves", close (2:06–2:47) · Slides 8 → 10
 
 `run-demo.sh` prints the T3 vs DVAA table from the committed `sentinel/scoring/results.json`; the full table is on
 Slide 8 and is **not read aloud**:
@@ -284,11 +304,11 @@ Word counts are exact (spoken lines only, counted by whitespace). At 150 wpm.
 | 3 Exploit (red, recorded) | 0:35–0:50 | 29 | 12 s |
 | 3b 8KB evasion (red, recorded) | 0:50–1:04 | 32 | 13 s |
 | 4 Block (green, live) | 1:04–1:24 | 37 | 15 s |
-| 4b Egress guard (green, recorded) | 1:24–1:38 | 33 | 13 s |
-| 5a Twin (Slide 6 only) | 1:38–1:50 | 26 | 10 s |
-| 6 Guest list | 1:50–2:03 | 29 | 12 s |
-| 7 Outcome + "we attacked ourselves" + close | 2:03–2:44 | 99 | 40 s |
-| **Total** | | **365** | **2:26** of speech; about 2:44 with Enter presses and tab switches |
+| 4b Egress guard (green, LIVE) | 1:24–1:41 | 40 | 16 s |
+| 5a Twin (Slide 6 only) | 1:41–1:53 | 26 | 10 s |
+| 6 Guest list | 1:53–2:06 | 29 | 12 s |
+| 7 Outcome + "we attacked ourselves" + close | 2:06–2:47 | 99 | 40 s |
+| **Total** | | **372** | **2:29** of speech; about 2:47 with Enter presses and tab switches |
 
 If you shorten a spoken line, drop whole sentences; don't reword (the runner checks the text).
 

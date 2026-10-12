@@ -8,7 +8,7 @@ Sources: `demo/PRESENTER.md` (T-30 and After), `demo/SCRIPT.md` (the beats, on m
 If anything here disagrees with `run-demo.sh`, the runner wins.
 
 > **Deep links.** #76 (stage mode) and #97 (egress stage capture) are merged. Use the `?stage=1` links in §3, each
-> opened at its last step. The spoken lines follow the script cut (critic D, #112): 365 words, about 2:44.
+> opened at its last step. The spoken lines follow the script cut (critic D, #112): 372 words, about 2:47.
 
 ## 1. Pre-flight (15:45, from PRESENTER T-30)
 
@@ -21,6 +21,7 @@ If anything here disagrees with `run-demo.sh`, the runner wins.
 - [ ] Dry run: `demo/run-demo.sh --auto --no-dvaa --no-teardown`. The Summary must end `demo run clean — no failing beats ·
       dashboard http://127.0.0.1:<port>/`. **Do not record until it does.** It starts the dashboard itself; if :9100 is
       busy it moves to the next free port and prints it, so use that port in the §3 links.
+- [ ] Warm the live Beat 4b run: `scripts/encore-two-layer.sh block` once (cold about 22 s; must end `ENCORE PASS`).
 - [ ] Open the three tabs from §3 (in order, in a **fresh browser window**).
 - [ ] Quit Slack, Mail, Messages, Calendar, and every other app except Terminal, the browser and the slides. Turn on **Do Not Disturb** (Control Center → Focus).
 - [ ] Display at **1920×1080** or the "Default" scaling (System Settings → Displays). Dock set to auto-hide (System Settings → Desktop & Dock).
@@ -67,11 +68,11 @@ Dashboard deep links (port 9100, or the port `run-demo.sh` printed):
 | **0:35** | **3** Exploit (red) | Cmd-Tab to Terminal, Cmd-K, **Enter**. At about 0:45 click the `vulnerable` tab. | `submit_to_index`, `true`, `dvaa-admin-secret … 123-45-6789` | vulnerable |
 | **0:50** | **3b** 8KB evasion | back to Terminal, Cmd-K, **Enter** | `inMiddleGap:true`, `evadesDvaaBaseline:true`, `t3Caught:2` | — |
 | **1:04** | **4** Live block | Cmd-K, **Enter**. Wait for both codes, click the `proxy-blocked` tab, then Cmd-K, **Enter** at about 1:18 (mid-beat pause). | live `HTTP 200`, then `HTTP 403`. **Must not show** `WARN live proxy unavailable`. | proxy-blocked |
-| **1:23** | **4b** Egress | back to Terminal, Cmd-K, **Enter**, then the `egress-blocked` tab | `RESULT block: PREVENTED`, `(no canary hits)` | egress-blocked |
-| **1:38** | **5a** AIM twin | Cmd-K, **Enter**, then Cmd-Tab straight to **slide 6** | the red / green / green columns | — (Slide 6 only) |
-| 1:50–2:03 | 6 Guest list | slide 7 | field → mechanism → rule | — |
-| **2:03** | **7** Close | Cmd-Tab to Terminal, Cmd-K, **Enter**. Hold on the table for 8 s, then slides 8 → 10. | T3 vs DVAA table, then Summary `demo run clean … dashboard http://127.0.0.1:<port>/` | — |
-| 2:44–3:00 | end | slide 10 held. **Stop recording.** | — | — |
+| **1:24** | **4b** Egress (live) | back to Terminal, Cmd-K, **Enter**, then the `egress-blocked` tab | live `GROUND_TRUTH canary hits …: 0`, `ENCORE PASS` (or the WARN fallback: `RESULT block: PREVENTED`) | egress-blocked |
+| **1:41** | **5a** AIM twin | Cmd-K, **Enter**, then Cmd-Tab straight to **slide 6** | the red / green / green columns | — (Slide 6 only) |
+| 1:53–2:06 | 6 Guest list | slide 7 | field → mechanism → rule | — |
+| **2:06** | **7** Close | Cmd-Tab to Terminal, Cmd-K, **Enter**. Hold on the table for 8 s, then slides 8 → 10. | T3 vs DVAA table, then Summary `demo run clean … dashboard http://127.0.0.1:<port>/` | — |
+| 2:47–3:00 | end | slide 10 held. **Stop recording.** | — | — |
 | (separate clip) | 3A OpsBot encore, optional | new recording, same settings: `node track3a/run-demo.mjs` (about 2 s), hold 10 s | the layering table: Undefended LEAKED ×2 … all blocked, benign OK | — |
 
 Save the encore as `~/Desktop/fallback-opsbot.mov`. Record it only if there's time left before 16:30.
@@ -102,7 +103,7 @@ Save the encore as `~/Desktop/fallback-opsbot.mov`. Record it only if there's ti
    Set `-ss` and `-to` to the timestamps from step 1. `-an` drops audio (it's silent). The result plays in QuickTime and is about 20–60 MB.
 3. **Without ffmpeg (QuickTime):** open the raw file, **Edit → Trim** (Cmd-T), drag the yellow handles, **Trim**, then
    **File → Export As → 1080p**, and save as `~/Desktop/fallback-demo.mov`.
-4. Check it: open `~/Desktop/fallback-demo.mov` in QuickTime and scrub to **0:35, 1:04 and 2:03**. Each should land on that beat.
+4. Check it: open `~/Desktop/fallback-demo.mov` in QuickTime and scrub to **0:35, 1:04 and 2:06**. Each should land on that beat.
 5. Copy to USB: `cp ~/Desktop/fallback-demo.mov /Volumes/<USB>/`.
 6. Upload (**pending #66**): **YouTube unlisted** or **Google Drive** (link-only, anyone with the link can view). Post the
    link as a comment on #66. **Never** commit the file or attach it to a repo release.

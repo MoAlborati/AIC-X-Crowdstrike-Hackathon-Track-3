@@ -48,6 +48,12 @@ is bypassed. The residual risk is exfil to an operator-allowlisted host, includi
 
 ## The rest
 
+**0. "I just bypassed your proxy with a role-play / fantasy-world jailbreak."**
+"Thank you. That's layer 1. Layer 2 doesn't read words." Receipt (critic B2, #112, not a committed capture, so cite the
+issue table): 20 different role-play jailbreak framings from the held-out set were run through the full two-layer stack.
+With egress in block mode the attacker canary got **0 of 40** hits, and with egress relaxed it got **40 of 40**. All 20
+framings got identical egress verdicts, because the guard decides on the destination host, not the wording.
+
 **1. "DVAA's own scanner prevents more attacks than yours. Why would anyone deploy yours?"**
 "On prevention, yes: DVAA's scanner stops more, 63.0% against our 41.8%, but it does it with a 12.8% benign
 false-positive rate, flagging 21 of the 164 benign cases in our corpus. On detection we're now slightly ahead,

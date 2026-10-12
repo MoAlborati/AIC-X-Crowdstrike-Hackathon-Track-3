@@ -29,6 +29,9 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
   - Beat 4: `http://127.0.0.1:9100/?stage=1&capture=proxy-blocked&step=last` (blocked card; no stat tiles)
   - Beat 4b: `http://127.0.0.1:9100/?stage=1&capture=egress-blocked&step=last`
   - Beat 5a: **no tab.** Slide 6 only.
+- [ ] **T-5: warm the live Beat 4b run.** `scripts/encore-two-layer.sh block` once (cold start about 22 s; it must
+      end `ENCORE PASS`). This caches images and layers so the run inside Beat 4/4b finishes in about 20 s. Never run
+      the `observe` control on stage: it is recorded only.
 - [ ] Have the fallback video open in QuickTime, paused at 0:00: `~/Desktop/fallback-demo.mov` (the one name used
       everywhere; see **After** and `demo/slides/VIDEO-CHECKLIST.md`).
 - [ ] Quit Slack, Mail, Messages and anything else that pops up. Turn on **Do Not Disturb** (Control Center → Focus).
@@ -44,14 +47,14 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
 ## Run of show (3:00 clock; Cmd-K, then Enter, for each beat)
 
 Order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** → 6 → **7**. Beats 1, 2 and 6 are slides only; `run-demo.sh` drives the
-beats in bold. 365 spoken words, about 2:44 with transitions. Every quoted line is word for word from `demo/SCRIPT.md`.
+beats in bold. 372 spoken words, about 2:47 with transitions. Every quoted line is word for word from `demo/SCRIPT.md`.
 Don't read ticket numbers, reason codes or framework IDs aloud; they're on the slides for Q&A.
 
 **0:00 · Beat 1 Hook** · slide 1 → 2 (incidents and the Kurtz quote stay on the slide, unspoken)
 > "In under a minute I'll make an AI agent send its admin password to an attacker using one poisoned document, then stop it without touching its code."
 > "It's a deterministic sandbox, no LLM."
 
-**0:14 · Beat 2 Structure** · slide 3
+**0:15 · Beat 2 Structure** · slide 3
 > "Your agent is a bank teller who obeys any note slipped into a deposit envelope. Every document, web page and repo file it reads is an envelope. The attacker never breaks in; the teller does the work."
 > "We protect the agents you can't rebuild, from the outside."
 
@@ -68,7 +71,7 @@ Pause for two seconds and let it land.
 
 Say "2 of 2 fixtures" only if a judge asks.
 
-**1:04 · Beat 4 Block (green, the one live beat)** · Cmd-K, **Enter**
+**1:04 · Beat 4 Block (green, live)** · Cmd-K, **Enter**
 > "Same agent, same document, now through SentinelProxy. First, a normal question: it passes."
 
 Screen: live `200`.
@@ -81,18 +84,24 @@ The runner **pauses here** so the 200/403 stays on screen. Switch to the `proxy-
 Cmd-K and Enter: the recorded evidence prints (unspoken). Fallback is automatic: if the terminal prints
 `WARN live proxy unavailable; showing the recording`, say "recorded" and keep going (see **If X breaks**).
 
-**1:23 · Beat 4b Egress guard (green, recorded)** · Cmd-K, **Enter**, then the `egress-blocked` tab
-> "Recorded. But when the agent reads the poison itself, our proxy only flags it after the tool has run. So our egress guard denied every unlisted destination, and no secret reached the attacker."
+**1:24 · Beat 4b Egress guard (green, LIVE)** · Cmd-K, **Enter**, then the `egress-blocked` tab. The live two-layer
+run (`scripts/encore-two-layer.sh block`) started in the background at Beat 4 and has finished by now.
+> "Live now, in its own sandbox: an agent that reads the poison itself."
 
-Screen: `RESULT … PREVENTED` and `(no canary hits)`. Point at those. Don't explain the telemetry deny.
+Screen (live): `LAYER1_PROXY_HTTP 403`, `PROXY … prevents=false`, three `deny` lines, **`GROUND_TRUTH canary hits …: 0`**, `ENCORE PASS`.
+> "Our proxy only flags that after the tool has run. So the egress guard denied every unlisted destination, and in this run no secret reached the attacker."
 
-**1:38 · Beat 5a AIM twin** · Cmd-K, **Enter**, then **slide 6 only** (red / green / green). No dashboard tab.
+If the terminal prints `WARN live egress run unavailable`, replace the first line with **"That live run didn't come up;
+this is the same run, recorded."** and point at `RESULT … PREVENTED` / `(no canary hits)`. The runner pauses after the
+result; Cmd-K, Enter for the recorded evidence (unspoken).
+
+**1:41 · Beat 5a AIM twin** · Cmd-K, **Enter**, then **slide 6 only** (red / green / green). No dashboard tab.
 > "Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't."
 
-**1:50 · Beat 6 Guest list** · slide 7 · cut this first if you're running long
+**1:53 · Beat 6 Guest list** · slide 7 · cut this first if you're running long
 > "Only you decide where data goes. Our egress guard is a guest list, not a lie detector: any destination not on the list is denied, whatever the words say."
 
-**2:03 · Beat 7 Outcome + close** · Cmd-K, **Enter**, then slides 8 → 10 (the full table is on slide 8; don't read it)
+**2:06 · Beat 7 Outcome + close** · Cmd-K, **Enter**, then slides 8 → 10 (the full table is on slide 8; don't read it)
 > "On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero."
 
 > "We attacked ourselves too: on 600 public jailbreaks we never tuned on, we prevent zero, because none has anywhere to send data. Our known misses are listed in the repo."
@@ -129,14 +138,15 @@ doesn't read words." Then point at the egress guard: it decides on the destinati
 
 ### Encore (only if asked): both layers, one attack
 
-Use this only if a judge asks "what about attacks the chat proxy can't see?". Run
-`scripts/encore-two-layer.sh block`. It takes about 25 s on its own compose project (`sentinel-encore`, net
+**This now runs live inside the talk as Beat 4b** (`run-demo.sh` starts it at Beat 4). Re-run it by hand only if a judge
+asks to see it again, or asks "what about attacks the chat proxy can't see?": `scripts/encore-two-layer.sh block`. It takes about 25 s on its own compose project (`sentinel-encore`, net
 `10.231.53.0/24`, override with `ENCORE_PROJECT` / `ENCORE_NET`) and only removes its own containers.
 - What happens: a benign "review my repo" turn passes the chat proxy. RepoBot reads DVAA's poisoned `AGENTS.md`
   and tries to POST fake credentials out. The egress inspector denies it (`destination_not_allowlisted`,
   `honeytoken_match`), and the last line reads **`GROUND_TRUTH canary hits: 0`**, followed by `ENCORE PASS`.
 - Say: **"The chat layer only sees the response, so it alerts. The egress layer decides on the host, and the attacker's server got nothing."**
-- Control, if anyone doubts it's live: `scripts/encore-two-layer.sh observe`. The same attack lands with 2 canary hits and is recorded.
+- Control, if anyone doubts it's live: `scripts/encore-two-layer.sh observe` **after the talk only** (it lets the fake key land). The same attack lands with 2 canary hits and is recorded. On stage, cite the recorded control instead.
+- If a judge bypasses the request-side proxy live: "Thank you. That's layer 1. Layer 2 doesn't read words." Receipt: critic B2's run in #112 put 20 different role-play jailbreak framings through the full stack: 0 of 40 canary hits with egress in block mode, 40 of 40 relaxed, and identical egress verdicts for all 20 (not committed as a capture, so it's a Q&A answer, not a spoken claim).
 - Exit 3 means Docker or the DVAA image is missing. Skip the encore.
 
 ## If X breaks
