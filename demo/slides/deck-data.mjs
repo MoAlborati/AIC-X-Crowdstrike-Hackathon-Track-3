@@ -481,3 +481,44 @@ export function fmt(m, how = 'auto') {
   if (how === 'ms2' && typeof m.v === 'number') return `${m.v.toFixed(2)} ms`;
   return String(m.v);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Numbers dashboard (demo/slides/dashboard.html): extra pure views over the same files. Pairs only, no defaults.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** results.json key holding the per-kind breakdown for each lens (detection = anyFinding, as in deriveScoring). */
+export const KIND_KEYS = Object.freeze({
+  detection: 'recallByPositiveKindAnyFinding',
+  prevention: 'recallByPositiveKindPrevention',
+});
+
+/**
+ * Recall for one lens ('detection' | 'prevention') and one positive kind ('all' | 'exfil' | 'injectionOnly'), as a
+ * { t3, dvaa } pair. 'all' is the lens's overall recall from modes.enforce, so it equals deriveScoring's numbers.
+ */
+export function deriveRecallByKind(r, lens, kind) {
+  const F = FILES.scoring;
+  const prev = lens === 'prevention';
+  const one = (d) => {
+    if (kind === 'all') {
+      const mode = prev ? 'prevention' : 'anyFinding';
+      return frac(r, F, `detectors.${d}.modes.enforce.${mode}.tp`, `detectors.${d}.modes.enforce.${mode}.positives`);
+    }
+    const key = KIND_KEYS[prev ? 'prevention' : 'detection'];
+    return frac(r, F, `detectors.${d}.${key}.${kind}.tp`, `detectors.${d}.${key}.${kind}.positives`);
+  };
+  return { t3: one(OURS), dvaa: one(BASELINE) };
+}
+
+/** The dashboard's always-visible KPI strip: every tile is a { key, label, how, t3, dvaa } pair. */
+export function deriveKpis(model) {
+  const s = model.scoring;
+  return [
+    { key: 'detection', label: 'Detection recall (any finding)', how: 'pct', t3: s.detection.t3.recall, dvaa: s.detection.dvaa.recall },
+    { key: 'prevention', label: 'Prevention recall (request-side)', how: 'pct', t3: s.prevention.t3.recall, dvaa: s.prevention.dvaa.recall },
+    { key: 'benign', label: 'Benign requests blocked (request-side)', how: 'frac', t3: s.prevention.t3.fp, dvaa: s.prevention.dvaa.fp },
+    { key: 'exfil', label: 'Exfil-labelled attacks prevented (request-side)', how: 'frac', t3: s.exfil.t3, dvaa: s.exfil.dvaa },
+    { key: 'evasion', label: '8 KB evasion detected (n = 2, fixtures we built)', how: 'frac', t3: s.evasion.t3.detected, dvaa: s.evasion.dvaa },
+    { key: 'latency', label: 'Detector latency (in-detector, median)', how: 'ms', t3: s.latency.t3.median, dvaa: s.latency.dvaa.median },
+  ];
+}
