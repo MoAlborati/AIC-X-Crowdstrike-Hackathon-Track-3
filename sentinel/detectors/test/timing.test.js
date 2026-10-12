@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { createDetector, DVAA_HONEYTOKENS, DEFAULT_BOUNDS } from '../index.js';
 import { findIbans, findSecretShapes, extractUrls, extractEmails, extractMarkdownLinks, findCardNumbers, findSsns, decodedVariants, splitUntrustedSegments, findInjectionPhrases } from '../src/text.js';
+import { findTypoPhrases } from '../src/typo.js';
 import { quietLogger } from './helpers.js';
 
 const LAYER_BUDGET_MS = 50;
@@ -63,6 +64,7 @@ const ADVERSARIAL = {
   begin_lines: '----- BEGIN DOC -----\n',
   info_tags: '<INFORMATION>\n',
   phrases: 'ignore previous ',
+  typo_scrambled: 'ignroe prevoius ', // COMP-3: every token shape-matches a keyword and is letter-counted
 };
 const fill = (u) => u.repeat(Math.ceil((MAX * 0.45) / u.length)).slice(0, Math.floor(MAX * 0.45));
 
@@ -123,6 +125,7 @@ test('every text scanner alone is linear: < 50 ms CPU (median of 3) at the paylo
     decodedVariants: [(t) => decodedVariants(t, { depth: 3, minRun: 12 }), ['QUFB', '%25', '41', 'QUFBQUFBQUFBQUFB ']],
     splitUntrustedSegments: [splitUntrustedSegments, ['----- BEGIN A -----\n', '[BEGIN A]\n', '<INFORMATION>\n', `${'-'.repeat(199)}\n`]],
     findInjectionPhrases: [findInjectionPhrases, ['ignore previous ', 'aaaa']],
+    findTypoPhrases: [findTypoPhrases, ['ignroe prevoius ', 'instrcutions ', 'a ', "don't tlel ", 'abcdefghijklm ']],
     findIbans: [findIbans, ['US13300000012121 ', 'US133000000121212121212121212121212']],
   };
   for (const [name, [fn, units]] of Object.entries(scanners)) {

@@ -27,6 +27,7 @@ import {
   findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
+import { findTypoPhrases } from './typo.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
 let warmedUp = false;
@@ -215,7 +216,7 @@ export function createDetector(opts = {}) {
       ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
-      u.phrases = findInjectionPhrases(u.text);
+      u.phrases = [...findInjectionPhrases(u.text), ...findTypoPhrases(u.text)]; // typo: scrambled variants (typo.js)
       u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
