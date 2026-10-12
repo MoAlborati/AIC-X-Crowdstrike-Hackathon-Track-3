@@ -10,7 +10,7 @@
 >
 > **Pitch frame (critic #112, creative #105).** We are an exfil-focused guardrail, not a jailbreak classifier and not
 > "a slice of Falcon AIDR". Prevention on the blended corpus loses to DVAA's scanner (42% vs 63%), so we own that, then
-> show where data actually leaves (80.3% prevented, 57/71) and the control that actually blocks: **default-deny egress
+> show where data actually leaves (we prevent 57/71 with 0/164 legit requests blocked; DVAA prevents 64/71 but blocks 21/164: never quote ours without theirs) and the control that actually blocks: **default-deny egress
 > at the tool boundary**. Say "deterministic sandbox, no LLM" in the first 20 seconds, say "recorded" on every replay
 > beat, and never headline "100% precision" or "0% FP".
 >
@@ -279,11 +279,11 @@ plus the evasion result. Every number is read from the committed `sentinel/scori
 (Values above are as of `results.json` on origin/main `a37e430` (after T3-recall #46): 189 attack + 164 benign cases.
 The spoken line is static, so the presenter can read it here word for word. **Every number and every comparison in
 it** ("we detect slightly more", "zero false alarms … versus its 21", "DVAA prevents more, 63 versus 42", "12.8
-percent", "57 of 71" exfil prevented, "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
+percent", "57 of 71" vs DVAA "64 of 71" exfil prevented, "0 of 164" vs "21 of 164" legitimate requests blocked, "2 out of 2", median < 0.1 ms, p95 0.25–1 ms) is asserted against `results.json` one claim at a time, and
 Beat 7 FAILS naming the claim if the file no longer supports it. The held-out "600 ... prevent zero" line is checked
 against `captures/holdout-hf/RESULTS.md`. Then update the line in `run-demo.sh` and here together.)
 
-> "From the committed scoring run, against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic, 21 of 164 cases. We blocked none of them, on a benign set we also tuned on. Where data actually leaves, we prevent 80 percent, 57 of 71 exfil attempts. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+> "From the committed scoring run, against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. We detect slightly more than DVAA's scanner. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. Our benign set is one we also tuned on. Where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked; DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
 
 > "We attacked ourselves too. On 600 held-out public jailbreaks we never tuned on, we prevent zero, because none of them has anywhere to send your data. And spacing out an account number slips past our blocking rule today. Both are on our limitations list."
 

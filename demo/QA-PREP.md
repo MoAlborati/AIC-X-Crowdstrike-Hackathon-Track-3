@@ -10,8 +10,8 @@ headline line before 18:00 and say the figure that is there. Citation wording co
 
 **C1. "Your defense prevents less than the vulnerable target's own scanner (41.8% vs 63.0%). Why deploy it?"**
 "On the blended corpus, it does, and we lead with that. Most of the gap is injection-only text that steals nothing:
-there we prevent 18.6% against its 46.6%. Where data actually leaves, we prevent 80.3% (57 of 71) against its 90.1%,
-and its scanner also flags 21 of 164 benign cases, 12.8%. Our point is that regex at the front door isn't enough; the
+there we prevent 18.6% against its 46.6%. Where data actually leaves, we prevent 57 of 71 with 0 of 164 legitimate requests blocked;
+DVAA prevents 64 of 71 but blocks 21 of 164 legitimate requests (12.8%). It still wins there; the trade is false blocks. Our point is that regex at the front door isn't enough; the
 control that actually blocks is default-deny egress at the tool boundary."
 **Proof:** `sentinel/scoring/RESULTS.md` headline table and "Recall by positive kind (prevention)".
 
@@ -190,8 +190,8 @@ classifier such as Prompt Guard."
 
 ### If you blank
 1. **Provenance, not keywords:** content can ask for something. Only the user's own turn can authorize it.
-2. **Where data actually leaves, we prevent 80.3% (57 of 71).** DVAA prevents more overall (63.0% vs 41.8%), mostly on
-   injection-only text that steals nothing, and flags 12.8% of benign traffic; we blocked 0 of 164 benign (a tuned set). Held-out caveat: Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
+2. **Where data actually leaves, we prevent 57 of 71 with 0 of 164 legit requests blocked; DVAA prevents 64 of 71 but
+   blocks 21 of 164.** Never quote ours without theirs. DVAA prevents more overall (63.0% vs 41.8%), mostly on injection-only text. Held-out caveat: Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 3. **Detection and prevention are reported separately.** Alerts after execution only detect. A 403 or egress deny prevents.
 4. **Everything fails closed, nothing is silently truncated.** Too big, too slow, or an error: deny and alert.
 5. **Every miss is listed in RESULTS.md, and we attacked ourselves:** 0% held-out prevention, spaced-IBAN bypass. Default-deny egress is the control that blocks.

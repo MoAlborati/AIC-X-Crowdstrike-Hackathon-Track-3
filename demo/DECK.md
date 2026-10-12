@@ -179,8 +179,8 @@ Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output 
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
 latency, the one latency phrase we quote is "median under a tenth of a millisecond, p95 around half a millisecond" (figures in RESULTS.md). **Never put a guessed number on it.**
 Say it plainly: our detection recall is now slightly above DVAA's baseline, but the baseline has the higher
-prevention recall, at a 12.8% benign FP rate. Where data actually leaves, we prevent 80.3% (57/71) against its 90.1%
-(64/71); most of our blended loss is injection-only text that steals nothing (18.6% vs 46.6%).
+prevention recall, at a 12.8% benign FP rate. Where data actually leaves, we prevent 57/71 with 0/164 legit requests blocked; DVAA prevents
+64/71 but blocks 21/164; most of our blended loss is injection-only text that steals nothing (18.6% vs 46.6%).
 Our 0 of 164 benign blocked is on the 164-case benign corpus, which the rules were also tuned on. It's a small sample,
 not a zero-FP guarantee, so it is never the headline. Held-out benign: 1/32 blocked (a security-awareness memo quoting an injection phrase; same as before #46), and 4/32 raise an alert without a block. Held-out attacks: 14 of 16 hand-written paraphrases detected, but on an independent reviewer's 6 further paraphrases, 1 detected, so recall on novel phrasings is limited — see PR #46.
 The 2/2 cases that evade the baseline's 8KB window are a narrow, n=2 result, not a differentiator. Don't put AIDR's figure on this slide as a comparison. A
@@ -196,7 +196,7 @@ benchmark of a different system on a different corpus isn't like-for-like.
 
 **On slide**
 - Two bars: **jailbreak text, held out: 0% prevented (0/600)**, because none of it has anywhere to send data · **where
-  data actually leaves: 80.3% prevented (57/71)**.
+  data actually leaves: we prevent 57/71 with 0/164 legit requests blocked; DVAA prevents 64/71 but blocks 21/164**.
 - "Spacing out an account number slips past our blocking rule today." (Found by our own critic, issue #112; not yet fixed.)
 - "Regex at the front door is not enough. Default-deny egress at the tool boundary is what actually stops the data."
 - Small print: held-out set = 600 attack + 400 benign rows from 3 public Hugging Face sets, never tuned on: T3 detected

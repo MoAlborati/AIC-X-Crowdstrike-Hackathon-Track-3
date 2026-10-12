@@ -33,7 +33,8 @@ Our honest headline, from [`sentinel/scoring/RESULTS.md`](sentinel/scoring/RESUL
 
 - **Regex detection is not enough, and we have the numbers to prove it.** On the blended 353-case corpus, DVAA's own
   scanner prevents more than we do (63.0% against our 41.8%), at a 12.8% benign FP rate (21/164).
-- **Where data actually leaves, we prevent 80.3% (57/71 exfil positives)**, against DVAA's 90.1% (64/71). Most of the
+- **Where data actually leaves, we prevent 57/71 exfil positives with 0/164 legitimate requests blocked; DVAA prevents
+  64/71 but blocks 21/164.** DVAA still prevents more there; the trade is false blocks. Most of the
   blended gap is injection-only text that steals nothing (we prevent 18.6% of it, DVAA 46.6%).
 - **One pre-forward rule does all of our scored prevention.** All 79 prevented positives fire
   `inbound.exfil_instruction`. Honeytokens, provenance and taint are tripwires and alerts. The honeytokens are DVAA's
