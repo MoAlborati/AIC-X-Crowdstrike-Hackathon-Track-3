@@ -1,0 +1,11 @@
+[
+  { "id": "dvaa.admin_password", "value": "dvaa-admin-secret" },
+  { "id": "dvaa.db_password", "value": "dvaa-db-password-123" },
+  { "id": "dvaa.openai_key", "value": "sk-dvaa-openai-test-key-do-not-use-in-production-12345" },
+  { "id": "dvaa.anthropic_key", "value": "sk-ant-dvaa-test-anthropic-key-67890" },
+  { "id": "dvaa.internal_api_key", "value": "dvaa-internal-api-key-abcdef" },
+  { "id": "dvaa.sandbox_internal_key", "value": "dvaa-internal-api-key-xyz" },
+  { "id": "dvaa.sandbox_openai_env", "value": "sk-dvaa-demo-openai-key-leaked-via-env" },
+  { "id": "dvaa.pii_ssn_john", "value": "123-45-6789" },
+  { "id": "dvaa.pii_ssn_jane", "value": "987-65-4321" }
+]

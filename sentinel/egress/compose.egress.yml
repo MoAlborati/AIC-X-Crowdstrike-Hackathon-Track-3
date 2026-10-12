@@ -1,0 +1,59 @@
+# SentinelProxy T12 — DVAA with every tool-boundary egress forced through sentinel's egress inspector.
+#
+# A separate compose project next to the live `dvaa-t1` fleet: it reuses the built DVAA image
+# (`scripts/setup-dvaa.sh up` builds `dvaa-t1-dvaa`) UNCHANGED and never touches the dvaa-t1 containers.
+#
+#   sandbox (internal: true, no route out) : dvaa, egress   <- DVAA's ONLY exit is the inspector
+#   outside                                : egress, canary <- stand-in attacker collector (ground truth)
+#
+# Network exposure: no port is published to the host. The inspector binds only its static sandbox IP and
+# accepts clients only from the sandbox subnet + loopback (ALLOW_CLIENT_CIDRS), so the canary on `outside`
+# cannot use it as a relay.
+#
+#   EGRESS_MODE=observe|block docker compose -f sentinel/egress/compose.egress.yml up -d
+name: sentinel-egress
+services:
+  dvaa:
+    image: ${DVAA_IMAGE:-dvaa-t1-dvaa}
+    environment:
+      NODE_USE_ENV_PROXY: "1"
+      HTTP_PROXY: http://${EGRESS_NET:-10.231.12}.2:8899
+      HTTPS_PROXY: http://${EGRESS_NET:-10.231.12}.2:8899
+      # DVAA's own loopback hops (dashboard -> agent ports) stay in-container (in-container SSRF is a
+      # documented T12 limitation).
+      NO_PROXY: "127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006,127.0.0.1:7007,127.0.0.1:7008,127.0.0.1:7014,127.0.0.1:7015,127.0.0.1:7016,127.0.0.1:7017,127.0.0.1:7018,127.0.0.1:7022,127.0.0.1:7023,127.0.0.1:9000,localhost:7005"
+    networks:
+      sandbox: {}
+    depends_on: [egress]
+  egress:
+    image: node:24-alpine
+    command: ["node", "/sentinel/egress/inspector.mjs"]
+    environment:
+      MODE: ${EGRESS_MODE:-observe}
+      ALLOW_HOSTS: ${EGRESS_ALLOW:-api.openai.com,api.anthropic.com}
+      LISTEN_HOST: ${EGRESS_NET:-10.231.12}.2
+      ALLOW_CLIENT_CIDRS: 127.0.0.0/8,${EGRESS_NET:-10.231.12}.0/24
+      MAX_EGRESS_BYTES: ${EGRESS_MAX_BYTES:-65536}
+      LOG: /logs/egress.jsonl
+      AGENT_LABEL: dvaa
+    volumes:
+      - ..:/sentinel:ro
+      - ${EGRESS_LOG_DIR:-./.logs}:/logs
+    networks:
+      sandbox:
+        ipv4_address: ${EGRESS_NET:-10.231.12}.2
+      outside: {}
+  canary:
+    image: node:24-alpine
+    command: ["node", "/sentinel/egress/canary.mjs"]
+    volumes:
+      - ..:/sentinel:ro
+    networks:
+      outside: {}
+networks:
+  sandbox:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${EGRESS_NET:-10.231.12}.0/24
+  outside: {}
