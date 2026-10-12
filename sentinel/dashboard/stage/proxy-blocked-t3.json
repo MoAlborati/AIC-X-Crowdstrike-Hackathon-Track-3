@@ -217,6 +217,7 @@
      "Category": "Prompt Injection",
      "Slug": "prompt-injection"
     },
+    "References": [],
     "Entities": {
      "Agent": {
       "Name": "dvaa :7005",
@@ -369,6 +370,7 @@
      "Category": "Prompt Injection",
      "Slug": "prompt-injection"
     },
+    "References": [],
     "Entities": {
      "Agent": {
       "Name": "dvaa :7005",

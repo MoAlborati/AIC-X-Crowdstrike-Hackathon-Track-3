@@ -59,9 +59,58 @@ test('data-driven: alert tags come from the single table for every category', ()
     assert.deepEqual(a.OwaspLlm, m.OwaspLlm);
     assert.deepEqual(a.OwaspAgentic, m.OwaspAgentic);
     assert.deepEqual(a.Oasb, m.Oasb);
+    assert.deepEqual(a.References, m.References);
     assert.equal(a.TechniqueId, m.MitreAtlas[0].TechniqueId);
     assert.equal(a.DetectName, m.detectName);
   }
+});
+
+test('reference attribution: EchoLeak CVE maps ONLY to the markdown/image-exfil class; others carry no CVE', () => {
+  // The catalog entry is accurate (CVE id, NVD url, CVSS), not fabricated.
+  assert.deepEqual(CATALOG.references['CVE-2025-32711'], {
+    Type: 'CVE',
+    Name: 'EchoLeak — zero-click data exfiltration from Microsoft 365 Copilot via markdown image rendering',
+    Url: 'https://nvd.nist.gov/vuln/detail/CVE-2025-32711',
+    Cvss: 9.3,
+  });
+
+  // egress_markdown_image is the ONLY class with a CVE reference, and it resolves fully.
+  const md = getMapping('egress_markdown_image');
+  assert.deepEqual(md.References, [{
+    Id: 'CVE-2025-32711',
+    Type: 'CVE',
+    Name: 'EchoLeak — zero-click data exfiltration from Microsoft 365 Copilot via markdown image rendering',
+    Url: 'https://nvd.nist.gov/vuln/detail/CVE-2025-32711',
+    Cvss: 9.3,
+  }]);
+
+  // Every other category: no CVE invented — References is empty, so it falls back to the taxonomy tags.
+  for (const c of CATEGORIES) {
+    const m = getMapping(c);
+    assert.ok(Array.isArray(m.References), `${c}: References is an array`);
+    if (c === 'egress_markdown_image') continue;
+    assert.deepEqual(m.References, [], `${c}: no CVE attached (taxonomy tags only)`);
+    // Classes without a CVE still carry taxonomy attribution (ATLAS/OWASP), never empty attribution.
+    assert.ok(m.MitreAtlas.length >= 1 && (m.OwaspLlm.length >= 1 || m.OwaspAgentic.length >= 1), `${c}: has taxonomy tags`);
+  }
+});
+
+test('reference attribution is carried onto the emitted alert only for matching finding types', () => {
+  const { onWarning } = warnSink();
+  const md = buildAlert(makeVerdict('egress_markdown_image'), { onWarning });
+  assert.equal(md.References.length, 1);
+  assert.equal(md.References[0].Id, 'CVE-2025-32711');
+  assert.equal(md.References[0].Type, 'CVE');
+  // A non-matching class (e.g. a plain honeytoken egress) carries an empty reference list, not a CVE.
+  const ht = buildAlert(makeVerdict('honeytoken_exfil'), { onWarning });
+  assert.deepEqual(ht.References, []);
+  assert.ok(!JSON.stringify(ht).includes('CVE-2025-32711'), 'no CVE attached to a non-matching class');
+});
+
+test('validateMappingTable flags an unknown reference id (fail loud on bad edit)', () => {
+  const bad = { x: { ...CATEGORY_MAP.egress_markdown_image, references: ['CVE-0000-00000'] } };
+  const problems = validateMappingTable(bad);
+  assert.ok(problems.some((p) => p.includes('unknown reference CVE-0000-00000')), problems.join('; '));
 });
 
 test('table is frozen (cannot be mutated at a call site)', () => {
