@@ -1,1 +1,0 @@
-Track 1 (SOC Brief) · SHA cb2b7f5 (v1.0-submission) · scripts/soc-handoff.sh: hands Tourniquet's real T4 alerts (proxy block, post-execution honeytoken, egress deny) to SOC Brief, which produces the plain-English P1 brief fully offline (model: none). Fail-loud on any missing input.

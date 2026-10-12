@@ -1,1 +1,0 @@
-Track 1 (SOC Brief) · SHA cb2b7f5 (v1.0-submission) · Playwright walk of the SOC Brief queue UI at 1440x900: 22-alert queue with severity grouping and Escalate / Needs-a-human dispositions, 100% needs-human recall. Offline, deterministic (no LLM).
