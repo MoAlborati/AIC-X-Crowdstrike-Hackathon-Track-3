@@ -10,7 +10,8 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { indexCaptures, loadCapture, defaultRoots, CaptureFormatError } from './lib/capture-loader.mjs';
 import { adaptAlerts } from './lib/alert-adapter.mjs';
-import { alertsFor } from './lib/alert-store.mjs';
+import { alertsFor, alertDirs } from './lib/alert-store.mjs';
+import { stageAlerts } from './lib/stage.mjs';
 import { buildReplay } from './lib/replay.mjs';
 import { loadScoring } from './lib/scoring.mjs';
 import { BOUNDS, BoundExceededError } from './lib/bounds.mjs';
@@ -57,17 +58,30 @@ export function assertLoopbackBind(host) {
   }
 }
 
-/** Build the full replay payload for one capture run. Exported for tests and the CLI. */
-export async function replayPayload(index, id, runKey) {
+const PLACEHOLDER_HIDDEN = 'placeholder data is hidden on the stage view; open the dashboard with ?dev=1 to see it';
+
+/**
+ * Build the full replay payload for one capture run. Exported for tests and the CLI.
+ * `dev: false` (what the HTTP server uses unless the page has ?dev=1) hides placeholder-only captures and
+ * placeholder alert sidecars, so the PLACEHOLDER banner cannot appear on the stage captures. The
+ * programmatic default keeps them, since the fixtures are what the bounds tests replay.
+ */
+export async function replayPayload(index, id, runKey, { dev = true } = {}) {
   const entry = index.get(id); // targeted lookup; ids never become file paths
   if (!entry) return { status: 404, body: { error: `unknown capture id ${id}` } };
+  if (!dev && entry.source === 'placeholder') return { status: 404, body: { error: `${id}: ${PLACEHOLDER_HIDDEN}` } };
   const capture = await loadCapture(entry);
+  if (!dev && capture.placeholder) return { status: 404, body: { error: `${id}: ${PLACEHOLDER_HIDDEN}` } };
   const run = runKey ? capture.runs.find(r => r.key === runKey) : capture.runs[0];
   if (!run) return { status: 404, body: { error: `capture ${id} has no run ${runKey}`, runs: capture.runs.map(r => r.key) } };
 
-  const src = await alertsFor(capture, run.key);
+  const src = await alertsFor(capture, run.key, alertDirs(process.env).filter(d => dev || !d.placeholder));
   const t0 = performance.now();
-  const { alerts, validatorOrigin } = await adaptAlerts(src.alerts, `${id}#${run.key}`);
+  const adapted = await adaptAlerts(src.alerts, `${id}#${run.key}`);
+  const { validatorOrigin } = adapted;
+  // Honest dispositions: on a run where the exfil landed, every alert is post-execution (alert-only).
+  const exfilLanded = run.outcome.exfilExecuted === true;
+  const alerts = stageAlerts(adapted.alerts, { canaryHit: exfilLanded });
   const replay = buildReplay(
     { id: `${id}#${run.key}`, agent: run.agent, exchanges: run.exchanges, toolResults: run.toolResults },
     alerts,
@@ -94,18 +108,21 @@ export async function replayPayload(index, id, runKey) {
   };
 }
 
-async function listPayload(index) {
+async function listPayload(index, { dev = true } = {}) {
   const items = [];
+  let hidden = 0;
   for (const entry of index.values()) {
+    if (!dev && entry.source === 'placeholder') { hidden++; continue; }
     try {
       const c = await loadCapture(entry);
+      if (!dev && c.placeholder) { hidden++; continue; }
       items.push({ id: c.id, title: c.title, source: c.source, placeholder: c.placeholder, scenario: c.scenario, expectedLabel: c.expectedLabel, bytes: c.bytes, runs: c.runs.map(r => ({ key: r.key, label: r.label, role: r.role })) });
     } catch (err) {
       // A broken capture stays in the list with its error. It is never silently hidden.
       items.push({ id: entry.id, source: entry.source, error: err.message, bound: err.bound ?? null });
     }
   }
-  return items;
+  return { items, hiddenPlaceholders: hidden };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
@@ -118,6 +135,8 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
   });
   res.end(data);
 }
+
+const isDev = (url) => url.searchParams.get('dev') === '1';
 
 export function createServer({ roots = defaultRoots() } = {}) {
   const server = http.createServer(async (req, res) => {
@@ -137,11 +156,12 @@ export function createServer({ roots = defaultRoots() } = {}) {
       }
       if (url.pathname === '/api/captures') {
         const index = await indexCaptures(roots);
-        return send(res, 200, { captures: await listPayload(index), bounds: BOUNDS });
+        const { items, hiddenPlaceholders } = await listPayload(index, { dev: isDev(url) });
+        return send(res, 200, { captures: items, hiddenPlaceholders, dev: isDev(url), bounds: BOUNDS });
       }
       if (url.pathname === '/api/replay') {
         const index = await indexCaptures(roots);
-        const r = await replayPayload(index, url.searchParams.get('id') ?? '', url.searchParams.get('run'));
+        const r = await replayPayload(index, url.searchParams.get('id') ?? '', url.searchParams.get('run'), { dev: isDev(url) });
         return send(res, r.status, r.body);
       }
       if (url.pathname === '/api/scoring') {

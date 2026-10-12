@@ -2,10 +2,12 @@
 // real proxy instance writing to a real JSONL file. Nothing here mocks the proxy.
 
 import http from 'node:http';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateConfig } from '../../config/load.mjs';
+import { validateConfig, loadConfig } from '../../config/load.mjs';
 import { createProxy } from '../server.mjs';
 
 /**
@@ -178,4 +180,90 @@ export function manyRows(n = 500) {
     rows.push(`| ${String(i).padStart(4, '0')} | user${i}@example.test | 555-01-${String(i % 10000).padStart(4, '0')} | balance=${(i * 37.11).toFixed(2)} |`);
   }
   return rows.join('\n');
+}
+
+// ---- live-DVAA helpers (ported from the retired PR #21 test/helpers.js) -----------------------------
+
+export const REPO_ROOT = join(fileURLToPath(new URL('../../../', import.meta.url)));
+export const CAPTURES = join(REPO_ROOT, 'captures');
+export const DVAA_HOST = '127.0.0.1';
+export const RAGBOT_PORT = 7005;
+
+/**
+ * Live seams run against the REAL DVAA fleet. When SENTINEL_REQUIRE_DVAA=1 (set by scripts/eval.sh
+ * whenever the fleet is up) an unreachable agent is a FAILURE; otherwise the test is skipped with a
+ * loud reason so the eval table lists it. Returns true when the caller should continue.
+ */
+export async function requireDvaa(t, port, expectedAgent) {
+  let health = null;
+  let why = null;
+  try {
+    const r = await fetch(`http://${DVAA_HOST}:${port}/health`, { signal: AbortSignal.timeout(2000) });
+    health = r.ok ? await r.json() : null;
+    if (!r.ok) why = `/health returned ${r.status}`;
+  } catch (err) {
+    why = err.message;
+  }
+  if (health?.status !== 'ok') {
+    const msg = `DVAA agent on ${DVAA_HOST}:${port} is UNREACHABLE (${why ?? JSON.stringify(health)}); start the fleet: scripts/eval.sh up`;
+    if (process.env.SENTINEL_REQUIRE_DVAA === '1') assert.fail(msg);
+    t.skip(msg);
+    return false;
+  }
+  if (expectedAgent) assert.equal(health.agent, expectedAgent, `port ${port} is ${health.agent}, expected ${expectedAgent}`);
+  return true;
+}
+
+export const readCaptureFile = (rel) => readFileSync(join(CAPTURES, rel));
+
+/**
+ * The request a live DVAA agent actually acts on, built from a channel-faithful T6 fixture (#30).
+ *
+ * Since #15 (review F5), `rag_document`/`tool_output` fixtures carry the payload in a `role:"tool"`
+ * message after an assistant tool_call (OpenAI shape). DVAA's /v1/chat/completions handler only reads
+ * the LATEST USER TURN (`latestUserText`), so it never sees tool-role content and never fires its
+ * server-side exfil path. To exercise that real path we deliver the retrieved document as the user
+ * turn, the way DVAA's own `aim-ab` demo does. The bytes of the document are unchanged.
+ * Fails loudly if the fixture is not the shape this adapter was written for.
+ */
+export function dvaaUserTurnRequest(fx) {
+  const idx = fx.baseline8kb?.payloadMessageIndex;
+  assert.ok(Number.isInteger(idx), `${fx.id}: fixture lacks baseline8kb.payloadMessageIndex`);
+  assert.ok(['rag_document', 'tool_output'].includes(fx.channel), `${fx.id}: unexpected channel ${fx.channel}`);
+  const msg = fx.request.messages[idx];
+  assert.equal(msg?.role, 'tool', `${fx.id}: payload message ${idx} must be role:"tool" (T6 F5 shape)`);
+  assert.equal(typeof msg.content, 'string');
+  assert.equal(msg.content.length, fx.baseline8kb.docLength, `${fx.id}: payload length drifted from baseline8kb.docLength`);
+  return { messages: [{ role: 'user', content: msg.content }] };
+}
+
+/** Write a config file (shipped-config shape) and load it through the REAL loader with env/argv. */
+export function loadLiveConfig({ mode = 'observe', limits = {}, env = {}, argv = [], flagSubstrings = [] } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'sentinel-live-'));
+  const file = join(dir, 'cfg.json');
+  writeFileSync(file, JSON.stringify({
+    listen: { host: '127.0.0.1', port: 0 },
+    target: { host: DVAA_HOST, port: RAGBOT_PORT },
+    mode,
+    limits: {
+      maxRequestBytes: 1048576, maxResponseBytes: 8388608, upstreamTimeoutMs: 15000,
+      inspectorTimeoutMs: 5000, clientTimeoutMs: 30000, maxInFlight: 64, ...limits,
+    },
+    capture: { path: join(dir, 'capture.jsonl'), maxFileBytes: 536870912 },
+    inspect: { flagSubstrings },
+  }));
+  return loadConfig({ path: file, env, argv });
+}
+
+/**
+ * DEPENDENCY stub (stands in for a response-phase detector, not a mock of the proxy): flags a reply
+ * whose real DVAA `dvaa{}` block reports an exfil attempt. Used to drive the response hook with DVAA's
+ * own ground truth, because T3 reports post-execution evidence as alert-only.
+ */
+export async function dvaaGroundTruthInspector({ phase, body }) {
+  if (phase !== 'response') return null;
+  let j;
+  try { j = JSON.parse(body.toString('utf8')); } catch { return null; }
+  if (!j?.dvaa?.exfilAttempted) return null;
+  return { flagged: true, detector: 'test-dvaa-ground-truth', reasons: ['dvaa_reports_exfil_attempt'] };
 }

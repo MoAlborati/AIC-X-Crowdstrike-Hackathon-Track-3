@@ -2,7 +2,7 @@
 
 Run by the orchestrator after any ticket that touches **detection or demo**, and as the final gate before
 we call the demo ready. A fresh-project / toy-fixture pass is INSUFFICIENT — this gate runs against the
-**real DVAA fleet** and data-rich payloads. Encodes the firm's "demo on a data-rich environment" rule.
+**real DVAA fleet** and data-rich payloads. Encodes the team's data-scale reliability rule: demo on a data-rich environment.
 
 ## Data-rich environment
 - [ ] The run uses the **real DVAA agents** (the recommended fleet: RAGBot 7005 ↔ AIM 7014,
@@ -18,7 +18,7 @@ we call the demo ready. A fresh-project / toy-fixture pass is INSUFFICIENT — t
 - [ ] Secure-by-design contrast shown: same attack fails on the AIM twin + SecureBot.
 
 ## Convergence (hackathon-scaled — stated adaptation)
-> The firm rule asks ≥15 consecutive clean runs. **For this 8-hour hackathon we adapt that to
+> The team's convergence rule asks for ≥15 consecutive clean runs. **For this 8-hour hackathon we adapt that to
 > ≥5 consecutive clean demo replays** — enough to prove the deterministic replay is not a lucky run,
 > without burning the build window. This adaptation is deliberate and recorded here.
 - [ ] **≥5 consecutive clean** `demo/run-demo.sh` replays, no errors, no nondeterministic variance.

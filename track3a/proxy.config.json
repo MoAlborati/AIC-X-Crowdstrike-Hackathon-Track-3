@@ -1,0 +1,20 @@
+{
+  "listen": { "host": "127.0.0.1", "port": 8181 },
+  "target": { "host": "127.0.0.1", "port": 7101 },
+  "mode": "block",
+  "limits": {
+    "maxRequestBytes": 1048576,
+    "maxResponseBytes": 8388608,
+    "upstreamTimeoutMs": 30000,
+    "inspectorTimeoutMs": 5000,
+    "clientTimeoutMs": 30000,
+    "maxInFlight": 64
+  },
+  "capture": {
+    "path": "track3a/runs/proxy-capture.jsonl",
+    "maxFileBytes": 536870912
+  },
+  "inspect": {
+    "flagSubstrings": ["sk-opsbot-FAKE-billing-key-7731-do-not-use", "555-01-7342", "4000-0000-0000-7342"]
+  }
+}

@@ -5,7 +5,7 @@ intentionally vulnerable training sandbox, published on `127.0.0.1` only. No API
 LLM is called.
 
 ```bash
-git clone https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon.git && cd AIC-X-Crowdstrike-Hackathon
+git clone https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon-Track-3.git && cd AIC-X-Crowdstrike-Hackathon-Track-3
 scripts/eval.sh all
 ```
 

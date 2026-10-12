@@ -1,5 +1,5 @@
 // Every cap the dashboard introduces lives here, with why and what happens on overflow.
-// Firm rule: bounded + fail-loud. Nothing here truncates silently. Exceeding a cap throws
+// Team rule: bounded + fail-loud. Nothing here truncates silently. Exceeding a cap throws
 // BoundExceededError, which the server returns as a structured error ({bound, size, cap, action})
 // and the UI renders as a red banner.
 
@@ -26,6 +26,11 @@ export const BOUNDS = Object.freeze({
 
   // Provenance edges per alert (narrative case card). Overflow: throws.
   MAX_PROVENANCE_EDGES_PER_ALERT: 64,
+
+  // T7 sentinel/scoring/results.json. With per-case detail for 3 detectors over the 353-case corpus it
+  // is ~0.4 MB; 16 MiB leaves room for a corpus ~40x larger. Overflow: /api/scoring reports the file as
+  // an error (the headline tiles show ERROR with size and cap). It never parses a partial file.
+  MAX_SCORING_BYTES: 16 * 1024 * 1024,
 });
 
 export class BoundExceededError extends Error {
