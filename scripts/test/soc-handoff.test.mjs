@@ -50,7 +50,11 @@ test('brief is written offline with the expected verdict and all three alert kin
     // The post-execution (report-only) card carries SOC Brief's own report-only wording; no handoff workaround.
     const post = sections.find((s) => s.includes('Detected · post-execution (alert-only)'));
     assert.ok(post, 'post-execution section present');
-    assert.match(post, /SOC Brief rule `sentinel-agent-report-only`/);
+    // #141 taxonomy (Option A): the report-only case is handled by the one
+    // `sentinel.agent_exfil` rule, which emits report-only wording ("treat the
+    // data as sent", never "stopped the send"). The old `sentinel-agent-report-only`
+    // rule id is not restored.
+    assert.match(post, /SOC Brief rule `sentinel\.agent_exfil`/);
     assert.match(post, /treat the data as sent/i);
     assert.doesNotMatch(post, /stopped the send|Leave the block in place|Handoff note/);
     assert.match(brief, /AML\.T0086/);
@@ -81,7 +85,11 @@ test('leak guard refuses to write a brief that would carry a honeytoken value', 
   try {
     const doc = JSON.parse(readFileSync(BLOCK, 'utf8'));
     const alert = Object.values(doc.runs).flat()[0];
-    alert.CaseCard.Narrative = `${alert.CaseCard.Narrative} leaked=${value}`;
+    // Smuggle a honeytoken value into a field the handoff renders verbatim into the brief: the adapter
+    // builds the section heading straight from alert.DetectName (not via the swappable SOC Brief engine),
+    // so this value WOULD reach the brief regardless of signal wording. The only thing that must stop it
+    // is the leak guard — build the brief without the guard and the value appears (see the leak proof).
+    alert.DetectName = `${alert.DetectName} leaked=${value}`;
     const bad = path.join(dir, 'bad.alerts.json');
     writeFileSync(bad, JSON.stringify(doc));
     const outFile = path.join(dir, 'brief.md');
