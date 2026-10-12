@@ -69,9 +69,9 @@ tool-using agents, few mature controls, clear deployer liability — is the mark
 ## How to use this on stage (honesty guardrails)
 
 - These are **market facts with public citations**, not our customers, our pricing or our forecast. Never present
-  any figure here as SentinelProxy's own result or as a committed market size for us.
+  any figure here as Tourniquet's own result or as a committed market size for us.
 - Keep our measured numbers (57/71 prevented, 0/164 blocked) sourced to `results.json`, stated next to the baseline's
   64/71 at 21/164, exactly as in VENTURE.md.
-- The incidents motivate the problem; they are not claims that SentinelProxy would have stopped each one.
+- The incidents motivate the problem; they are not claims that Tourniquet would have stopped each one.
 
 **Sources:** every claim links inline above.
