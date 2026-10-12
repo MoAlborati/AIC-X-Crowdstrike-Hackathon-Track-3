@@ -634,7 +634,7 @@ cmd_dashboard_stop() {
 # A merge conflict or any failing suite fails the gate. Logs: .eval/gate-pr<N>/.
 GATE_TMP=""; GATE_TMP2=""
 # Demo + claim checks on the merged tree (issue #110, overseer rec #1). Returns 1 if any fails.
-#   claim drift   T3/DVAA %s in README/SUBMISSION/QA-PREP/DECK must match sentinel/scoring/results.json
+#   claim drift   T3/DVAA %s in README/SUBMISSION/QA-PREP/DECK/SCRIPT/PRESENTER must match sentinel/scoring/results.json
 #   script sync   demo/run-demo.sh --check-script (spoken lines verbatim in demo/SCRIPT.md)
 #   demo --auto   one full replay, only when the PR touches detectors, scoring, demo/ or the dashboard
 GATE_DEMO_PATHS='^(sentinel/detectors/|sentinel/scoring/|demo/|sentinel/dashboard/)'

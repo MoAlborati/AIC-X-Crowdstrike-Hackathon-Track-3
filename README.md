@@ -5,14 +5,14 @@
 CrowdStrike x Santa Clara University hackathon, Track 3. SentinelProxy sits between an AI agent and its
 model and tools. It turns an indirect prompt injection that tries to exfiltrate data or misuse a tool into an AIDR-shaped alert, mapped to MITRE
 ATLAS and OWASP, and it is designed to block exfil before forwarding or at egress. It does not block everything it catches: in our
-corpus it detects 128 of 189 attacks and prevents 79, including 57 of 71 exfil attempts. We complement Falcon AIDR at the tool
+corpus it detects 128 of 189 attacks and prevents 79, including 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked (DVAA's own scanner prevents 64 of 71 but blocks 21 of 164). We complement Falcon AIDR at the tool
 boundary; we have not integrated with it. Our target is **DVAA** (Damn
 Vulnerable AI Agent), the organizers' intentionally vulnerable training sandbox, run offline on
 `127.0.0.1`. **Deterministic sandbox, no LLM:** DVAA answers with canned responses, so nothing here has been tested
 against a live model that paraphrases, splits or encodes its exfil. This is an authorized hackathon project, and all
 of the work is defensive.
 
-**Scope.** SentinelProxy is designed to stop prompt-injection-driven *exfiltration and tool misuse*; it prevents 57 of 71 exfil attempts in our corpus. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
+**Scope.** SentinelProxy is designed to stop prompt-injection-driven *exfiltration and tool misuse*; it prevents 57 of 71 exfil attempts in our corpus, with 0 of 164 legitimate requests blocked; DVAA's own scanner prevents 64 of 71 but blocks 21 of 164. Generic jailbreak text with no action is out of scope for blocking (alerted at most); pair it with a jailbreak classifier such as Prompt Guard.
 
 ## The problem
 
@@ -41,7 +41,7 @@ Our honest headline, from [`sentinel/scoring/RESULTS.md`](sentinel/scoring/RESUL
   `inbound.exfil_instruction`. Honeytokens, provenance and taint are tripwires and alerts. The honeytokens are DVAA's
   own known secrets, so read them as a known-secret tripwire, not planted canaries.
 - **The control that actually blocks is default-deny egress at the tool boundary.** It decides on the destination
-  host, not on content, so it still holds when the request-side rule is bypassed (spacing, homoglyphs); a second critic
+  host, not on content, so it still denied every non-allowlisted destination we tried when the request-side rule was bypassed (spacing, homoglyphs). It is not scored on an attack set, and exfil to an allowlisted host is not covered; a second critic
   confirmed this live (issue #112). It also stops the RepoBot exfil that happens inside the agent, where no
   request-side check can reach (recorded run in `demo/captures/egress-demo-block.txt`).
 - **Benign:** 0 of 164 benign cases blocked, on a benign set the rules were also tuned on. That is a small sample,
@@ -136,7 +136,7 @@ so it can't go stale. How to read them:
 - **Egress guard scope** (T12). It does not intercept HTTPS: CONNECT is decided by host only. Egress events
   are linked to chat turns by best-effort time-window attribution only, and are reported standalone when the
   match is ambiguous. In-container loopback SSRF never reaches it.
-- **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, none carrying an exfil destination, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md).
+- **Generic jailbreaks are out of scope for blocking.** On a held-out set of 600 attack and 400 benign cases from 3 public Hugging Face sets of generic jailbreaks and injections, T3 detected 28.5% and prevented 0%, with 0/400 false positives (detection by set: Gandalf 58%, SPML 19%, jailbreak-classification about 8%); DVAA detected and prevented 60.7%, with 22/400 (5.5%) false positives. Held-out; see [`captures/holdout-hf/RESULTS.md`](captures/holdout-hf/RESULTS.md).
 - Detection is deterministic: honeytokens, taint, provenance and pattern rules, with no ML classifier.
   An injection that never attempts exfiltration may be flagged without being blocked.
 

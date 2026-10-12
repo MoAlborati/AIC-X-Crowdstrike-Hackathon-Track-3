@@ -1,0 +1,6 @@
+{
+ "repo": "opena2a-org/hackmyagent",
+ "revision": "033f4fa1fa3c1477272fb0942f298d6196d8e156",
+ "license": "Apache-2.0",
+ "payloadGlob": "src/attack/payloads/*.ts"
+}

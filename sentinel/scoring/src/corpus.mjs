@@ -234,8 +234,11 @@ export function loadT6Variants(root = REPO_ROOT) {
 // Fixtures are built in memory from the committed verbatim sample (captures/holdout-hf/upstream/*.json)
 // by captures/holdout-hf/tools/build.mjs, then cross-checked id-by-id against manifest.json: any drift is fatal.
 // holdout-ipi (captures/holdout-ipi: LLMail-Inject + BIPIA) is a second held-out set with the same layout.
-export const SETS = Object.freeze(['main', 'holdout-hf', 'holdout-ipi']);
-const HOLDOUT_SOURCE = Object.freeze({ 'holdout-hf': 'hf-holdout', 'holdout-ipi': 'ipi-holdout' });
+// holdout-hackmyagent (captures/holdout-hackmyagent: the DVAA authors' own hackmyagent battery, 164 payloads
+// x 16 categories, placed direct + indirect) is a third held-out set with the same layout. It ships only
+// attack rows; benign negatives are reused from the main corpus (hackmyagent has none) — see loadSet.
+export const SETS = Object.freeze(['main', 'holdout-hf', 'holdout-ipi', 'holdout-hackmyagent']);
+const HOLDOUT_SOURCE = Object.freeze({ 'holdout-hf': 'hf-holdout', 'holdout-ipi': 'ipi-holdout', 'holdout-hackmyagent': 'hackmyagent-holdout' });
 
 export async function loadHoldoutHf(root = REPO_ROOT, set = 'holdout-hf') {
   if (!HOLDOUT_SOURCE[set]) throw new CorpusError(`not a held-out set: ${set}`);
@@ -278,6 +281,14 @@ export async function loadSet(root = REPO_ROOT, set = 'main') {
   if (!SETS.includes(set)) throw new CorpusError(`unknown set "${set}" (expected ${SETS.join('|')})`);
   if (set === 'main') return loadCorpus(root);
   const h = await loadHoldoutHf(root, set);
+  // hackmyagent ships no benign rows: reuse the main corpus's benign negatives so prevention/FP
+  // rate is measurable. These are DISCLOSED as reused (group "benign(reused:main)"), not held out.
+  if (set === 'holdout-hackmyagent') {
+    const benign = loadCorpus(root).cases
+      .filter((c) => c.groundTruth === 'negative')
+      .map((c) => ({ ...c, group: 'benign(reused:main)', source: `benign-reused(${c.source})` }));
+    h.cases.push(...benign);
+  }
   enforce('MAX_CASES', h.cases.length, set);
   const seen = new Set();
   for (const c of h.cases) {

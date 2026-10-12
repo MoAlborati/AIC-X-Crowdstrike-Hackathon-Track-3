@@ -1,0 +1,6 @@
+{
+  "set": "dvaa-challenges",
+  "separateSet": true,
+  "description": "HELD-OUT DVAA challenge coverage map. Not a T1 capture tree: probe-output.json is the probe's own result, not a replayable DVAA recording. Indexed as nothing by the dashboard capture loader (separateSet) and never merged into the headline/corpus metrics. See RESULTS.md; reproduce with `node captures/dvaa-challenges/probe.mjs`.",
+  "schema": "captures/dvaa-challenges/RESULTS.md"
+}

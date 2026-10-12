@@ -1,0 +1,5 @@
+# Fixtures are rebuilt in memory from upstream/*.json by tools/build.mjs (the T7 loader cross-checks
+# them against manifest.json). Only upstream/*.json and manifest.json are committed.
+fixtures/
+results.json
+SCORING.md
