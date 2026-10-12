@@ -246,6 +246,63 @@ function gather(text, pos) {
   return b.toString('latin1');
 }
 
+/**
+ * Homoglyph fold (#112 critic B): Cyrillic/Greek letters that render like Latin ones ("ѕend", "trаnsfer")
+ * are mapped to ASCII, but ONLY inside a word that also contains an ASCII letter (mixed script), so
+ * genuine Cyrillic/Greek prose is left alone. NFKC first (fullwidth, ligatures, compatibility forms), then
+ * \p{Cf} format chars (zero-width, soft hyphen, bidi) are removed (issue #126 #3).
+ * ASCII-only input is returned unchanged (one charCode scan). Linear; output length = NFKC length.
+ */
+const CONFUSABLE = new Map(Object.entries({
+  а: 'a', в: 'b', е: 'e', о: 'o', р: 'p', с: 'c', у: 'y', х: 'x', і: 'i', ј: 'j', ѕ: 's', ԁ: 'd', һ: 'h', ӏ: 'l', ԛ: 'q', ԝ: 'w',
+  А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', Ѕ: 'S', І: 'I', Ј: 'J', У: 'Y',
+  α: 'a', ο: 'o', ν: 'v', ρ: 'p', ι: 'i', κ: 'k', υ: 'u',
+  Α: 'A', Β: 'B', Ε: 'E', Ζ: 'Z', Η: 'H', Ι: 'I', Κ: 'K', Μ: 'M', Ν: 'N', Ο: 'O', Ρ: 'P', Τ: 'T', Χ: 'X', Υ: 'Y',
+}).map(([k, v]) => [k.charCodeAt(0), v.charCodeAt(0)]));
+const CF_RE = /\p{Cf}/gu;
+const isAsciiLetter = (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+const isGreekCyrillic = (c) => c >= 0x0370 && c <= 0x052f;
+export function foldConfusables(text) {
+  if (typeof text !== 'string') return text;
+  let i = 0;
+  const n0 = text.length;
+  while (i < n0 && text.charCodeAt(i) < 128) i++;
+  if (i === n0) return text;
+  // NFKC, then drop format chars (\p{Cf}: ZWSP/ZWJ/ZWNJ, soft hyphen, BOM, bidi controls). Linear regex, no backtracking.
+  const t = text.normalize('NFKC').replace(CF_RE, '');
+  const n = t.length;
+  let buf = null; // UTF-16 code units of t, allocated on the first mixed-script word only
+  i = 0;
+  while (i < n) {
+    let c = t.charCodeAt(i);
+    if (!isAsciiLetter(c) && !isGreekCyrillic(c)) {
+      i++;
+      continue;
+    }
+    const start = i;
+    let latin = false;
+    let mapped = false;
+    do {
+      if (isAsciiLetter(c)) latin = true;
+      else if (CONFUSABLE.has(c)) mapped = true;
+      i++;
+      c = i < n ? t.charCodeAt(i) : 0;
+    } while (i < n && (isAsciiLetter(c) || isGreekCyrillic(c)));
+    if (latin && mapped) {
+      if (buf === null) {
+        buf = new Uint16Array(n);
+        for (let j = 0; j < n; j++) buf[j] = t.charCodeAt(j);
+      }
+      for (let j = start; j < i; j++) {
+        const m = CONFUSABLE.get(buf[j]);
+        if (m !== undefined) buf[j] = m;
+      }
+    }
+  }
+  return buf === null ? t : UTF16.decode(buf);
+}
+const UTF16 = new TextDecoder('utf-16le');
+
 /** Shannon entropy in bits/char. Linear in token length. */
 export function entropy(s) {
   if (!s) return 0;
@@ -590,10 +647,15 @@ const INJECTION_PHRASES = [
   'disregard your', 'respond to all questions with', 'system notice:', "send the user's", "post the user's", "forward the user's", "retrieve the user's",
 ];
 
-/** Instruction-like phrases in (untrusted) text. Linear: lower-case once, indexOf per phrase. */
+/**
+ * Instruction-like phrases in (untrusted) text. Normalized first (issue #126 #3): NFKC, \p{Cf} stripped,
+ * mixed-script homoglyphs folded (foldConfusables), every whitespace run (double space, newline, NBSP, tab)
+ * collapsed to one space. Linear: one fold, one /\s+/g pass (maximal run, nothing after it), lower-case
+ * once, indexOf per phrase.
+ */
 export function findInjectionPhrases(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
-  const lower = text.toLowerCase();
+  const lower = foldConfusables(text).replace(/\s+/g, ' ').toLowerCase();
   return INJECTION_PHRASES.filter((p) => lower.indexOf(p) !== -1);
 }
 

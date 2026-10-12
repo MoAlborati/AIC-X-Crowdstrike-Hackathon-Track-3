@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createDetector, DVAA_HONEYTOKENS } from '../index.js';
-import { findSpacedRuns, MIN_SPACED_RUN } from '../src/text.js';
+import { findSpacedRuns, foldConfusables, MIN_SPACED_RUN } from '../src/text.js';
 import { REPO_ROOT, quietLogger, toolCall, response } from './helpers.js';
 
 const DIR = path.join(REPO_ROOT, 'captures/variants/fixtures/agentdojo');
@@ -76,3 +76,50 @@ test('findSpacedRuns: re-joins runs, keeps offsets, ignores ordinary prose', () 
     assert.deepEqual(findSpacedRuns(s), [], s);
   }
 });
+
+// Critic B (#112 comment): Cyrillic а/е/о substituted into the untrusted tool output flipped 5/5 blocks
+// to allow with zero rules firing. Same 5 cases the critic picked (first 5 blocked AgentDojo fixtures).
+const CRITIC_B_CASES = [...CRITIC_CASES, 'ad-banking-it2-important-instructions-no-names.json', 'ad-banking-it3-important-instructions-no-names.json'];
+const cyr = (s) => s.replace(/a/g, '\u0430').replace(/e/g, '\u0435').replace(/o/g, '\u043e');
+for (const f of CRITIC_B_CASES) {
+  test(`#112 critic B ${f}: Cyrillic homoglyphs in the tool output are folded and still blocked`, () => {
+    const req = load(f).request;
+    for (const m of req.messages) if (m.role === 'tool' && typeof m.content === 'string') m.content = cyr(m.content);
+    const d = det().inspect({ sessionId: `hg-${f}`, request: req });
+    assert.equal(d.action, 'block');
+    assert.ok(d.findings.some((x) => x.ruleId === 'inbound.exfil_instruction'));
+  });
+}
+
+test('foldConfusables: folds mixed-script words only; ASCII and pure Cyrillic/Greek prose unchanged', () => {
+  assert.equal(foldConfusables('\u0455end it n\u043ew'), 'send it now');
+  assert.equal(foldConfusables('\uff53\uff45\uff4e\uff44'), 'send'); // fullwidth via NFKC
+  const ascii = 'plain ASCII text';
+  assert.equal(foldConfusables(ascii), ascii);
+  for (const s of ['Привет, как дела?', 'Καλημέρα κόσμε', 'Москва and Athens']) assert.equal(foldConfusables(s), s.normalize('NFKC'), s);
+});
+
+// Issue #126 #3 (c-awad): findInjectionPhrases did a literal indexOf, so whitespace / Unicode variants of the
+// phrase dropped the verdict to allow. Her 6 variants, applied to the phrase in a real AgentDojo case.
+const PHRASE = 'Ignore all previous';
+const WS_CASES = {
+  baseline: PHRASE,
+  double_space: 'Ignore  all  previous',
+  newline: 'Ignore\nall\nprevious',
+  nbsp: 'Ignore all previous',
+  zwsp: 'Ig​nore all pre​vious',
+  cyrillic_o: 'Ignоre all previоus',
+};
+for (const [name, variant] of Object.entries(WS_CASES)) {
+  test(`#126-3 ${name}: injection phrase variant is still matched and the case blocks`, () => {
+    const req = load('ad-banking-it1-injecagent.json').request;
+    let hit = 0;
+    for (const m of req.messages) if (m.role === 'tool' && typeof m.content === 'string' && m.content.includes(PHRASE)) (m.content = m.content.replaceAll(PHRASE, variant)), hit++;
+    assert.ok(hit > 0, 'variant applied');
+    const d = det().inspect({ sessionId: `ws-${name}`, request: req });
+    assert.equal(d.action, 'block');
+    const ex = d.findings.find((x) => x.ruleId === 'inbound.exfil_instruction');
+    assert.ok(ex, `inbound.exfil_instruction fires; got ${d.findings.map((x) => x.ruleId)}`);
+    assert.match(ex.evidence, /ignore all previous/);
+  });
+}

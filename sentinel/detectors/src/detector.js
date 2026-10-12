@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns,
+  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, foldConfusables,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -211,8 +211,9 @@ export function createDetector(opts = {}) {
     // Pass 1: injection markers per text. A principal turn carrying injection phrases is SUSPECT: it cannot
     // widen the mandate (ambiguity -> narrower), so destinations named only there stay unconfirmed.
     const inboundTexts = [
-      ...untrusted.map((u) => ({ label: u.label, text: u.text, toolCallId: u.toolCallId, principal: false })),
-      ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: p.text, principal: true, ref: p })),
+      // Homoglyph fold (#112): mixed-script words are folded to ASCII before every request-side scan.
+      ...untrusted.map((u) => ({ label: u.label, text: foldConfusables(u.text), toolCallId: u.toolCallId, principal: false })),
+      ...principal.map((p) => ({ label: `${p.role} turn #${p.i}`, text: foldConfusables(p.text), principal: true, ref: p })),
     ];
     for (const u of inboundTexts) {
       u.phrases = findInjectionPhrases(u.text);
