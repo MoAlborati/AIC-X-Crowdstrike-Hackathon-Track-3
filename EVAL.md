@@ -75,6 +75,23 @@ which is the setting for judging the final build.
 
 `scripts/eval.sh down` stops the fleet. Don't run it on a shared machine while others are using `dvaa-t1`.
 
+## SOC handoff
+
+SentinelProxy's alerts go to Track 1's SOC Brief, which turns them into a plain-English analyst brief. It runs offline, with no LLM key and no network.
+
+```bash
+scripts/soc-handoff.sh            # prints the brief and writes .eval/soc-handoff/brief.md
+node --test scripts/test/soc-handoff.test.mjs
+```
+
+- **Inputs** are committed stage captures, converted by the real T10 pipeline:
+  - the proxy-blocked T3 alert: `captures/contrast/runs/proxy-block.t4-alerts.json`
+  - four egress-deny alerts: `sentinel/egress/evidence-block.jsonl`
+  - the highest-severity post-execution (report-only) alert: `captures/contrast/runs/proxy-observe.proxy.jsonl`
+- **Output** gives, for each alert: the verdict, priority, what happened, the SentinelProxy stage, the recommended action, and the MITRE ATLAS/ATT&CK and OWASP LLM/Agentic tags. The expected overall verdict is `ESCALATE · P1` across 6 alerts.
+- **Safety:** placeholder sidecars are refused. If the rendered brief contains any known honeytoken value, the script exits 3 and writes nothing. Canaries appear by id only.
+- **Known SOC Brief limit:** it uses one wording for every SentinelProxy alert ("the proxy stopped the send"). For the report-only alert, the brief adds a handoff note saying the data should be treated as already sent.
+
 ## Troubleshooting
 
 | Symptom | Fix |
