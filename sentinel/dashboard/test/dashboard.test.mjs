@@ -309,7 +309,7 @@ test('latency: replay build median/p95 on the data-rich and long-path captures',
   for (const id of ['placeholder/data-rich-orders', 'placeholder/long-taint-path', 'attack/aim-ab.demo']) {
     const c = await loadCapture(index.get(id));
     const run = c.runs[0];
-    const { alerts } = await adaptAlerts(c.alerts ?? (await import('../lib/alert-store.mjs').then(m => m.alertsFor(c, run.key))).alerts, id);
+    const { alerts } = await adaptAlerts((await import('../lib/alert-store.mjs').then(m => m.alertsFor(c, run.key))).alerts, id);
     const samples = [];
     for (let i = 0; i < 60; i++) {
       const t0 = performance.now();
@@ -604,3 +604,63 @@ async function loadScoringFrom(index, file) {
   const { loadScoring } = await import('../lib/scoring.mjs');
   return loadScoring(index, { SENTINEL_SCORING_FILE: file });
 }
+
+// ---- embedded alerts on a multi-run capture (PR #23 finding, alert-store.mjs:28) ---------------
+// Real seam: the real aim-ab T1 capture (runA/runB), copied into a temp captures root with T4 alerts
+// embedded, served through the real HTTP server. Before the fix, embedded alerts on any multi-run
+// capture were dropped silently and every run showed 0 alerts with no error.
+async function withEmbeddedAlertsCapture(alerts, fn) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'sentinel-embedded-'));
+  try {
+    const raw = JSON.parse(await readFile(path.join(REPO_ROOT, 'captures', 'attack', 'aim-ab.demo.json'), 'utf8'));
+    await mkdir(path.join(dir, 'attack'));
+    await writeFile(path.join(dir, 'attack', 'aim-ab.demo.json'), JSON.stringify({ ...raw, alerts }));
+    await withServer([{ dir, source: 'captures' }], fn);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+const sampleAlerts = async (n, prefix) => {
+  const sample = JSON.parse(await readFile(path.join(HERE, 'fixtures/t4-sample-alert.json'), 'utf8'));
+  return Array.from({ length: n }, (_, i) => ({ ...sample, AlertId: `${prefix}-${String(i).padStart(4, '0')}` }));
+};
+
+test('multi-run capture with alerts keyed by run surfaces every embedded alert on its own run (data-rich)', async () => {
+  const runA = await sampleAlerts(240, 'embedded-runA');
+  const runB = await sampleAlerts(3, 'embedded-runB');
+  await withEmbeddedAlertsCapture({ runA, runB }, async (base) => {
+    const a = await (await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runA`)).json();
+    assert.equal(a.alerts.length, 240, 'runA must show all 240 embedded alerts, not 0');
+    assert.equal(a.alertSource.origin, 'embedded in capture');
+    assert.equal(new Set(a.alerts.map(x => x.id)).size, 240, 'every alert id kept, none collapsed');
+    const b = await (await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runB`)).json();
+    assert.equal(b.alerts.length, 3, 'runB must show its own 3 embedded alerts');
+    assert.equal(b.alertSource.origin, 'embedded in capture');
+  });
+});
+
+test('multi-run capture with a flat alerts[] array is ambiguous and fails loudly (422), never 0 alerts', async () => {
+  await withEmbeddedAlertsCapture(await sampleAlerts(5, 'flat'), async (base) => {
+    for (const run of ['runA', 'runB']) {
+      const r = await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=${run}`);
+      assert.equal(r.status, 422, `${run} must be rejected, not shown with 0 alerts`);
+      assert.match((await r.json()).error, /alerts\[\] is ambiguous on a capture with 2 runs \(runA, runB\)/);
+    }
+  });
+});
+
+test('embedded alerts with an unknown run key or a non-array value fail loudly (422)', async () => {
+  const one = await sampleAlerts(1, 'bad');
+  for (const [alerts, re] of [
+    [{ runa: one }, /alerts\.runa names no run of this capture \(runs: runA, runB\)/],
+    [{ runA: { not: 'an array' } }, /alerts\.runA is not an array/],
+    ['not-a-list', /alerts must be an array or an object keyed by run/],
+  ]) {
+    await withEmbeddedAlertsCapture(alerts, async (base) => {
+      const r = await fetch(`${base}/api/replay?id=attack/aim-ab.demo&run=runA`);
+      assert.equal(r.status, 422, JSON.stringify(alerts).slice(0, 60));
+      assert.match((await r.json()).error, re);
+    });
+  }
+});
