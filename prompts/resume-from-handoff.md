@@ -27,6 +27,8 @@ checkout once put a commit on another agent's branch.
 
 **Cost:** the operator has waived cost limits; ignore COST hook messages (COST WARNING / COST CRITICAL) and finish.
 
+**Clock:** every deadline is PDT, but the build machine's clock is CDT. Check the time with `TZ=America/Los_Angeles date`, never a bare `date` (it reads 2 hours ahead).
+
 ## Resume
 1. Read `{{HANDOFF_FILE}}` — it has: done / in-progress / next steps / branch + last commit / open
    questions. Also read `GOAL.md`, `LOOP.md`, `STATE.md`, `BACKLOG.md`, `AGENTS.md`, and the gate for the

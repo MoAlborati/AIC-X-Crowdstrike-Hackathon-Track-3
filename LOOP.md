@@ -3,6 +3,11 @@
 How we execute GOAL.md autonomously through agents, shipping PRs you review/respond to.
 Follows the team's convergence process (see `gates/` — encodes the team's data-scale reliability rules: bounded/fail-loud, data-rich testing, delete-the-fix proof).
 
+**Cold start or post-compaction:** read [`RESUME.md`](RESUME.md) first. Child-agent roles and their dispatch
+templates: [`prompts/archetypes/README.md`](prompts/archetypes/README.md). The orchestrator's time-triggered queue:
+[`planning/PROACTIVE.md`](planning/PROACTIVE.md). **Clock:** deadlines are PDT and the machine clock is CDT, so use
+`TZ=America/Los_Angeles date`.
+
 ## Roles
 - **Operator (you, humans):** review PRs, approve/merge, answer blockers in STATE.md. Final authority.
 - **Orchestrator (lead Claude session):** owns the loop. Picks tickets, dispatches agents, opens PRs,
@@ -51,7 +56,7 @@ loop, and the orchestrator **answers chat before other work**, with `chat-urgent
 §Endgame policies.
 
 ## Remote & branching
-- Remote: `origin` = https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon (we have WRITE).
+- Remote: `origin` = https://github.com/shrutidoshi94/AIC-X-Crowdstrike-Hackathon-Track-3 (renamed; the old URL redirects; we have WRITE).
 - Base branch: `main`. One branch per ticket: `tN-short-slug` (e.g. `t3-detector-core`).
 - One PR per ticket. PR title: `[T3] Detector core: honeytoken + taint + egress`. Small, reviewable.
 
@@ -76,12 +81,15 @@ loop, and the orchestrator **answers chat before other work**, with `chat-urgent
 
 ## Endgame policies (operator, 2026-10-12 11:58 PDT)
 Operator's direction: "limit scope, our goal is to win the hackathon". These override any earlier rule in this file that conflicts with them.
-- **Deadline: 16:00 PDT.** Schedule:
-  - now–13:30: land T3 at its minimum scope, plus #14 (T2), T10, and fixes
-  - 13:30–14:30: integration, delivery gate (**≥5 clean replays**), real metrics
-  - **14:30: FEATURE FREEZE.** After this, only fixes to the demo path, with no new features
-  - 14:30–15:30: rehearsal. **The fallback video is recorded last**
-  - 15:30–16:00: buffer
+- **Deadline: submit by 16:00 PDT; present at 18:00 PDT.** Schedule (updated ~13:00 PDT, #39):
+  - now–15:00: drain the serial merge queues and land the remaining fixes
+  - **15:00: final rescore** (RESULTS.md); pitch framing is decided from it (#38)
+  - **15:15: CODE FREEZE** (moved from 14:30). After this, only fixes to the demo path, with no new features
+  - 15:15–15:45: delivery gate (**≥5 clean replays**) on `main` AND on the presenter's Mac (Catherine, #51);
+    tag `v1.0-submission` at 15:45
+  - **by 15:55: submit**
+  - 16:00–18:00: slides and rehearsal
+  - **18:00: present** (Catherine, over screen share)
 - **Merge authority:** a reviewer or merge-steward agent may merge a PR once (a) its reviewer verdict is
   **APPROVE** and (b) its **tests are green**. A NEEDS_WORK PR is never merged. Humans can review at any time. Docs-only PRs may be merged by
   their author after a conflict check.

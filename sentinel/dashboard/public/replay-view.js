@@ -29,6 +29,16 @@ export function viewAt(replay, step) {
 export function trustAt(replay, revealedAlerts, atEnd) {
   if (revealedAlerts.length) {
     const max = revealedAlerts.reduce((m, a) => Math.max(m, a.severity ?? 0), 0);
+    // Every revealed attempt was actually prevented (pre-forward / egress deny): the agent was protected,
+    // so the gauge must not read "compromised" (mock judge #2).
+    if (revealedAlerts.every(a => a.prevented === true)) {
+      return { value: 100, source: 'detector', protected: true, note: `protected: ${revealedAlerts.length === 1 ? 'the attempt was' : `all ${revealedAlerts.length} attempts were`} blocked before the agent (max severity ${max})` };
+    }
+    // The run's own guard stopped it (DVAA AIM denial / proxy refusal recorded) and nothing left the box.
+    const o = replay.run?.outcome;
+    if (o?.blocked === true && o?.exfilExecuted !== true && !(replay.capture?.canaryHits?.length && o?.exfilExecuted)) {
+      return { value: 100, source: 'outcome', protected: true, note: `protected: ${o.denialReason ?? 'the action was denied'}; detector max severity ${max}` };
+    }
     return { value: Math.max(0, 100 - max), source: 'detector', note: `100 − max alert severity (${max})` };
   }
   const aim = replay.groundTruth?.aim?.trustScore ?? replay.run?.outcome?.trustScore ?? null;
@@ -40,7 +50,7 @@ export function trustAt(replay, revealedAlerts, atEnd) {
 /** Pair a vulnerable run with its protected (AIM) twin from the run list, if the capture has both. */
 export function twinPair(runs) {
   const vuln = runs.find(r => r.role === 'vulnerable');
-  const prot = runs.find(r => r.role === 'protected');
+  const prot = runs.find(r => r.role === 'protected') ?? runs.find(r => r.role === 'observed');
   return vuln && prot ? { vuln, prot } : null;
 }
 

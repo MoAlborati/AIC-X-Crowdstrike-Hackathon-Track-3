@@ -29,7 +29,7 @@
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { promisify } from 'node:util';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { isUtf8 } from 'node:buffer';
 import { JsonlCaptureSink } from './capture-sink.mjs';
 import { substringInspector, flagSubstringId } from './inspectors.mjs';
@@ -117,10 +117,35 @@ function stripHopByHop(headers) {
   return out;
 }
 
-/** Encode a body for the capture log: full content, utf8 when valid, else base64. */
+/** sha256 hex of the exact wire bytes. */
+export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+/**
+ * Encode a body for the capture log: full content, utf8 when valid, else base64. `bytes` + `sha256`
+ * describe the exact wire bytes, so a consumer can verify byte-for-byte fidelity (decodeBody()).
+ */
 export function encodeBody(buf) {
-  if (isUtf8(buf)) return { encoding: 'utf8', bytes: buf.length, data: buf.toString('utf8') };
-  return { encoding: 'base64', bytes: buf.length, data: buf.toString('base64') };
+  if (isUtf8(buf)) return { encoding: 'utf8', bytes: buf.length, sha256: sha256(buf), data: buf.toString('utf8') };
+  return { encoding: 'base64', bytes: buf.length, sha256: sha256(buf), data: buf.toString('base64') };
+}
+
+/** Inverse of encodeBody(): the exact bytes that crossed the wire. */
+export function decodeBody(body) {
+  if (body == null || body.data === undefined) return null;
+  return Buffer.from(body.data, body.encoding === 'base64' ? 'base64' : 'utf8');
+}
+
+/**
+ * Did DVAA already run tools for this reply? DVAA executes tool calls inside the agent before it
+ * answers, so a response-phase block contains the output but cannot undo the side effect. The
+ * refusal says so (boolean only, never the tool data).
+ */
+export function upstreamToolCallsExecuted(decodedResponse) {
+  let j;
+  try { j = JSON.parse(decodedResponse.toString('utf8')); } catch { return false; }
+  if (j === null || typeof j !== 'object') return false;
+  const calls = j.choices?.[0]?.message?.tool_calls;
+  return (Array.isArray(calls) && calls.length > 0) || (j.dvaa !== undefined && j.dvaa !== null);
 }
 
 const gunzip = promisify(zlib.gunzip);
@@ -434,15 +459,24 @@ export function createProxy(config, deps = {}) {
   // deps.scrub: the CLI builds one scrubber over T3's honeytokens + flagSubstrings and shares it with T3's logger.
   const scrub = deps.scrub ?? makeLogScrubber(flagSubstringCanaries(config.inspect.flagSubstrings));
   const block = mode === 'block';
+  // deps.newRequestId: test seam only (pins a UUID the scrubber would mangle); production uses randomUUID.
+  const newRequestId = deps.newRequestId ?? randomUUID;
   let inFlight = 0;
 
+  // request_id is the proxy's own randomUUID(), never client data, and it is the ONLY key that joins an alert
+  // record to its exchange record (which is not scrubbed). The scrubber's payment-card / digit-run patterns
+  // match ~1 in 8,000 UUIDs (e.g. 41812006-4939-4383-…: a Luhn-valid run across the hyphens). A redacted
+  // id orphaned that alert from its exchange (pipeline flake: extra `proxy-unattributed` capture, ~2.5% of
+  // 210-request runs). So the id is re-pinned after scrubbing; every other field stays redacted.
+  const scrubAlert = (requestId, fields) => ({ ...scrub(fields), request_id: requestId });
+
   async function emitAlert(requestId, alert) {
-    const record = scrub({ type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
+    const record = scrubAlert(requestId, { type: 'alert', ts: new Date().toISOString(), request_id: requestId, mode, ...alert });
     logAlert(record);
     try {
       await sink.write(record);
     } catch (err) {
-      logAlert(scrub({ type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
+      logAlert(scrubAlert(requestId, { type: 'alert', request_id: requestId, reason: 'capture_write_failed', error: err.message }));
     }
     return record;
   }
@@ -450,6 +484,7 @@ export function createProxy(config, deps = {}) {
   async function handle(req, res, requestId, { expectContinue = false } = {}) {
     const started = process.hrtime.bigint();
     const path = req.url ?? '/';
+    let upstreamMs = null;
     const record = {
       type: 'exchange',
       ts: new Date().toISOString(),
@@ -467,6 +502,8 @@ export function createProxy(config, deps = {}) {
       record.action = action;
       record.response = { status, headers, body: encodeBody(body), ...(decodedBody ? { decoded_body: decodedBody } : {}) };
       record.latency_ms = Number(process.hrtime.bigint() - started) / 1e6;
+      // proxy_overhead_ms = total - upstream: the proxy's own share of the latency budget.
+      record.timings = { total_ms: record.latency_ms, upstream_ms: upstreamMs, proxy_overhead_ms: record.latency_ms - (upstreamMs ?? 0) };
       try {
         await sink.write(record);
       } catch (err) {
@@ -515,9 +552,13 @@ export function createProxy(config, deps = {}) {
       }
       let verdicts;
       let alertOnly = [];
+      // Inspectors get COPIES: nothing an inspector does to ctx.body / rawBody / headers can change the
+      // bytes or headers that are forwarded, returned or captured (ported from the PR #21 proxy).
+      const bodyCopy = Buffer.from(decoded);
+      const rawCopy = decoded === raw ? bodyCopy : Buffer.from(raw);
       try {
         ({ verdicts, alertOnly } = await runInspectorsWithDeadline(inspectors, {
-          phase, method: req.method, path, headers, body: decoded, rawBody: raw,
+          phase, method: req.method, path, headers: structuredClone(headers), body: bodyCopy, rawBody: rawCopy,
           contentEncoding: encodings, requestId, ...extraCtx,
         }, limits.inspectorTimeoutMs));
       } catch (err) {
@@ -590,17 +631,21 @@ export function createProxy(config, deps = {}) {
 
     // 5. forward with bounded response read
     let upstream;
+    const upstreamStarted = process.hrtime.bigint();
     try {
       upstream = await forward({
         target, method: req.method, path, headers: req.headers, body: reqBody,
         cap: limits.maxResponseBytes, timeoutMs: limits.upstreamTimeoutMs,
       });
     } catch (err) {
+      upstreamMs = Number(process.hrtime.bigint() - upstreamStarted) / 1e6;
       if (err instanceof PayloadTooLargeError) return tooLarge(err, 'response');
       const timeout = err.code === 'UPSTREAM_TIMEOUT';
       await emitAlert(requestId, { reason: timeout ? 'upstream_timeout' : 'upstream_error', phase: 'forward', error: err.message, action: 'refused' });
       return refuse(timeout ? 504 : 502, 'forward', timeout ? 'upstream_timeout' : 'upstream_unreachable');
     }
+
+    upstreamMs = Number(process.hrtime.bigint() - upstreamStarted) / 1e6;
 
     // 6. decode + response-phase inspection over the FULL body and headers
     let decodedBody;
@@ -611,7 +656,11 @@ export function createProxy(config, deps = {}) {
       if (r.verdicts?.length > 0) {
         record.upstream_response = { status: upstream.status, headers: upstream.headers, body: encodeBody(upstream.body), ...(decodedBody ? { decoded_body: decodedBody } : {}) };
         await emitAlert(requestId, { reason: 'flagged', phase: 'response', verdicts: r.verdicts, action: block ? 'blocked' : 'would_block_observe_only' });
-        if (block) return refuse(403, 'response', 'flagged_response', r.verdicts);
+        if (block) {
+          return refuse(403, 'response', 'flagged_response', r.verdicts, {
+            upstream_tool_calls_already_executed: upstreamToolCallsExecuted(r.decoded),
+          });
+        }
       }
     }
 
@@ -630,7 +679,7 @@ export function createProxy(config, deps = {}) {
   };
 
   function dispatch(req, res, opts) {
-    const requestId = randomUUID();
+    const requestId = newRequestId();
     if (inFlight >= limits.maxInFlight) {
       // Admission control: refuse before reading/buffering anything. The unread body is discarded
       // (no memory held); the connection closes after the reply.

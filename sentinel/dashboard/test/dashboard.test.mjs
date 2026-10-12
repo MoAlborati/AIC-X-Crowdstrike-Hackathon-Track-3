@@ -304,7 +304,10 @@ test('static UI is served with a CSP and the UI never assigns innerHTML (capture
 });
 
 // ---- latency ----------------------------------------------------------------------------------
-test('latency: replay build median/p95 on the data-rich and long-path captures', async (t) => {
+// CPU time of this thread, not wall clock (flake fix): under merge-gate load wall clock measures the scheduler.
+const cpuUsage = typeof process.threadCpuUsage === 'function' ? (prev) => process.threadCpuUsage(prev) : (prev) => process.cpuUsage(prev);
+const cpuMs = (c) => (c.user + c.system) / 1000;
+test('latency: replay build median/p95 (CPU ms) on the data-rich and long-path captures', async (t) => {
   const index = await indexCaptures();
   for (const id of ['placeholder/data-rich-orders', 'placeholder/long-taint-path', 'attack/aim-ab.demo']) {
     const c = await loadCapture(index.get(id));
@@ -312,16 +315,16 @@ test('latency: replay build median/p95 on the data-rich and long-path captures',
     const { alerts } = await adaptAlerts((await import('../lib/alert-store.mjs').then(m => m.alertsFor(c, run.key))).alerts, id);
     const samples = [];
     for (let i = 0; i < 60; i++) {
-      const t0 = performance.now();
+      const c0 = cpuUsage();
       const rp = buildReplay({ id, agent: run.agent, exchanges: run.exchanges, toolResults: run.toolResults }, alerts, { canaryHits: c.canaryHits });
       layoutGraph(rp.graph);
-      samples.push(performance.now() - t0);
+      samples.push(cpuMs(cpuUsage(c0)));
     }
     samples.sort((a, b) => a - b);
     const med = percentile(samples, 50);
     const p95 = percentile(samples, 95);
-    t.diagnostic(`${id}: build+layout median ${med.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms (n=60)`);
-    assert.ok(p95 < 100, `${id} p95 ${p95.toFixed(1)} ms exceeds 100 ms`);
+    t.diagnostic(`${id}: build+layout median ${med.toFixed(2)} ms CPU, p95 ${p95.toFixed(2)} ms CPU (n=60)`);
+    assert.ok(p95 < 100, `${id} p95 ${p95.toFixed(1)} ms CPU exceeds 100 ms`);
   }
 });
 
@@ -350,6 +353,7 @@ test('T6 corpus is indexed through its manifest: every listed case replays, labe
     assert.equal(r.body.capture.expectedLabel, entry.expected);
   }
   assert.ok(![...index.keys()].some(k => /^variants\/(corpus|tools|tests)\/|manifest/.test(k)), 'generator inputs are not listed as captures');
+  assert.ok(![...index.keys()].some(k => k.startsWith('holdout-hf/')), 'T6c held-out set (separateSet) is not indexed as captures');
   const { loadScoring } = await import('../lib/scoring.mjs');
   const s = await loadScoring(index, { SENTINEL_SCORING_FILE: path.join(os.tmpdir(), 'no-such-results.json') });
   assert.equal(s.corpus.benign, 6 + manifest.cases.filter(c => c.groundTruth === 'negative').length);
@@ -562,7 +566,7 @@ test('rapid capture switching: a stale replay response cannot overwrite a newer 
   await Promise.all([load('slow-old', 40), load('fast-new', 5)]);
   assert.deepEqual(rendered, ['fast-new']);
   const src = await readFile(path.join(DASH, 'public', 'app.js'), 'utf8');
-  assert.match(src, /replayGate\.begin\(\)[\s\S]*await getJson\(`\/api\/replay[\s\S]*if \(!replayGate\.isCurrent\(token\)\) return;/, 'loadReplay checks the gate after its fetch');
+  assert.match(src, /replayGate\.begin\(\)[\s\S]*await getJson\(api\(`\/api\/replay[\s\S]*if \(!replayGate\.isCurrent\(token\)\) return;/, 'loadReplay checks the gate after its fetch');
 });
 
 test('headline shows T7 headline.status ("awaiting t3", "error: …") instead of a bare "—", and never a rate beside a non-ok status', async () => {
@@ -579,7 +583,7 @@ test('headline shows T7 headline.status ("awaiting t3", "error: …") instead of
     assert.equal(s.status, t7({}).headline.status);
     let v = headlineView(s);
     assert.equal(v.det, 'awaiting t3');
-    assert.equal(v.fp, 'awaiting t3');
+    assert.equal(v.prev, 'awaiting t3');
     assert.ok(v.pending);
     assert.match(v.note, /T3 detector not present/);
 
@@ -587,12 +591,14 @@ test('headline shows T7 headline.status ("awaiting t3", "error: …") instead of
     await writeFile(file, JSON.stringify(t7({ headline: { status: 'error: 15 cases errored' }, recall: 1, falsePositiveRate: 1, counts: { attack: 2, benign: 12, fp: 12, fn: 0 } })));
     v = headlineView(await loadScoringFrom(index, file));
     assert.equal(v.det, 'error');
-    assert.doesNotMatch(`${v.det} ${v.fp}`, /%/);
+    assert.doesNotMatch(`${v.det} ${v.prev}`, /%/);
     assert.match(v.note, /15 cases errored/);
 
     await writeFile(file, JSON.stringify(t7({ headline: { status: 'ok' }, recall: 0.825, falsePositiveRate: 0 })));
     v = headlineView(await loadScoringFrom(index, file));
-    assert.deepEqual([v.det, v.fp, v.pending], ['82.5%', '0.0%', false]);
+    // Legacy shape (no lens fields): the legacy block recall is never shown as "Detected".
+    assert.deepEqual([v.det, v.prev, v.legacy], ['n/a', 'n/a', true]);
+    assert.doesNotMatch(JSON.stringify(v.tiles), /82\.5/);
 
     assert.equal(headlineView({ available: false, corpus: { attack: 3, benign: 9 } }).det, 'awaiting T7');
   } finally {

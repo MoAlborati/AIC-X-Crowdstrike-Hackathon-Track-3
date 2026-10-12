@@ -34,6 +34,15 @@ function sinkDestinations(toolCall) {
   return [...out];
 }
 
+/** Host of a URL or bare host[:port] string; '' when there is none. */
+export function hostOf(u) {
+  const s = String(u ?? '');
+  try {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return new URL(s).hostname;
+  } catch { /* not a URL */ }
+  return s.split(/[/:?#\s]/)[0];
+}
+
 function stripQuery(u) {
   // Keep the node label readable. The full argument text stays on the tool-call node.
   const i = u.indexOf('?');
@@ -55,6 +64,18 @@ export function buildReplay(capture, alerts, extra = {}) {
   const toolCallExchange = new Map(); // toolCallId -> exchange index
   const toolResultNode = new Map(); // toolCallId -> node id
   const sinkNode = new Map(); // destination -> node id
+  const sinkByHost = new Map(); // host -> first sink node id with that host (alerts often name only the host)
+  const exchangeByRequest = new Map(); // proxy request id -> exchange index (pipeline captures)
+  const turnWindows = []; // recorded agent-turn windows (egress stage capture): {t0, t1, index}
+  const userMsgOfExchange = new Map(); // exchange index -> last user message node id
+  const addSinkNode = (dest, extra = {}) => {
+    const sid = `sink:${dest}`;
+    addNode({ id: sid, lane: 'sink', kind: 'sink', label: dest, destination: dest, ...extra });
+    sinkNode.set(dest, sid);
+    const host = hostOf(dest);
+    if (host && !sinkByHost.has(host)) sinkByHost.set(host, sid);
+    return sid;
+  };
   const warnings = [];
   let order = 0;
 
@@ -82,37 +103,49 @@ export function buildReplay(capture, alerts, extra = {}) {
     for (const m of ex.messages) {
       const id = `msg:${ex.index}:${m.index}`;
       if (m.role === 'tool') {
+        const rebuilt = m.recorded === 'reconstructed';
         const n = addNode({
           id, lane: 'untrusted', kind: 'tool_result',
-          label: m.recorded === false ? 'untrusted input (body not recorded)' : `tool result${m.name ? ` · ${m.name}` : ''}`,
+          label: m.recorded === false ? 'untrusted input (body not recorded)'
+            : rebuilt ? `poisoned document${m.payload ? ` · ${m.payload}` : ''}` : `tool result${m.name ? ` · ${m.name}` : ''}`,
           trust: 'untrusted', bytes: m.recorded === false ? null : byteLen(m.content), text: m.content,
-          toolCallId: m.toolCallId ?? null, recorded: m.recorded !== false,
-          flags: m.recorded === false ? ['not_recorded'] : [],
+          toolCallId: m.toolCallId ?? null, recorded: m.recorded === false ? false : rebuilt ? 'reconstructed' : true,
+          provenance: m.provenance ?? null,
+          flags: m.recorded === false ? ['not_recorded'] : rebuilt ? ['reconstructed'] : [],
         });
         prevInput = n.id;
         if (m.toolCallId) {
           toolResultNode.set(m.toolCallId, n.id);
           if (toolCallNode.has(m.toolCallId)) addEdge(toolCallNode.get(m.toolCallId), n.id);
         }
-        step('tool_result', n.label, [n.id]);
+        step('tool_result', rebuilt ? `${n.label} (${n.bytes.toLocaleString('en-US')} B, rebuilt from DVAA template)` : n.label, [n.id]);
       } else {
+        // A user turn that carries a retrieved document ("BEGIN INDEXED DOCUMENT") is labeled as such and
+        // shows a document excerpt in the graph; it is where request-side taint paths start.
+        const embeddedDoc = m.role === 'user' && /-{3,} ?BEGIN [A-Z ]*DOCUMENT/.test(m.content ?? '');
         const n = addNode({
-          id, lane: 'input', kind: `${m.role}_message`, label: `${m.role} turn`, trust: m.role === 'system' ? 'system' : 'user',
-          bytes: byteLen(m.content), text: m.content,
+          id, lane: 'input', kind: `${m.role}_message`, label: embeddedDoc ? 'user turn · embedded document' : `${m.role} turn`, trust: m.role === 'system' ? 'system' : 'user',
+          bytes: byteLen(m.content), text: m.content, embeddedDoc,
         });
+        if (m.role === 'user') userMsgOfExchange.set(ex.index, n.id);
         const e = prevInput ? [addEdge(prevInput, n.id, 'sequence')] : [];
         prevInput = n.id;
         step('message', `${m.role} message (${n.bytes.toLocaleString('en-US')} B)`, [n.id], e);
       }
     }
 
+    if (ex.requestId) exchangeByRequest.set(ex.requestId, ex.index);
+    if (ex.turnWindow) turnWindows.push({ ...ex.turnWindow, index: ex.index });
     const agentId = `assistant:${ex.index}`;
+    // The proxy refused this request (pipeline capture, finish_reason sentinel_blocked): the agent never
+    // answered, so the node is the proxy's 403 refusal, never an agent reply.
+    const refused = ex.assistant.finishReason === 'sentinel_blocked';
     const agentNode = addNode({
-      id: agentId, lane: 'action', kind: 'agent_turn', label: `${capture.agent.name} reply`,
-      text: ex.assistant.content, bytes: byteLen(ex.assistant.content),
+      id: agentId, lane: 'action', kind: refused ? 'proxy_refusal' : 'agent_turn', label: refused ? 'proxy 403 refusal' : `${capture.agent.name} reply`,
+      text: ex.assistant.content, bytes: byteLen(ex.assistant.content), flags: refused ? ['denied'] : [],
     });
     const agentEdges = prevInput ? [addEdge(prevInput, agentId)] : [];
-    step('agent_turn', `${capture.agent.name} responds`, [agentId], agentEdges);
+    step(refused ? 'proxy_refusal' : 'agent_turn', refused ? `SentinelProxy refused the request (403); ${capture.agent.name} never saw it` : `${capture.agent.name} responds`, [agentId], agentEdges);
 
     for (const tc of ex.assistant.toolCalls) {
       const id = `call:${tc.id}`;
@@ -125,9 +158,7 @@ export function buildReplay(capture, alerts, extra = {}) {
       const e = [addEdge(agentId, id)];
       const sinkIds = [];
       for (const dest of sinkDestinations(tc)) {
-        const sid = `sink:${dest}`;
-        addNode({ id: sid, lane: 'sink', kind: 'sink', label: dest, destination: dest });
-        sinkNode.set(dest, sid);
+        const sid = addSinkNode(dest);
         sinkIds.push(sid);
         e.push(addEdge(id, sid, 'egress'));
       }
@@ -135,11 +166,7 @@ export function buildReplay(capture, alerts, extra = {}) {
     }
     if (ex.dvaa?.exfilTargetUrl) {
       const dest = stripQuery(ex.dvaa.exfilTargetUrl);
-      if (!sinkNode.has(dest)) {
-        const sid = `sink:${dest}`;
-        addNode({ id: sid, lane: 'sink', kind: 'sink', label: dest, destination: dest });
-        sinkNode.set(dest, sid);
-      }
+      if (!sinkNode.has(dest)) addSinkNode(dest);
     }
   }
 
@@ -203,10 +230,21 @@ export function buildReplay(capture, alerts, extra = {}) {
       // request). Resolve it only when exactly one such node exists. Otherwise leave it unresolved.
       const untrusted = nodes.filter(n => n.lane === 'untrusted' && n.kind === 'tool_result');
       if (untrusted.length === 1) return untrusted[0].id;
+      // Pipeline alert (AlertId "<requestId>:<direction>:<n>"): the user turn of that exact exchange.
+      const exIdx = exchangeByRequest.get(String(alert.id).split(':')[0]);
+      if (exIdx !== undefined && userMsgOfExchange.has(exIdx)) return userMsgOfExchange.get(exIdx);
+      // Unattributed egress alert: the user turn of the ONE recorded agent turn in flight at its timestamp.
+      const at = Date.parse(alert.timestamp ?? '');
+      const inFlight = Number.isFinite(at) ? turnWindows.filter(w => at >= w.t0 && at <= w.t1) : [];
+      if (inFlight.length === 1 && userMsgOfExchange.has(inFlight[0].index)) return userMsgOfExchange.get(inFlight[0].index);
     }
     if (hop.kind === 'sink' && alert.entities.sink?.destination) {
-      const s = sinkNode.get(stripQuery(alert.entities.sink.destination));
+      const dest = stripQuery(alert.entities.sink.destination);
+      const s = sinkNode.get(dest) ?? sinkByHost.get(hostOf(dest));
       if (s) return s;
+      // The alert names the destination but nothing in the capture contacted it (e.g. the proxy refused
+      // the request first): draw it as the destination the instruction named.
+      if (hostOf(dest)) return addSinkNode(dest, { named: true });
     }
     // Unresolved: keep it visible as a node named after the hop label.
     const id = `hop:${alert.id}:${hopIdx}`;
@@ -218,10 +256,20 @@ export function buildReplay(capture, alerts, extra = {}) {
     return id;
   };
 
+  // Two alerts with the same name + disposition get their request (or position) in the label, so the
+  // graph never shows identical-looking detection nodes.
+  const baseLabel = (a) => `${a.detectName} · ${a.shownDisposition ?? a.disposition}`;
+  const labelCount = new Map();
+  for (const a of alerts) labelCount.set(baseLabel(a), (labelCount.get(baseLabel(a)) ?? 0) + 1);
+  const seenLabel = new Map();
   for (const alert of alerts) {
     const alertNodeId = `alert:${alert.id}`;
+    const bl = baseLabel(alert);
+    seenLabel.set(bl, (seenLabel.get(bl) ?? 0) + 1);
+    const exIdx = exchangeByRequest.get(String(alert.id).split(':')[0]);
+    const suffix = labelCount.get(bl) > 1 ? ` · ${exIdx !== undefined ? `request ${exIdx + 1}` : `#${seenLabel.get(bl)}`}` : '';
     addNode({
-      id: alertNodeId, lane: 'detection', kind: 'alert', label: `${alert.detectName} · ${alert.disposition}`,
+      id: alertNodeId, lane: 'detection', kind: 'alert', label: `${bl}${suffix}`, instance: suffix ? suffix.slice(3) : null,
       severity: alert.severity, severityName: alert.severityName, flags: alert.invalid ? ['invalid'] : [],
     });
     const pathNodes = alert.taintPath.map((h, i) => resolveHop(h, alert, i));
@@ -253,7 +301,7 @@ export function buildReplay(capture, alerts, extra = {}) {
       }
       stepEdges.push(addEdge(malicious, alertNodeId, 'verdict'));
     }
-    step('alert', `${alert.severityName} · ${alert.detectName} → ${alert.disposition}`, [...stepNodes], stepEdges, [alert.id], {
+    step('alert', `${alert.severityName} · ${alert.detectName} → ${alert.shownDisposition ?? alert.disposition}`, [...stepNodes], stepEdges, [alert.id], {
       latencyMs: alert.latencyMs, narrative: alert.caseCard.narrative,
     });
   }

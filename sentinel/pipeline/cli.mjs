@@ -7,6 +7,12 @@
 //   node sentinel/pipeline/cli.mjs tail <proxy.jsonl> [--out DIR] [--clean]
 //       Live: follow a capture the stock proxy CLI is writing (`node sentinel/proxy/cli.mjs`).
 //       Only verdicts the proxy recorded are converted (by default the T2 substring inspector).
+//   node sentinel/pipeline/cli.mjs convert|tail [<proxy.jsonl>] --egress <egress.jsonl> [...]
+//       Also convert the T12 tool-boundary egress inspector log (sentinel/egress, LOG=...egress.jsonl).
+//       Each flagged egress record becomes a T4 alert with Direction "egress" (Enforcement "preventive"
+//       when the inspector denied it). It joins the chat session of the agent whose turn was in flight
+//       at that time, or else a standalone `egress-boundary` incident capture. The proxy JSONL is
+//       optional when --egress is given.
 //   node sentinel/pipeline/cli.mjs live [--config sentinel/config/sentinel.config.json] [--out DIR]
 //                                      [--standin [--standin-config FILE]] [--clean]
 //       Demo: start the T2 proxy in-process with the pipeline sink. Verdicts come from the REAL T3
@@ -30,6 +36,7 @@ import { PipelineBoundError, defaultLog } from './bounds.mjs';
 import { loadStandinConfig, standinInspectors, STANDIN_CONFIG_PATH } from './standin.mjs';
 import { PipelineSink } from './sink.mjs';
 import { createT3Source, t3Rehydrator, T3_CANARIES } from './t3.mjs';
+import { loadEgressHoneytokens } from './egress.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -44,7 +51,7 @@ function fail(err) {
 }
 
 function usage(msg) {
-  const err = new Error(`${msg}\nusage: cli.mjs convert|tail <proxy.jsonl> [--out DIR] [--clean] | live [--config FILE] [--out DIR] [--standin [--standin-config FILE]] [--clean]`);
+  const err = new Error(`${msg}\nusage: cli.mjs convert|tail [<proxy.jsonl>] [--egress egress.jsonl] [--out DIR] [--clean] | live [--config FILE] [--out DIR] [--standin [--standin-config FILE]] [--clean]`);
   err.code = 'USAGE';
   return err;
 }
@@ -54,6 +61,8 @@ function canariesFrom(standinConfigPath) {
   // Keyed by id: stand-in and T3 name the same fake value differently, and verdicts look canaries up by id.
   const out = new Map(T3_CANARIES.map((c) => [c.id, { id: c.id, value: c.value }]));
   for (const h of loadStandinConfig(standinConfigPath).honeytokens) if (!out.has(h.id)) out.set(h.id, { id: h.id, value: h.value });
+  // T12 deployment honeytokens: egress alerts name them by id, and egress records are redacted with them.
+  for (const h of loadEgressHoneytokens()) if (!out.has(h.id)) out.set(h.id, h);
   return [...out.values()];
 }
 
@@ -85,6 +94,7 @@ export async function main(argv = process.argv.slice(2)) {
       standin: { type: 'boolean', default: false },
       'standin-config': { type: 'string' },
       'poll-ms': { type: 'string' },
+      egress: { type: 'string' },
     },
   });
   const [cmd, input] = positionals;
@@ -92,29 +102,46 @@ export async function main(argv = process.argv.slice(2)) {
   const standinPath = values['standin-config'] ?? STANDIN_CONFIG_PATH;
 
   if (cmd === 'convert' || cmd === 'tail') {
-    if (!input) throw usage(`${cmd}: missing <proxy.jsonl>`);
-    const jsonl = path.resolve(input);
-    const pipeline = createPipeline({ outDir, canaries: canariesFrom(standinPath), t3: t3Rehydrator(), proxyCapturePath: path.relative(REPO, jsonl) });
+    if (!input && !values.egress) throw usage(`${cmd}: missing <proxy.jsonl> (or --egress <egress.jsonl>)`);
+    const jsonl = input ? path.resolve(input) : null;
+    const egress = values.egress ? path.resolve(values.egress) : null;
+    const pipeline = createPipeline({
+      outDir,
+      canaries: canariesFrom(standinPath),
+      t3: t3Rehydrator(),
+      proxyCapturePath: jsonl ? path.relative(REPO, jsonl) : null,
+      egressCapturePath: egress ? path.relative(REPO, egress) : null,
+    });
     await pipeline.init({ clean: values.clean });
     if (cmd === 'convert') {
-      const r = await readJsonl(jsonl, (rec, line) => pipeline.ingest(rec, line));
+      // Proxy first, so every chat turn window is known before egress records are correlated.
+      const r = jsonl ? await readJsonl(jsonl, (rec, line) => pipeline.ingest(rec, line)) : { lines: 0 };
+      const e = egress ? await readJsonl(egress, (rec, line) => pipeline.ingest(rec, line)) : { lines: 0 };
       await pipeline.finish();
-      emit({ event: 'summary', mode: 'convert', input: jsonl, out: outDir, lines: r.lines, ...pipeline.stats() });
+      emit({ event: 'summary', mode: 'convert', input: jsonl, egressInput: egress, out: outDir, lines: r.lines, egressLines: e.lines, ...pipeline.stats() });
       return;
     }
     const ac = new AbortController();
     const stop = () => ac.abort();
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
-    emit({ event: 'following', input: jsonl, out: outDir, pid: process.pid });
-    await followJsonl(jsonl, (rec, line) => pipeline.ingest(rec, line), {
-      signal: ac.signal,
-      pollMs: Number(values['poll-ms'] ?? 200),
-      onIdle: async () => {
-        const written = await pipeline.flush();
-        if (written.length) emit({ event: 'flushed', captures: written, ...pipeline.stats() });
-      },
-    });
+    emit({ event: 'following', input: jsonl, egressInput: egress, out: outDir, pid: process.pid });
+    const pollMs = Number(values['poll-ms'] ?? 200);
+    const onIdle = async () => {
+      const written = await pipeline.flush();
+      if (written.length) emit({ event: 'flushed', captures: written, ...pipeline.stats() });
+    };
+    // Pending egress records are released by time (EGRESS_MIN_HOLD_MS), not only by new bytes, so a
+    // periodic flush runs even when neither file grows.
+    const ticker = egress ? setInterval(() => { onIdle().catch((err) => { ac.abort(); fail(err); }); }, Math.max(pollMs, 250)) : null;
+    try {
+      await Promise.all([
+        jsonl ? followJsonl(jsonl, (rec, line) => pipeline.ingest(rec, line), { signal: ac.signal, pollMs, onIdle }) : null,
+        egress ? followJsonl(egress, (rec, line) => pipeline.ingest(rec, line), { signal: ac.signal, pollMs, onIdle }) : null,
+      ]);
+    } finally {
+      if (ticker) clearInterval(ticker);
+    }
     await pipeline.finish();
     emit({ event: 'summary', mode: 'tail', out: outDir, ...pipeline.stats() });
     return;

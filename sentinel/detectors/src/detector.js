@@ -26,6 +26,7 @@ import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
   findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans,
 } from './text.js';
+import { findStructuralMarkers } from './structural.js';
 
 export const DECISION_SCHEMA = 'sentinel.decision/1.0.0';
 let warmedUp = false;
@@ -36,11 +37,13 @@ export const RULES = Object.freeze({
   'honeytoken.exact_match': { category: 'honeytoken_exfil', layer: 'honeytoken' },
   'honeytoken.encoded_match': { category: 'honeytoken_exfil', layer: 'honeytoken' },
   'honeytoken.in_response_content': { category: 'honeytoken_exfil', layer: 'honeytoken' },
+  'honeytoken.in_http_metadata': { category: 'honeytoken_exfil', layer: 'honeytoken' },
   'taint.untrusted_read_to_external_send': { category: 'taint_flow_exfil', layer: 'taint' },
   'taint.untrusted_span_copied_to_sink': { category: 'taint_flow_exfil', layer: 'taint' },
   'taint.instruction_in_untrusted_content': { category: 'indirect_prompt_injection', layer: 'taint' },
   'inbound.instruction_in_principal_turn': { category: 'indirect_prompt_injection', layer: 'taint' },
   'inbound.exfil_instruction': { category: 'indirect_prompt_injection', layer: 'taint' },
+  'taint.structural_injection_marker': { category: 'indirect_prompt_injection', layer: 'taint' },
   'egress.secret_pattern': { category: 'egress_secret_pattern', layer: 'egress' },
   'egress.pii_pattern': { category: 'egress_secret_pattern', layer: 'egress' },
   'egress.markdown_image_exfil': { category: 'egress_markdown_image', layer: 'egress' },
@@ -49,6 +52,7 @@ export const RULES = Object.freeze({
   'policy.static_limit': { category: 'egress_unallowlisted_domain', layer: 'mandate', proposedCategory: 'tool_policy_violation' },
   'velocity.cumulative_cap': { category: 'egress_unallowlisted_domain', layer: 'velocity', proposedCategory: 'cumulative_cap_exceeded' },
   'bounds.scan_cap_exceeded': { category: 'scan_cap_exceeded', layer: 'bounds' },
+  'bounds.decode_depth_exhausted': { category: 'scan_cap_exceeded', layer: 'bounds', proposedCategory: 'decode_depth_exhausted' },
   'failclosed.detector_error': { category: 'scan_cap_exceeded', layer: 'bounds', proposedCategory: 'detector_fail_closed' },
 });
 
@@ -96,6 +100,9 @@ export function createDetector(opts = {}) {
       fired: new Set(),
       timestamp: new Date(now()).toISOString(),
       hasResponse: input?.response != null,
+      // The proxy's AbortSignal (fires at limits.inspectorTimeoutMs). Honoured at every checkpoint.
+      signal: input?.signal ?? null,
+      decodeExhausted: [], // {label, encodings} for decodeDepthExhausted reporting
     };
     try {
       return run(input, ctx);
@@ -114,6 +121,9 @@ export function createDetector(opts = {}) {
   function checkBudget(ctx, phase) {
     if (warming) return;
     const el = performance.now() - ctx.t0;
+    if (ctx.signal?.aborted) {
+      throw new ScannerTimeoutError({ bound: `proxy inspector deadline (signal aborted, after ${phase})`, payload_size: Math.round(el), cap: bounds.timeBudgetMs, action: 'block' });
+    }
     if (el > bounds.timeBudgetMs) {
       throw new ScannerTimeoutError({ bound: `timeBudgetMs (after ${phase})`, payload_size: Math.round(el), cap: bounds.timeBudgetMs, action: 'block' });
     }
@@ -122,9 +132,11 @@ export function createDetector(opts = {}) {
   function run(input, ctx) {
     // ---- 0. bounds -------------------------------------------------------------------------
     let ts = performance.now();
+    checkBudget(ctx, 'start');
     const reqStr = typeof input?.request === 'string' ? input.request : JSON.stringify(input?.request ?? {});
     const resStr = input?.response == null ? '' : typeof input.response === 'string' ? input.response : JSON.stringify(input.response);
-    const payloadBytes = Buffer.byteLength(reqStr) + Buffer.byteLength(resStr);
+    const metaBytes = metaTexts(input?.meta).reduce((n, m) => n + Buffer.byteLength(m.text), 0);
+    const payloadBytes = Buffer.byteLength(reqStr) + Buffer.byteLength(resStr) + metaBytes;
     if (payloadBytes > bounds.maxPayloadBytes) {
       throw new DetectorOverflowError({ bound: 'maxPayloadBytes', payload_size: payloadBytes, cap: bounds.maxPayloadBytes, action: 'block' });
     }
@@ -141,7 +153,9 @@ export function createDetector(opts = {}) {
     }
     if (!ctx.agent) ctx.agent = { name: String(response?.model ?? request.model ?? 'unknown-agent') };
     ctx.responseId = String(response?.id ?? `resp-${randomUUID()}`);
-    const session = store.get(ctx.sessionId);
+    // Only an exchange that will RECORD something (response tool calls -> cumulative ledger) allocates a
+    // stored session. Everything else reuses an existing session or a throwaway one (review B2).
+    const session = respCalls.length ? store.get(ctx.sessionId) : store.peek(ctx.sessionId);
     ctx.layerMs.bounds += performance.now() - ts;
 
     // ---- history: principal text, untrusted sources, prior tool calls ----------------------
@@ -202,6 +216,7 @@ export function createDetector(opts = {}) {
     ];
     for (const u of inboundTexts) {
       u.phrases = findInjectionPhrases(u.text);
+      u.structural = findStructuralMarkers(u.text, { untrusted: !u.principal }); // alert-only (see structural.js)
       if (u.phrases.length && u.principal) u.ref.suspect = true;
     }
     const principalText = principal.filter((p) => !p.suspect).map((p) => p.text).join('\n');
@@ -219,24 +234,50 @@ export function createDetector(opts = {}) {
     // Pass 2: per untrusted (or suspect) text, decide pre-forward.
     ts = performance.now();
     for (const u of inboundTexts) {
+      // Structural markers: ALERT ONLY, and only when the lexicon did not already raise this text. They never
+      // block, never mark a principal turn suspect and never set the untrusted-input taint flag.
+      if (u.structural.length && !u.phrases.length) {
+        push(ctx, {
+          ruleId: 'taint.structural_injection_marker', action: 'alert', mode: policy.mode, direction: 'request',
+          evidence: `pre-forward scan of ${u.label} (${u.text.length} chars, full scan); structural injection markers: ${u.structural.join(', ')}`,
+          originatedIn: u.label, reason: 'structural_injection_marker', reasonCodes: ['structural_markers'],
+        });
+      }
       if (u.principal && !u.ref.suspect) continue; // a clean principal turn is the mandate, not a threat
       const phrases = u.phrases;
       // Honeytokens in raw AND decoded forms (%-decoded up to maxDecodeDepth, \u/\x, base64, hex): the
       // tripwire decodes on its own and never relies on downstream alert redaction.
       const tokensHit = [];
       const seenTok = new Set();
-      for (const v of decodedVariants(u.text, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars })) {
+      const inVariants = decodedVariants(u.text, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars });
+      if (inVariants.depthExhausted) ctx.decodeExhausted.push({ label: u.label, encodings: inVariants.exhaustedEncodings, direction: 'request' });
+      for (const v of inVariants) {
         for (const h of registry.scan(v.text)) if (!seenTok.has(h.entry.id)) (seenTok.add(h.entry.id), tokensHit.push(h));
       }
       const secrets = findSecretShapes(u.text, { maxTokenChars: bounds.maxTokenChars }).filter((x) => STRONG_SECRET_KINDS.has(x.kind));
       const named = [
-        ...extractUrls(u.text).map((x) => ({ type: 'http', destination: x.host })),
-        ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email })),
-        ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban })),
+        ...extractUrls(u.text).map((x) => ({ type: 'http', destination: x.host, index: x.index })),
+        ...extractEmails(u.text).map((x) => ({ type: 'email', destination: x.email, index: x.index })),
+        ...findIbans(u.text).map((x) => ({ type: 'account', destination: x.iban, index: x.index })),
       ];
       const unconfirmed = [...new Map(named.filter((d) => !destOk(d, grant, policy, null)).map((d) => [d.destination, d])).values()];
       const staged = tokensHit.length > 0 || secrets.length > 0;
-      if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) continue;
+      if (!phrases.length && !(staged && unconfirmed.length && hasExfilVerb(u.text))) {
+        // Review S4: untrusted content that tells the agent to SEND something to a destination the
+        // principal never named (exfil verb right before the destination) is at least REPORTED, even
+        // with no injection phrase and no staged secret. Report-only: raises risk, never blocks alone.
+        // Per destination: one 120-char window at its extracted index (linear in #destinations, no rescans).
+        const directed = !u.principal ? named.filter((d) => !destOk(d, grant, policy, null) && exfilVerbBefore(u.text, d.index)) : [];
+        if (directed.length) {
+          push(ctx, {
+            ruleId: 'taint.instruction_in_untrusted_content', action: 'block', mode: 'report-only', direction: 'request',
+            sinkEnt: { type: directed[0].type, destination: directed[0].destination },
+            evidence: `pre-forward scan of ${u.label} (${u.text.length} chars, full scan); exfil verb directed at destination(s) the principal never named: ${directed.slice(0, 5).map((d) => d.destination).join(', ')}`,
+            originatedIn: u.label, reason: 'exfil_directive_unconfirmed_destination', reasonCodes: ['payee_not_confirmed', 'exfil_verb'], dimension: 'destination',
+          });
+        }
+        continue;
+      }
       if (!flags.untrustedInput) path.sources.push({ kind: 'source', label: `${u.label}${u.principal ? ' (instruction-bearing, treated as untrusted)' : ''}`, toolCallId: u.toolCallId, trust: 'untrusted' });
       flags.untrustedInput = true;
       // Block pre-forward when instructions (or a staged secret + exfil verb) point at a destination the
@@ -300,6 +341,7 @@ export function createDetector(opts = {}) {
       ctx.layerMs.taint += performance.now() - ts;
 
       const variants = decodedVariants(rawArgs, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars });
+      if (variants.depthExhausted) ctx.decodeExhausted.push({ label: `${name} arguments`, encodings: variants.exhaustedEncodings, direction: 'response', call });
       checkBudget(ctx, `decode ${name}`);
       const sinkHop = { kind: 'sink', label: `${callLabel} → ${sinkEnt.destination}`, toolCallId: call.id, trust: isSink ? 'external' : 'internal' };
       const taintPath = () => [...path.sources.slice(0, 4), ...path.propagate.slice(0, 8), sinkHop];
@@ -314,6 +356,7 @@ export function createDetector(opts = {}) {
           push(ctx, {
             ruleId: v.encoding === 'raw' ? 'honeytoken.exact_match' : 'honeytoken.encoded_match',
             action: 'block',
+            withholdReply: true, // B1: post-execution, but the reply still must not reach the client
             mode,
             call, sinkEnt, taintPath: taintPath(),
             canary: { id: entry.id, value: entry.value },
@@ -368,6 +411,7 @@ export function createDetector(opts = {}) {
           const hard = strong || (flags.untrustedInput && !pii) || (flags.untrustedInput && pii && isSink);
           push(ctx, {
             ruleId: pii ? 'egress.pii_pattern' : 'egress.secret_pattern', action: hard ? 'block' : 'alert', mode, call, sinkEnt, taintPath: taintPath(),
+            withholdReply: hard && strong, // B1: a strong secret in tool-call args withholds the reply
             evidence: `${name} arguments contain ${kinds.join(', ')} (${shapes.length} match${shapes.length === 1 ? '' : 'es'})`,
             originatedIn: path.sources[0]?.label, reason: pii ? 'pii_in_egress' : 'secret_in_egress',
           });
@@ -432,7 +476,9 @@ export function createDetector(opts = {}) {
       const contentSink = { type: 'chat_response', destination: 'client (assistant reply)' };
       const hop = { kind: 'sink', label: 'assistant reply → client', toolCallId: contentCall.id, trust: 'external' };
       const seen = new Set();
-      for (const v of decodedVariants(content, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars })) {
+      const cVariants = decodedVariants(content, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars });
+      if (cVariants.depthExhausted) ctx.decodeExhausted.push({ label: 'assistant reply', encodings: cVariants.exhaustedEncodings, direction: 'response', call: contentCall });
+      for (const v of cVariants) {
         for (const { entry } of registry.scan(v.text)) {
           if (seen.has(entry.value)) continue;
           seen.add(entry.value);
@@ -462,8 +508,41 @@ export function createDetector(opts = {}) {
       }
       ctx.layerMs.egress += performance.now() - ts;
     }
+    // ---- HTTP metadata: URL path/query + headers (review S5) ------------------------------------------
+    // A honeytoken can leave in a query string or a header as easily as in a body. Honeytokens only (raw +
+    // decoded, case-insensitive): legitimate Authorization headers carry real secret-shaped keys.
+    ts = performance.now();
+    for (const m of metaTexts(input?.meta)) {
+      const mv = decodedVariants(m.text, { depth: bounds.maxDecodeDepth, minRun: bounds.minEncodedRunChars });
+      if (mv.depthExhausted) ctx.decodeExhausted.push({ label: m.label, encodings: mv.exhaustedEncodings, direction: m.direction });
+      const seenMeta = new Set();
+      for (const v of mv) {
+        for (const { entry } of registry.scan(v.text)) {
+          if (seenMeta.has(entry.value)) continue;
+          seenMeta.add(entry.value);
+          push(ctx, {
+            ruleId: 'honeytoken.in_http_metadata', action: 'block', mode: policy.mode, direction: m.direction, withholdReply: m.direction === 'response',
+            sinkEnt: { type: 'http_metadata', destination: m.label },
+            canary: { id: entry.id, value: entry.value },
+            evidence: `${m.label} carried honeytoken ${entry.id} (${entry.label})${v.encoding === 'raw' ? '' : ` in ${v.encoding}-encoded form`}`,
+            originatedIn: m.label, reason: 'honeytoken_in_http_metadata', reasonCodes: ['honeytoken_in_http_metadata'],
+          });
+        }
+      }
+    }
+    ctx.layerMs.honeytoken += performance.now() - ts;
+
+    // ---- decode depth exhausted (review S2, T3-SPEC MAX_DECODE_DEPTH): report, never a silent stop ----
+    for (const x of ctx.decodeExhausted.slice(0, 8)) {
+      push(ctx, {
+        ruleId: 'bounds.decode_depth_exhausted', action: 'block', mode: 'report-only', direction: x.direction,
+        ...(x.call ? { call: x.call } : {}),
+        evidence: `${x.label} still decodes past maxDecodeDepth=${bounds.maxDecodeDepth} (next layer: ${[...new Set(x.encodings)].join(', ')}); deeper encodings were not scanned — raise-risk signal`,
+        originatedIn: x.label, reason: 'decode_depth_exhausted', reasonCodes: ['decode_depth_exhausted'],
+      });
+    }
     checkBudget(ctx, 'complete');
-    return finish(ctx, { payloadBytes, flags, blocked, respCalls: respCalls.length, failClosed: false, grant });
+    return finish(ctx, { payloadBytes, flags, blocked, respCalls: respCalls.length, failClosed: false, grant, decodeDepthExhausted: ctx.decodeExhausted.length > 0 });
   }
 
   // ---- finding construction (T4 verdict shape) --------------------------------------------------
@@ -477,7 +556,11 @@ export function createDetector(opts = {}) {
     const isContent = f.call?.name === 'assistant_response';
     const postExecution = direction === 'response' && !isContent && !f.failClosed && toolExecution === 'in_process';
     const would = f.action !== 'alert';
-    const action = postExecution ? 'alert' : f.action;
+    // B1: a honeytoken / strong secret in in-process tool-call args already left (postExecution, never
+    // claimed prevention), but the proxy must still WITHHOLD the reply: enforcement 'withhold_reply' keeps
+    // disposition 'block' (-> flagged) with prevents:false and postExecution:true.
+    const withhold = postExecution && f.withholdReply === true && would;
+    const action = postExecution ? (withhold ? 'withhold_reply' : 'alert') : f.action;
     const enforced = action !== 'alert';
     const disposition = !enforced ? 'allow' : f.mode === 'report-only' ? 'report' : 'block';
     ctx.fired.add(f.ruleId);
@@ -493,7 +576,7 @@ export function createDetector(opts = {}) {
       (f.call ? ` → influenced ${f.call.name}(${preview(f.call.args)})` : '') +
       (f.sinkEnt ? ` toward ${f.sinkEnt.destination}` : '') +
       (postExecution
-        ? ` → detected AFTER in-process execution (alert + evidence only; the request-side check is the preventive control) by ${f.reason ?? decided}`
+        ? ` → detected AFTER in-process execution (${withhold ? 'reply withheld from the client; the tool call itself already ran' : 'alert + evidence only'}; the request-side check is the preventive control) by ${f.reason ?? decided}`
         : ` → ${disposition === 'block' ? (direction === 'request' ? 'blocked before reaching the agent' : 'blocked') : disposition === 'report' ? 'would be blocked (report-only)' : 'alerted'} by ${f.reason ?? decided}`) +
       ` in session ${ctx.sessionId}${f.canarySession && f.canarySession !== ctx.sessionId ? ` (canary belongs to session ${f.canarySession})` : ''}.`;
     const finding = {
@@ -510,19 +593,20 @@ export function createDetector(opts = {}) {
       // T3 extras (ignored by T4's validator; consumed by T5/T7):
       reason: f.reason ?? null,
       dimension: f.dimension ?? null,
-      enforcement: action, // block | hold | alert  (hold -> DENY until S5 approval exists)
+      enforcement: action, // block | hold | alert | withhold_reply  (hold -> DENY until S5 approval exists)
       wouldBlock: would,
       mode: f.mode,
       direction, // request (pre-forward) | response (post-agent)
       prevents: enforced && disposition === 'block' && !postExecution,
       postExecution,
+      ...(withhold ? { withholdsReply: true } : {}),
       ...(f.reasonCodes ? { reasonCodes: f.reasonCodes } : {}),
       ...(rule.proposedCategory ? { proposedCategory: rule.proposedCategory } : {}),
     };
     ctx.findings.push(finding);
   }
 
-  function finish(ctx, { payloadBytes, flags, blocked, respCalls, failClosed, error, grant }) {
+  function finish(ctx, { payloadBytes, flags, blocked, respCalls, failClosed, error, grant, decodeDepthExhausted = false }) {
     const latency = round(performance.now() - ctx.t0);
     const layers = Object.entries(ctx.layerMs).map(([layer, ms]) => ({
       layer,
@@ -554,8 +638,10 @@ export function createDetector(opts = {}) {
       action: block ? 'block' : 'allow',
       wouldAction: wouldBlock ? 'block' : 'allow',
       failClosed,
+      decodeDepthExhausted,
       ...(error ? { error } : {}),
-      blockedToolCallIds: [...new Set(ctx.findings.filter((f) => f.disposition === 'block' && f.entities.toolCall && f.entities.toolCall.name !== 'assistant_response').map((f) => f.entities.toolCall.id))],
+      // Calls the client must NOT execute. Post-execution findings are excluded: those calls already ran.
+      blockedToolCallIds: [...new Set(ctx.findings.filter((f) => f.disposition === 'block' && !f.postExecution && f.entities.toolCall && f.entities.toolCall.name !== 'assistant_response').map((f) => f.entities.toolCall.id))],
       toolExecution,
       findings: ctx.findings,
       taint: flags ?? null,
@@ -732,6 +818,32 @@ const EXFIL_VERBS = ['send', 'post ', 'upload', 'forward', 'submit', 'email', 'e
 function hasExfilVerb(text) {
   const l = text.toLowerCase();
   return EXFIL_VERBS.some((v) => l.indexOf(v) !== -1);
+}
+
+// An exfil verb in the imperative, ADDRESSED TO THE AGENT ("please email ...", "assistant, send ...",
+// "you must forward ..."). A bare verb is not enough: benign mail/bank data says "send me an email",
+// "My e-mail is ...", "pay by bank transfer" (AgentDojo benign corpus scored 22 FPs with a bare-verb rule).
+const DIRECTED_VERB = /(?:\bplease|\bassistant\b[,:]?|\b(?:ai|agent|bot)\b[,:]|\byou (?:must|should|need to|have to)|\bimmediately|\bnow)\s+(?:also\s+)?(?:send|email|e-mail|mail|forward|upload|submit|transmit|exfiltrate|post)\b/;
+/** True when an agent-addressed exfil imperative appears within the 120 chars before `at` (a destination). O(120). */
+function exfilVerbBefore(text, at) {
+  if (!Number.isInteger(at) || at < 0) return false;
+  return DIRECTED_VERB.test(text.slice(Math.max(0, at - 120), at).toLowerCase());
+}
+
+/**
+ * HTTP metadata texts to scan: `meta = {phase, path, headers}` from the proxy hook. The URL is scanned
+ * in full (decodedVariants handles %-encoding); every header value is scanned (names + values, one line
+ * each). Bounded by Node's maxHeaderSize (16 KiB) on the proxy side, and by maxPayloadBytes here.
+ */
+function metaTexts(meta) {
+  if (!meta) return [];
+  const direction = meta.phase === 'response' ? 'response' : 'request';
+  const out = [];
+  if (typeof meta.path === 'string' && meta.path.length) out.push({ label: `${direction} URL path/query`, text: meta.path, direction });
+  const lines = [];
+  for (const [k, v] of Object.entries(meta.headers ?? {})) lines.push(`${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
+  if (lines.length) out.push({ label: `${direction} headers`, text: lines.join('\n'), direction });
+  return out;
 }
 
 function destOk(d, grant, policy, toolName) {

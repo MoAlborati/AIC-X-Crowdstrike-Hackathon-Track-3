@@ -14,6 +14,7 @@
 // replay builder turns it into a visible graph node. It is never filtered out.
 
 import { BOUNDS, enforce } from './bounds.mjs';
+import { stageHints } from './stage.mjs';
 
 export const SUPPORTED_SCHEMA = 'sentinel.alert/1.0.0';
 
@@ -102,6 +103,8 @@ export function adaptAlert(raw, validate = fallbackValidate, position = 0) {
     disposition,
     blocked: a.PatternDispositionFlags?.Blocked === true || disposition === 'Blocked',
     reportOnly: a.PatternDispositionFlags?.ReportOnly === true || disposition === 'ReportOnly',
+    // Direction hints, if the producer recorded any. lib/stage.mjs decides what may be shown as Blocked.
+    hints: stageHints(a),
     latencyMs: Number.isFinite(a.DetectionLatencyMs) ? a.DetectionLatencyMs : null,
     timestamp: str(a.Timestamp),
     state: str(a.State),

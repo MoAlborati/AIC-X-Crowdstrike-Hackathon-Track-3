@@ -19,7 +19,10 @@ Compiled 2026-10-12 from 5 parallel research passes. Use these to cite on stage 
 - Falcon detection field schema (for AIDR-shaped alert JSON): https://www.elastic.co/docs/reference/beats/filebeat/exported-fields-crowdstrike
 - Product names to use verbatim: Charlotte AI · AgentWorks · Charlotte Agentic SOAR · Falcon AIDR · AgentWorks guardrails · Agentic Security Workforce.
 - Quotes (verbatim; see CITATIONS.md): Kurtz (Pangea release) — "AI is rewriting the enterprise attack surface at breakneck speed. Each prompt becomes an entry point for the adversary." Sentonas (AIDR GA release) — "Prompt injection is a frontier security problem. Adversaries are injecting hidden instructions into GenAI tools to weaponize the very systems transforming how work gets done."
-- Judging criteria (AgentWorks hackathon rules, closest proxy): problem-solving · agent design & scope · creativity & innovation · outcomes & workflow integration. Rules: https://www.crowdstrike.com/en-us/legal/agentworks-hackathon/
+- **Judging criteria (OFFICIAL, from the organizers' slides, issue #128):** use the verbatim Track 3 brief and the Ciocca Venture Award text in `GOAL.md` / `STRATEGY.md` §0.
+  - Track 3: fits the brief (build-and-defend vs prompt injection / tool misuse / data exfiltration, or attack a provided agent + build a detector) · one clear exploit or defense · demoed live · realistic scope, "rather than a fully hardened system" · maps to what CrowdStrike is building with AgentWorks. Prizes: 1st $800 · 2nd $200 · 3rd Prize Box.
+  - Ciocca Venture Award (separate): clarity of the problem · who would use and pay · how it stands apart from existing tools · credible path from prototype to launch · alongside a working demo. Prizes: 1st $1000 · 2nd $500 · 3rd Prize Box.
+- ~~Judging criteria (AgentWorks hackathon rules, closest proxy): problem-solving · agent design & scope · creativity & innovation · outcomes & workflow integration.~~ **SUPERSEDED 2026-10-12** by the official criteria above. Kept for history only; do not score against it. Rules: https://www.crowdstrike.com/en-us/legal/agentworks-hackathon/
 
 ## C. Threat frameworks (cite on the mapping slide)
 
