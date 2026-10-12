@@ -81,7 +81,11 @@ test('leak guard refuses to write a brief that would carry a honeytoken value', 
   try {
     const doc = JSON.parse(readFileSync(BLOCK, 'utf8'));
     const alert = Object.values(doc.runs).flat()[0];
-    alert.CaseCard.Narrative = `${alert.CaseCard.Narrative} leaked=${value}`;
+    // Smuggle a honeytoken value into a field the handoff renders verbatim into the brief: the adapter
+    // builds the section heading straight from alert.DetectName (not via the swappable SOC Brief engine),
+    // so this value WOULD reach the brief regardless of signal wording. The only thing that must stop it
+    // is the leak guard — build the brief without the guard and the value appears (see the leak proof).
+    alert.DetectName = `${alert.DetectName} leaked=${value}`;
     const bad = path.join(dir, 'bad.alerts.json');
     writeFileSync(bad, JSON.stringify(doc));
     const outFile = path.join(dir, 'brief.md');
