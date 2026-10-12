@@ -6,7 +6,7 @@
 //                   secrets; the hit names the session, the tool that fetched it and the sink.
 //   seeded_record   3–5 fake "Agloe" records seeded into readable data (seedRecords()).
 //
-// Lookup is POOL-SIZE INDEPENDENT (firm rule: no capped list scan on a decision path): every token is
+// Lookup is POOL-SIZE INDEPENDENT (team rule: no capped list scan on a decision path): every token is
 // indexed by its first 8 (and 16) chars, and a scan is one linear pass over the text with an O(1) Map lookup per
 // position. 10 tokens or 50,000 tokens cost the same per byte. A token at registry position 49,999 is
 // found exactly like one at position 1 (test/honeytoken.test.js proves it).

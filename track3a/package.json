@@ -1,0 +1,11 @@
+{
+  "name": "sentinel-track3a-opsbot",
+  "private": true,
+  "type": "module",
+  "description": "Track 3 Path A: our own agent (OpsBot), attacked and defended with SentinelProxy",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "demo": "node run-demo.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}
