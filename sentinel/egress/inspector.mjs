@@ -23,8 +23,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  inspectEgress, failClosedVerdict, loadHoneytokens, makeAllowlist, DEFAULTS, REASON_CODES,
+  inspectEgress, failClosedVerdict, loadHoneytokens, makeAllowlist, DEFAULTS, REASON_CODES, DVAA_HONEYTOKENS,
 } from './policy.mjs';
+
+/** DVAA's planted honeytokens (T3 DVAA_HONEYTOKENS) + this deployment's extras (honeytokens.json). */
+export function defaultHoneytokens(extrasFile = path.join(HERE, 'honeytokens.json')) {
+  const extras = JSON.parse(fs.readFileSync(extrasFile, 'utf8'));
+  return [...DVAA_HONEYTOKENS.map(({ id, value }) => ({ id, value })), ...extras];
+}
+
+/**
+ * Parse a CONNECT authority: "host:port", "[v6]:port". Returns {host, port} or null (-> fail closed).
+ * Never split on ':' (an IPv6 literal contains colons).
+ */
+export function parseConnectTarget(authority) {
+  if (typeof authority !== 'string' || authority.length > 300) return null;
+  const m = /^\[([0-9A-Fa-f:.]+)\]:(\d{1,5})$/.exec(authority) ?? /^([^\s:\[\]\/@]+):(\d{1,5})$/.exec(authority);
+  if (!m) return null;
+  const port = Number(m[2]);
+  if (port < 1 || port > 65535) return null;
+  if (authority.startsWith('[') && !net.isIPv6(m[1])) return null;
+  return { host: m[1].toLowerCase(), port };
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -56,7 +76,7 @@ export function configFromEnv(env = process.env) {
   return {
     mode: env.MODE === 'block' ? 'block' : 'observe',
     allowHosts: (env.ALLOW_HOSTS || '').split(','),
-    honeytokens: JSON.parse(fs.readFileSync(htFile, 'utf8')),
+    honeytokens: defaultHoneytokens(htFile),
     log: env.LOG || null,
     port: Number(env.PORT || 8899),
     listenHost: env.LISTEN_HOST || '127.0.0.1',
@@ -192,16 +212,16 @@ export function createEgressInspector(opts) {
   });
 
   server.on('connect', (req, sock, head) => {
-    const m = /^([^:\s]+):(\d{1,5})$/.exec(req.url ?? '');
+    const t = parseConnectTarget(req.url);
     let v;
-    if (!m) v = failClosedVerdict(REASON_CODES.BAD_PROXY_REQUEST, { kind: 'connect', method: 'CONNECT', url: '', host: null, size: 0 }, cfg);
+    if (!t) v = failClosedVerdict(REASON_CODES.BAD_PROXY_REQUEST, { kind: 'connect', method: 'CONNECT', url: '', host: null, size: 0 }, cfg);
     else {
-      try { v = inspectEgress({ kind: 'connect', method: 'CONNECT', url: req.url, host: m[1], port: Number(m[2]) }, cfg); }
-      catch { v = failClosedVerdict(REASON_CODES.SCAN_ERROR, { kind: 'connect', method: 'CONNECT', url: req.url, host: m[1] }, cfg); }
+      try { v = inspectEgress({ kind: 'connect', method: 'CONNECT', url: req.url, host: t.host, port: t.port }, cfg); }
+      catch { v = failClosedVerdict(REASON_CODES.SCAN_ERROR, { kind: 'connect', method: 'CONNECT', url: req.url, host: t.host }, cfg); }
     }
     v = safeRecord(v);
     if (v.action === 'deny') { sock.end('HTTP/1.1 403 Forbidden\r\nconnection: close\r\n\r\n'); return; }
-    const up = net.connect(Number(m[2]), m[1], () => {
+    const up = net.connect(t.port, t.host, () => {
       sock.write('HTTP/1.1 200 Connection Established\r\n\r\n'); up.write(head); up.pipe(sock); sock.pipe(up);
     });
     up.setTimeout(opts.upstreamTimeoutMs ?? 5000, () => up.destroy());

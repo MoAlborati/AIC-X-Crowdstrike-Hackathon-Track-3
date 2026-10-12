@@ -14,7 +14,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { buildAlert } from '../alerts/schema.js';
-import { redactString, MAX_CANARIES, MIN_CANARY_VALUE_CHARS } from '../alerts/redact.js';
+import { MAX_CANARIES, MIN_CANARY_VALUE_CHARS } from '../alerts/redact.js';
+import { HoneytokenRegistry, DVAA_HONEYTOKENS } from '../detectors/src/honeytokens.js';
+import { decodedVariants, findSecretShapes, findSsns } from '../detectors/src/text.js';
+
+export { DVAA_HONEYTOKENS };
 
 export const REASON_CODES = Object.freeze({
   HONEYTOKEN_MATCH: 'honeytoken_match',
@@ -49,34 +53,27 @@ export const DEFAULTS = Object.freeze({
 
 const sha16 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 16);
 
-/** Tolerant %-decoder: decodes every %XX run as UTF-8 bytes; malformed sequences are left as-is. */
-export function pctDecode(s) {
-  return s.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => Buffer.from(run.replace(/%/g, ''), 'hex').toString('utf8'));
-}
-
-/** Decode JS/JSON-style escapes: \\uXXXX, \\u{X..}, \\xXX. Malformed escapes are left as-is. */
-export function escDecode(s) {
-  return s
-    .replace(/\\u\{([0-9a-fA-F]{1,6})\}/g, (m, h) => { const cp = parseInt(h, 16); return cp <= 0x10ffff ? String.fromCodePoint(cp) : m; })
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-}
-
 /**
- * All decoded views of a string: raw, then iterative (%-decode + form '+' -> ' ' + \\u/\\x-unescape)
- * until stable. One round applies all three, so mixed forms (%5Cu0064 -> \\u0064 -> d) need 2 rounds.
- * Returns { views, overDepth } — overDepth means it was still changing after MAX_DECODE_ROUNDS.
+ * Decoded views of `text` via T3's linear-time `decodedVariants` (repeated %, form '+', \\u/\\x escapes,
+ * base64 and hex runs: a whole run is decoded, so a canary at ANY byte offset inside a larger base64 blob
+ * is found). It runs one level deeper than allowed so that encoding nested beyond `maxRounds` is
+ * DETECTED (overDepth -> fail closed) rather than silently left undecoded.
  */
-export function decodedViews(s, maxRounds = DEFAULTS.MAX_DECODE_ROUNDS) {
-  const views = [s];
-  let cur = s;
-  for (let i = 0; i < maxRounds; i++) {
-    const next = escDecode(pctDecode(cur.replace(/\+/g, ' ')));
-    if (next === cur) return { views, overDepth: false };
-    views.push(next);
-    cur = next;
+export function decodedViews(text, maxRounds = DEFAULTS.MAX_DECODE_ROUNDS) {
+  const vars = decodedVariants(text, { depth: maxRounds + 1 });
+  // JSON-stringified escapes ("\\\\u0073") keep a doubled backslash after %-decoding: add ONE extra pass over
+  // each view with "\\\\" collapsed (bounded: at most one extra decode tree, same depth cap).
+  for (const v of [...vars]) {
+    if (v.text.indexOf('\\\\') === -1) continue;
+    for (const w of decodedVariants(v.text.replace(/\\\\/g, '\\'), { depth: maxRounds + 1 })) {
+      vars.push({ text: w.text, encoding: v.encoding === 'raw' ? w.encoding : `${v.encoding}+${w.encoding}` });
+    }
   }
-  return { views, overDepth: escDecode(pctDecode(cur.replace(/\+/g, ' '))) !== cur };
+  const depthOf = (enc) => (enc === 'raw' ? 0 : enc.split('+').length);
+  return {
+    views: vars.filter((v) => depthOf(v.encoding) <= maxRounds).map((v) => v.text),
+    overDepth: vars.some((v) => depthOf(v.encoding) > maxRounds),
+  };
 }
 
 /** Validate + normalise the honeytoken registry. Throws (fail loud) on a bad registry. */
@@ -87,9 +84,12 @@ export function loadHoneytokens(list, { max = DEFAULTS.MAX_HONEYTOKENS, minChars
   for (const [i, t] of list.entries()) {
     if (!t || typeof t.id !== 'string' || typeof t.value !== 'string') throw new TypeError(`honeytokens[${i}] must be {id, value}`);
     if (t.value.length < minChars) throw new RangeError(`honeytokens[${i}] (${t.id}) shorter than ${minChars} chars`);
-    // redact.js expands each canary into its own encoded variants (case, separators, base64, hex, %).
     out.push({ id: t.id, value: t.value });
   }
+  // T3's pool-size-independent registry does the matching; the plain list feeds T4 alert redaction.
+  const registry = new HoneytokenRegistry({ maxCanaries: 0 });
+  for (const t of out) registry.addStatic({ id: t.id, value: t.value, label: t.id });
+  Object.defineProperty(out, 'registry', { value: registry, enumerable: false });
   return Object.freeze(out);
 }
 
@@ -129,18 +129,17 @@ export function inspectEgress(req, cfg) {
         const { views, overDepth } = decodedViews(text, cfg.maxDecodeRounds);
         if (overDepth) add(REASON_CODES.DECODE_DEPTH_EXCEEDED);
         for (const v of views) {
-          // T4 redact.js is the single canary/secret matcher: canaries first, then generic patterns.
-          const { findings, withheld } = redactString(v, { canaries: cfg.honeytokens });
-          if (withheld) add(REASON_CODES.EGRESS_OVER_CAP);
-          for (const f of findings) {
-            if (f.kind === 'canary') {
-              add(REASON_CODES.HONEYTOKEN_MATCH);
-              if (!facts.canaryIds.includes(f.canaryId)) facts.canaryIds.push(f.canaryId);
-              matchedCanary ??= cfg.honeytokens.find((h) => h.id === f.canaryId);
-            } else {
-              add(REASON_CODES.SECRET_PATTERN_MATCH);
-              if (!facts.secretKinds.includes(f.kind)) facts.secretKinds.push(f.kind);
-            }
+          for (const { entry } of cfg.honeytokens.registry.scan(v)) {
+            add(REASON_CODES.HONEYTOKEN_MATCH);
+            if (!facts.canaryIds.includes(entry.id)) facts.canaryIds.push(entry.id);
+            matchedCanary ??= { id: entry.id, value: entry.value };
+          }
+          // T3's tokenizer keeps URL delimiters inside a token ("k=ghp_..."): split them for shape tests only.
+          const sv = v.replace(/[/?&=#:;,]/g, ' ');
+          for (const f of [...findSecretShapes(sv), ...findSsns(v)]) {
+            add(REASON_CODES.SECRET_PATTERN_MATCH);
+            const k = f.kind ?? 'ssn';
+            if (!facts.secretKinds.includes(k)) facts.secretKinds.push(k);
           }
         }
       }

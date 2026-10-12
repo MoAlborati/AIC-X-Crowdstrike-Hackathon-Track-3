@@ -10,13 +10,15 @@
 # accepts clients only from the sandbox subnet + loopback (ALLOW_CLIENT_CIDRS), so the canary on `outside`
 # cannot use it as a relay.
 #
-#   EGRESS_MODE=observe|block docker compose -f sentinel/egress/compose.egress.yml up -d
+#   EGRESS_MODE=block|observe docker compose -f sentinel/egress/compose.egress.yml up -d
 name: sentinel-egress
 services:
   dvaa:
     image: ${DVAA_IMAGE:-dvaa-t1-dvaa}
     environment:
       NODE_USE_ENV_PROXY: "1"
+      # RepoBot (7022) reads FAKE credentials from DVAA's own dev-machine fixture here (egress-demo.sh seeds it).
+      DVAA_REPO_SANDBOX_HOME: /tmp/t12-home
       HTTP_PROXY: http://${EGRESS_NET:-10.231.12}.2:8899
       HTTPS_PROXY: http://${EGRESS_NET:-10.231.12}.2:8899
       # DVAA's own loopback hops (dashboard -> agent ports) stay in-container (in-container SSRF is a
@@ -29,7 +31,7 @@ services:
     image: node:24-alpine
     command: ["node", "/sentinel/egress/inspector.mjs"]
     environment:
-      MODE: ${EGRESS_MODE:-observe}
+      MODE: ${EGRESS_MODE:-block}  # default block: observe forwards every policy hit
       ALLOW_HOSTS: ${EGRESS_ALLOW:-api.openai.com,api.anthropic.com}
       LISTEN_HOST: ${EGRESS_NET:-10.231.12}.2
       ALLOW_CLIENT_CIDRS: 127.0.0.0/8,${EGRESS_NET:-10.231.12}.0/24

