@@ -13,7 +13,7 @@ const { MAX_REDACT_SCAN_CHARS } = redact;
 const MAX_REDACT_TOTAL_CHARS = redact.MAX_REDACT_TOTAL_CHARS ?? Infinity;
 import { percentile } from './helpers.js';
 
-const BUDGET_MS = 100; // per adversarial field at the cap (review: "finishes in under ~100 ms")
+const BUDGET_MS = 100; // CPU ms (timing-worker.js measures thread CPU, not wall clock) per adversarial field at the cap (review: "finishes in under ~100 ms")
 const FULL_BUDGET_MS = 400; // whole alert with the per-alert scan budget completely spent
 const DEADLINE_MS = 5000; // hard kill — anything near this is superlinear, not slow hardware
 const RUNS = 3;
@@ -57,7 +57,7 @@ for (const [name, unit] of Object.entries(CASES)) {
     assert.ok(!r.timedOut, `${name}: buildAlert still running after ${DEADLINE_MS}ms (superlinear redaction)`);
     const sorted = [...r.times].sort((a, b) => a - b);
     const med = percentile(sorted, 50);
-    console.log(`# ${name}: len=${MAX_REDACT_SCAN_CHARS} median=${med.toFixed(1)}ms max=${sorted.at(-1).toFixed(1)}ms`);
+    console.log(`# ${name}: len=${MAX_REDACT_SCAN_CHARS} median=${med.toFixed(1)}ms CPU max=${sorted.at(-1).toFixed(1)}ms`);
     assert.ok(med < BUDGET_MS, `${name}: median ${med.toFixed(1)}ms >= ${BUDGET_MS}ms`);
     assert.ok(r.evidenceLen > 0 && r.evidenceLen <= 2048);
   });
@@ -69,7 +69,7 @@ test(`adversarial (B1): per-alert scan budget fully spent (4 fields x cap) < ${F
   const r = await runInWorker({ fields, unit: 'SSN 123-45-6789 eyJ ', len: MAX_REDACT_SCAN_CHARS });
   assert.ok(!r.timedOut, `buildAlert still running after ${DEADLINE_MS}ms`);
   const med = percentile([...r.times].sort((a, b) => a - b), 50);
-  console.log(`# full budget (${fields.length} x ${MAX_REDACT_SCAN_CHARS}): median=${med.toFixed(1)}ms`);
+  console.log(`# full budget (${fields.length} x ${MAX_REDACT_SCAN_CHARS}): median=${med.toFixed(1)}ms CPU`);
   assert.ok(med < FULL_BUDGET_MS, `median ${med.toFixed(1)}ms >= ${FULL_BUDGET_MS}ms`);
 });
 
@@ -79,7 +79,7 @@ test(`adversarial (B1): max canaries x max canary length vs near-miss input at t
   const r = await runInWorker({ fields: ['evidence'], unit: 'a', len: MAX_REDACT_SCAN_CHARS, canaryFlood: { count, valueLen } });
   assert.ok(!r.timedOut, `buildAlert still running after ${DEADLINE_MS}ms`);
   const med = percentile([...r.times].sort((a, b) => a - b), 50);
-  console.log(`# canary flood (${count} x ${valueLen} chars): median=${med.toFixed(1)}ms`);
+  console.log(`# canary flood (${count} x ${valueLen} chars): median=${med.toFixed(1)}ms CPU`);
   assert.ok(med < BUDGET_MS, `median ${med.toFixed(1)}ms >= ${BUDGET_MS}ms`);
 });
 
@@ -108,7 +108,7 @@ for (const [name, { budget, ...d }] of Object.entries(CANARY_CASES)) {
     assert.ok(!r.timedOut, `${name}: buildAlert still running after ${DEADLINE_MS}ms (superlinear redaction)`);
     const sorted = [...r.times].sort((a, b) => a - b);
     const med = percentile(sorted, 50);
-    console.log(`# ${name}: len=${MAX_REDACT_SCAN_CHARS} median=${med.toFixed(1)}ms max=${sorted.at(-1).toFixed(1)}ms`);
+    console.log(`# ${name}: len=${MAX_REDACT_SCAN_CHARS} median=${med.toFixed(1)}ms CPU max=${sorted.at(-1).toFixed(1)}ms`);
     assert.ok(med < budget, `${name}: median ${med.toFixed(1)}ms >= ${budget}ms`);
     assert.ok((r.byKind.canary ?? 0) >= 1, `${name}: no canary redacted ${JSON.stringify(r.byKind)}`);
   });
@@ -134,7 +134,7 @@ for (const [name, d] of Object.entries(GROWTH_CASES)) {
     };
     const small = await med(MAX_REDACT_SCAN_CHARS / 4);
     const big = await med(MAX_REDACT_SCAN_CHARS);
-    const ratio = big / Math.max(small, 0.001);
+    const ratio = big / Math.max(small, 1); // CPU clock can tick coarsely (4 ms on some kernels): never divide by ~0
     console.log(`# growth ${name}: ${(MAX_REDACT_SCAN_CHARS / 4) >> 10}K=${small.toFixed(1)}ms ${MAX_REDACT_SCAN_CHARS >> 10}K=${big.toFixed(1)}ms ratio=${ratio.toFixed(1)}x`);
     if (big >= GROWTH_FLOOR_MS) assert.ok(ratio < GROWTH_MAX_RATIO, `${name}: ${ratio.toFixed(1)}x for 4x input (superlinear)`);
   });
