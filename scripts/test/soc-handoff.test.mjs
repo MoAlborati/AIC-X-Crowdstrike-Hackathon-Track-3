@@ -50,11 +50,11 @@ test('brief is written offline with the expected verdict and all three alert kin
     // The post-execution (report-only) card carries SOC Brief's own report-only wording; no handoff workaround.
     const post = sections.find((s) => s.includes('Detected · post-execution (alert-only)'));
     assert.ok(post, 'post-execution section present');
-    // #141 taxonomy (Option A): the report-only case is handled by the one
-    // `sentinel.agent_exfil` rule, which emits report-only wording ("treat the
-    // data as sent", never "stopped the send"). The old `sentinel-agent-report-only`
-    // rule id is not restored.
-    assert.match(post, /SOC Brief rule `sentinel\.agent_exfil`/);
+    // The report-only case is handled by the dedicated `sentinel-agent-report-only`
+    // rule, which emits report-only wording ("treat the data as sent", never
+    // "stopped the send"). This matches the engine's blocked-vs-report-only split
+    // that fallback.test.js and verify.test.js also assert.
+    assert.match(post, /SOC Brief rule `sentinel-agent-report-only`/);
     assert.match(post, /treat the data as sent/i);
     assert.doesNotMatch(post, /stopped the send|Leave the block in place|Handoff note/);
     assert.match(brief, /AML\.T0086/);
