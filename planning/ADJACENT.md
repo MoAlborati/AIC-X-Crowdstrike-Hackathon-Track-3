@@ -164,16 +164,16 @@ Narrative opener (pick one), then the structure, then the mechanisms (§5 patter
   We lost for a decade, until parameterized queries kept code and data apart. AI agents are at their 1998
   now. SentinelProxy doesn't try to out-guess the model. It tracks where every byte came from and
   enforces what it's allowed to reach."
-- **BEC:** "Your agent just fell for a BEC scam, the $3 billion-a-year fraud. It never felt suspicious, so
+- **BEC:** "Your agent just fell for a BEC scam, a roughly $3 billion-a-year fraud. It never felt suspicious, so
   it never picked up the phone. SentinelProxy is the phone call."
 - **Fraud:** "Banks stopped asking *'is this really the customer?'*, because the customer is usually
   real and being scammed. They ask *'does this payment make sense?'* Every tool call is a transaction,
   and we score it before it settles." Short version: **"Confirmation of Payee for AI agents."**
-- **Counterintelligence (Agloe):** "In the 1930s two mapmakers invented a town called Agloe… if Agloe showed
+- **Counterintelligence (Agloe):** "Around 1930 two mapmakers invented a town called Agloe… if Agloe showed
   up on someone else's map, that map was copied. We plant Agloes in your agent's world: fake keys, fake
   customers, fake files. A legitimate agent never needs them. The moment one heads for the exit, we know
-  who took it, through which tool, and we stop it at the door." (The twist, where a real store got
-  built at Agloe, is our honest point about false positives.)
+  who took it, through which tool, and we stop it at the door." (The twist, where a real local business later took the
+  name Agloe, is our honest point about false positives.)
 - **Aviation:** "Fly-by-wire for agents: the pilot can be fooled, but the envelope can't."
 - **Theory (bank teller):** "A new bank teller who obeys notes slipped into deposit envelopes." Then name
   the confused deputy.
@@ -223,7 +223,7 @@ a slide.**
 **Theory** (the whole report was written from memory ⚠)
 - [T1] ⚠ Gentner (1983), Structure-mapping. *Cognitive Science* 7(2). https://doi.org/10.1207/s15516709cog0702_3
 - [T2] ⚠ Hardy (1988), The Confused Deputy. *ACM SIGOPS OSR* 22(4). https://dl.acm.org/doi/10.1145/54289.871709 (also https://cap-lore.com/CapTheory/ConfusedDeputy.html)
-- [T3] ⚠ Holyoak & Thagard (1989), Analogical mapping by constraint satisfaction. *Cognitive Science* 13(3). https://doi.org/10.1207/s15516709cog1303_1
+- [T3] ⚠ Holyoak & Thagard (1989), Analogical mapping by constraint satisfaction. *Cognitive Science* 13(3):295–355. https://doi.org/10.1207/s15516709cog1303_1
 - [T4] ⚠ Fu, Moreno, Yang, Wood (2014), Bio-inspired design / design-by-analogy. *J. Mech. Des.* 136(11). https://doi.org/10.1115/1.4028289
 - [T5] ⚠ Greshake et al. (2023), indirect prompt injection. https://arxiv.org/abs/2302.12173
 - [T6] ⚠ Debenedetti et al. (2025), CaMeL. https://arxiv.org/abs/2503.18813; Beurer-Kellner et al. (2025), Design Patterns. https://arxiv.org/abs/2506.08837
@@ -239,11 +239,11 @@ a slide.**
 
 **BEC / social engineering**
 - FBI IC3 2024 report: BEC $2.77B, 21,442 complaints. https://www.ic3.gov/AnnualReport/Reports/2024_IC3Report.pdf (summary: https://www.nacha.org/news/fbis-ic3-finds-almost-85-billion-lost-business-email-compromise-last-three-years)
-- ⚠ FBI IC3 2025: BEC $3.046B, 24,768 complaints, wire/ACH in 86%, >$30M AI-linked. Verified only through a secondary summary: https://www.mcdonaldhopkins.com/insights/news/the-sobering-truth-of-the-fbis-2025-internet-crime-complaint-center-report. **The "$3 billion" pitch line depends on this. Check the primary IC3 report.**
+- FBI IC3 2025 report (verified against primary PDF 2026-10-12): BEC $3,046,598,558, 24,768 complaints, ">$30 million" BEC losses involving AI. https://www.ic3.gov/AnnualReport/Reports/2025_IC3Report.pdf. ⚠ The 86% wire/ACH share is an unlabeled pie-chart slice; check visually before quoting. Only 2025 exceeded $3B (2022 $2.74B, 2023 $2.95B, 2024 $2.77B), so say "~$3 billion a year".
 - Hines et al. 2024, Spotlighting: https://arxiv.org/abs/2403.14720
-- ⚠ Rimasauskas fake-invoice scheme (~$100M+ from Google/Facebook), DOJ: https://www.justice.gov/usao-sdny/pr/lithuanian-man-sentenced-5-years-prison-theft-over-120-million-fraudulent-business
+- Rimasauskas fake-invoice scheme (over $120M; DOJ names "a multinational technology company and a multinational online social media company", press identifies Google and Facebook; 5 years, Dec 2019), DOJ: https://www.justice.gov/usao-sdny/pr/lithuanian-man-sentenced-5-years-prison-theft-over-120-million-fraudulent-business
 - ⚠ Arup $25M deepfake (BEC report, from memory; see also the fraud report's Fortune link below)
-- EchoLeak CVE-2025-32711: https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-32711
+- EchoLeak CVE-2025-32711 (CVSS 9.3 per Microsoft CNA; NVD 7.5): https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-32711
 
 **Counterintelligence / deception**
 - Meta AI, Agents Rule of Two: https://ai.meta.com/blog/practical-ai-agent-security/
@@ -384,8 +384,8 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 
 - **Trading:** "Wall Street learned in 2010 that every order passes a broker's risk gate before it reaches the
   market. SentinelProxy is that gate for AI agents."
-- **Voice:** "In 2017 a TV anchor said 'Alexa, order me a dollhouse' and the living rooms of San Diego went
-  shopping. Today every web page your agent reads is that anchor. SentinelProxy is the purchase PIN."
+- **Voice:** "In 2017 a San Diego TV anchor said 'Alexa ordered me a dollhouse' on air, and viewers' Echos tried
+  to order dollhouses. Today every web page your agent reads is that anchor. SentinelProxy is the purchase PIN."
 - **Medication:** "Pharmacies stopped forged prescriptions by never trusting the paper, only the callback.
   Content can request an action; only the principal's own channel can authorize it."
 - **Military:** "Militaries never let a radio message launch a missile. Orders come from the authenticated
@@ -446,9 +446,9 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 
 **Algorithmic trading** (3 searches)
 - AP hack, 23 Apr 2013 (verified via search): https://www.csmonitor.com/layout/set/amphtml/USA/2013/0423/Hackers-compromise-Associated-Press-Twitter-account-tweet-false-report-of-White-House-attack
-- Knight Capital 15c3-5 settlement, $12M (verified via search): https://www.wilmerhale.com/insights/client-alerts/knight-capital-settles-rule-15c3-5-violations-with-sec-agrees-to-pay-12-million
+- Knight Capital: ~$460M lost in ~45 min on Aug 1 2012; $12M SEC penalty under 15c3-5 (verified against SEC order 34-70694): https://www.wilmerhale.com/insights/client-alerts/knight-capital-settles-rule-15c3-5-violations-with-sec-agrees-to-pay-12-million
 - FINRA, Market Access Rule (verified via search): https://www.finra.org/rules-guidance/guidance/reports/2022-finras-examination-and-risk-monitoring-program/market-access-rule
-- ⚠ SEC Release 34-70694: https://www.sec.gov/litigation/admin/2013/34-70694.pdf
+- SEC Release 34-70694 (verified): https://www.sec.gov/litigation/admin/2013/34-70694.pdf
 - ⚠ LULD plan: https://www.luldplan.com
 
 **Voice assistants**
@@ -460,9 +460,9 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 - ⚠ Amazon help, voice code (odd survey subdomain): https://digprjsurvey.amazon.com/csad/help/node/GAA2RYUEDNT5ZSNK
 
 **Medication safety** (no searches run; **all ⚠**, including the override-rate figures)
-- ⚠ van der Sijs et al., JAMIA 2006 (49–96% overrides): https://pubmed.ncbi.nlm.nih.gov/16357358/
-- ⚠ Isaac et al., Arch Intern Med 2009 (~90% high-severity overridden): https://pubmed.ncbi.nlm.nih.gov/19204211/
-- ⚠ Nanji et al., JAMIA 2018 (~73% overridden): https://academic.oup.com/jamia/article/25/5/476/4705617
+- van der Sijs et al., JAMIA 2006 ("overridden by clinicians in 49% to 96% of cases"; verified): https://pubmed.ncbi.nlm.nih.gov/16357358/
+- Isaac et al., Arch Intern Med 2009 (only 10.4% of high-severity interaction alerts accepted, so ~90% overridden; verified, PMID corrected from 19204211): https://pubmed.ncbi.nlm.nih.gov/19204222/
+- Nanji et al., JAMIA 2018 (73.3% overridden; verified): https://academic.oup.com/jamia/article/25/5/476/4705617
 - ⚠ Koppel et al., JAMIA 2008 (BCMA workarounds): https://pubmed.ncbi.nlm.nih.gov/18436903/
 - ⚠ ISMP high-alert medications: https://www.ismp.org/recommendations/high-alert-medications-acute-list
 - ⚠ CDC on PDMPs: https://www.cdc.gov/overdose-prevention/hcp/clinical-guidance/prescription-drug-monitoring-programs.html
@@ -492,7 +492,7 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 - ⚠ Microsoft, illicit consent grants: https://learn.microsoft.com/en-us/defender-office-365/detect-and-remediate-illicit-consent-grants
 
 **Agency law** (Restatement §§2.01–2.03, 4.01, 8.01 cited from memory ⚠)
-- ⚠ *Moffatt v. Air Canada*, 2024 BCCRT 149 (search result, not opened): https://www.dww.com/articles/bc-tribunal-finds-air-canada-liable-for-inaccurate-advice-given-by-website-chatbot
+- *Moffatt v. Air Canada*, 2024 BCCRT 149 (BC Civil Resolution Tribunal, Feb 14 2024, ~C$812 incl. interest and fees; verified via consistent secondary reporting, CanLII blocked fetch): https://www.dww.com/articles/bc-tribunal-finds-air-canada-liable-for-inaccurate-advice-given-by-website-chatbot
 - ⚠ UCC §3-404 (search result, not opened): https://www.law.cornell.edu/ucc/3/3-404
 - ⚠ EU Directive 2024/2853 (the 9 Dec 2026 date comes from secondary summaries): https://eur-lex.europa.eu/EN/legal-content/summary/defective-products-liability.html
 - ⚠ Venable, "Rogue AI Agents Won't Be Testifying — You Will" (Apr 2026, snippet only): https://www.venable.com/insights/publications/2026/04/rogue-ai-agents-wont-be-testifying-you-will
@@ -503,11 +503,11 @@ Same columns as §6. Ticket IDs are BACKLOG.md IDs. S10–S12 are new stretch ti
 - ⚠ Heuer, *Psychology of Intelligence Analysis* (1999): https://www.cia.gov/resources/csi/books-monographs/psychology-of-intelligence-analysis-2/
 - ⚠ Thornburgh–Boccardi report (CBS, 2005): https://www.cbsnews.com/htdocs/pdf/complete_report/CBS_Report.pdf
 - ⚠ Admiralty code: https://en.wikipedia.org/wiki/Admiralty_code
-- ⚠ Syrian Electronic Army / AP hack: https://en.wikipedia.org/wiki/Syrian_Electronic_Army (the "$136B" figure is unverified)
+- ⚠ Syrian Electronic Army / AP hack: https://en.wikipedia.org/wiki/Syrian_Electronic_Army ("$136B" verified: Bloomberg, Apr 23 2013, https://www.bloomberg.com/news/2013-04-23/fake-report-erasing-136-billion-shows-market-s-fragility.html)
 - ⚠ *Verification Handbook*: https://datajournalism.com/read/handbook/verification-3
 - ⚠ Curveball / circular reporting: https://en.wikipedia.org/wiki/Curveball_(informant)
 
 **Added by T0c (verified 2026-10-12 via web search)**
-- Zhu, Yang, Wang, Guo, Wang, "MELON: Provable Defense Against Indirect Prompt Injection Attacks in AI Agents",
-  ICML 2025 (PMLR 267). https://arxiv.org/abs/2502.05174, https://proceedings.mlr.press/v267/zhu25z.html.
+- Zhu, Yang, Wang, Guo, W. Y. Wang, "MELON: Provable Defense Against Indirect Prompt Injection Attacks in AI Agents",
+  ICML 2025 (PMLR 267:80310–80329). https://arxiv.org/abs/2502.05174, https://proceedings.mlr.press/v267/zhu25z.html.
   It masks the user prompt, re-executes, and flags an attack when the masked and original runs produce similar tool calls. Evaluated on AgentDojo.
