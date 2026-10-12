@@ -6,13 +6,18 @@
 > the four demo'd endpoints and the delivery-gate replays, not on this map.
 
 - **Target:** DVAA (Damn Vulnerable AI Agent), organizer-provided, pinned `57918267`, localhost only.
-- **Scope / safety:** defensive measurement only. **No new payloads were authored.** Every exploit input
-  comes from DVAA's own bundled payload builders (`.dvaa/dvaa-target/src/payloads/*`) or verbatim from
-  DVAA's own captured demo output (`captures/attack/*.demo.json`, emitted by `dvaa demo … --json`).
+- **Scope / safety:** defensive measurement only. **No new attack payloads were authored.** Every
+  **outbound exfil** input (all 3 cases) and the RAGBot request-side poison come from DVAA's own bundled
+  payload builders (`.dvaa/dvaa-target/src/payloads/*`) or verbatim from DVAA's own captured demo output
+  (`captures/attack/*.demo.json`, emitted by `dvaa demo … --json`). **Exception, disclosed:** the
+  FlightBot/RepoBot *request-side* messages are short team-written paraphrases of how DVAA delivers the
+  poison (DVAA reads the page / `AGENTS.md` inside the agent, so no verbatim copy is captured). They are
+  marked `requestVerbatim:false` in `probe-output.json`, and their request-side `prevent:true` is **not**
+  claimed as a measurement (hence ⚠️ below).
 - **Reproduce:** `node captures/dvaa-challenges/probe.mjs` (full JSON in `probe-output.json`). The probe
   feeds each documented exploit to the **real** T3 detector core (`sentinel/detectors`) and is deterministic
   on the payload, so it needs **no live fleet and no host ports** — it cannot collide with a concurrently
-  running compose project. Ran on Node v22.22.3, 2026-10-12.
+  running compose project. Ran on Node v22.22.3, 2026-10-12. Set `DVAA_DIR` if the pinned DVAA checkout is not at `./.dvaa/dvaa-target`.
 
 ## Column meaning (and the prevention boundary)
 
@@ -41,7 +46,8 @@ outbound `honeytoken.exact_match`, `taint.untrusted_span_copied_to_sink`, `egres
 `destination.payee_not_confirmed`. The ⚠️ cells are the key honesty point: request-side prevention is
 **not** claimed where DVAA delivers the poison inside the agent — there the **egress boundary** (demonstrated
 end-to-end by `scripts/egress-demo.sh`, observe→block) is the preventive control, and this run measures the
-honeytoken match it keys on.
+honeytoken match it keys on. `probe-output.json` reports `t3_prevent_requestside:true` for all three cases, but for FlightBot/RepoBot
+that is on a paraphrased request (`requestVerbatim:false`), so the table deliberately shows ⚠️, not ✅.
 
 ## Full roster — documented coverage (NOT exercised live this run)
 
