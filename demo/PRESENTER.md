@@ -128,6 +128,18 @@ Running long? Cut the benign pass in Beat 4 first, then Beat 6, then shrink 3b. 
   sends the Track 3 alerts to Track 1's SOC Brief, which turns them into a plain-English analyst brief (offline, no
   LLM key). It prints the brief and also writes `.eval/soc-handoff/brief.md`. If it hasn't merged, skip it.
 
+### Encore (only if asked): both layers, one attack
+
+Use this only if a judge asks "what about attacks the chat proxy can't see?". Run
+`scripts/encore-two-layer.sh block`. It takes about 25 s on its own compose project (`sentinel-encore`, net
+`10.231.53.0/24`, override with `ENCORE_PROJECT` / `ENCORE_NET`) and only removes its own containers.
+- What happens: a benign "review my repo" turn passes the chat proxy. RepoBot reads DVAA's poisoned `AGENTS.md`
+  and tries to POST fake credentials out. The egress inspector denies it (`destination_not_allowlisted`,
+  `honeytoken_match`), and the last line reads **`GROUND_TRUTH canary hits: 0`**, followed by `ENCORE PASS`.
+- Say: **"The chat layer only sees the response, so it alerts. The egress layer decides on the host, and the attacker's server got nothing."**
+- Control, if anyone doubts it's live: `scripts/encore-two-layer.sh observe`. The same attack lands with 2 canary hits and is recorded.
+- Exit 3 means Docker or the DVAA image is missing. Skip the encore.
+
 ## If X breaks
 
 - **DVAA down** (`up` fails, or Colima crashed): run `demo/run-demo.sh --no-dvaa --no-teardown`. Every beat replays from
