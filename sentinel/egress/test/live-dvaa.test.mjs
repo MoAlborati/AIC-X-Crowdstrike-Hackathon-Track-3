@@ -23,7 +23,12 @@ const RUN_ID = `${process.pid}-${randomBytes(3).toString('hex')}`;
 const PROJECT = process.env.EGRESS_TEST_PROJECT || `sentinel-egress-t12test-${RUN_ID}`;
 const SUBNET_ATTEMPTS = 6;
 let NET = process.env.EGRESS_TEST_NET || null; // picked lazily (pickSubnet) unless pinned
-const LOGDIR = fs.mkdtempSync(path.join(os.tmpdir(), 't12-live-'));
+// Bind-mounted log dir lives under the repo's gitignored .eval/, NEVER under os.tmpdir(): Docker runtimes
+// that run the daemon in a VM (Colima, Lima, Rancher Desktop, remote daemons) share only $HOME-ish paths,
+// so a /var/folders/... or /tmp mount is silently empty inside the container (issue #60: 6/7 failed on Colima).
+const REPO = path.resolve(HERE, '..', '..', '..');
+const LOGDIR = path.join(REPO, '.eval', `egress-live-${RUN_ID}`);
+fs.mkdirSync(LOGDIR, { recursive: true });
 fs.chmodSync(LOGDIR, 0o777);
 const LOG = path.join(LOGDIR, 'egress.jsonl');
 const IMAGE = process.env.DVAA_IMAGE || 'dvaa-t1-dvaa';
@@ -56,10 +61,12 @@ function pickSubnet() {
 }
 let torn = false;
 function teardown() {
-  if (torn || skip) return; torn = true;
+  if (torn) return; torn = true;
+  if (skip) { try { fs.rmSync(LOGDIR, { recursive: true, force: true }); } catch {} return; }
   spawnSync('docker', ['compose', '-p', PROJECT, '-f', COMPOSE, 'down', '-v', '--remove-orphans'], {
     env: { ...process.env, EGRESS_NET: NET ?? '10.232.0', EGRESS_LOG_DIR: LOGDIR, DVAA_IMAGE: IMAGE }, stdio: 'ignore', timeout: 60000,
   });
+  try { fs.rmSync(LOGDIR, { recursive: true, force: true }); } catch {}
 }
 process.on('exit', teardown);
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { teardown(); process.exit(130); });
@@ -108,6 +115,15 @@ function sendFromDvaa(url, body) {
   return out.trim();
 }
 const hitsFor = (marker) => canaryHits().filter((h) => h.url.includes(marker));
+
+// Not skipped: runs on every machine, docker or not (issue #60 regression guard).
+test('isolation: bind-mounted log dir is under the repo .eval/, never under os.tmpdir(); project + subnet are per-run', () => {
+  const real = (p) => fs.realpathSync(p);
+  const tmp = real(os.tmpdir());
+  assert.ok(!real(LOGDIR).startsWith(tmp + path.sep), `log dir ${LOGDIR} must not be under os.tmpdir() (${tmp})`);
+  assert.ok(real(LOGDIR).startsWith(real(path.join(REPO, '.eval')) + path.sep), `log dir ${LOGDIR} must be under <repo>/.eval/`);
+  if (!process.env.EGRESS_TEST_PROJECT) assert.match(PROJECT, new RegExp(`-${process.pid}-[0-9a-f]{6}$`));
+});
 
 before(async () => { if (!skip) await up('observe', 'api.openai.com'); });
 after(() => teardown());
