@@ -221,7 +221,7 @@ export function buildReplay(capture, alerts, extra = {}) {
   for (const alert of alerts) {
     const alertNodeId = `alert:${alert.id}`;
     addNode({
-      id: alertNodeId, lane: 'detection', kind: 'alert', label: `${alert.detectName} · ${alert.disposition}`,
+      id: alertNodeId, lane: 'detection', kind: 'alert', label: `${alert.detectName} · ${alert.shownDisposition ?? alert.disposition}`,
       severity: alert.severity, severityName: alert.severityName, flags: alert.invalid ? ['invalid'] : [],
     });
     const pathNodes = alert.taintPath.map((h, i) => resolveHop(h, alert, i));
@@ -253,7 +253,7 @@ export function buildReplay(capture, alerts, extra = {}) {
       }
       stepEdges.push(addEdge(malicious, alertNodeId, 'verdict'));
     }
-    step('alert', `${alert.severityName} · ${alert.detectName} → ${alert.disposition}`, [...stepNodes], stepEdges, [alert.id], {
+    step('alert', `${alert.severityName} · ${alert.detectName} → ${alert.shownDisposition ?? alert.disposition}`, [...stepNodes], stepEdges, [alert.id], {
       latencyMs: alert.latencyMs, narrative: alert.caseCard.narrative,
     });
   }

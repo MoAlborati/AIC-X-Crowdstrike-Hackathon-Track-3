@@ -62,8 +62,12 @@ after(() => {
   }
 });
 
-test('T3 on aim-ab run A: response-side flagged:false/alert:true verdicts become alert-only T4 alerts, never StandIn', () => {
-  assert.equal(statuses[0].status, 200, 'T3 response findings are post-execution evidence: the reply is delivered, not withheld');
+test('T3 on aim-ab run A (block mode): honeytoken in response tool-call args WITHHOLDS the reply (B1, #56); alerts stay response-side alert_only/ReportOnly, never StandIn', () => {
+  // B1 (#56): the in-process tool already ran (prevents:false), but the reply carrying its result is withheld.
+  assert.equal(statuses[0].status, 403, 'block mode withholds the reply that carries post-execution exfil evidence');
+  const refusal = JSON.parse(statuses[0].text);
+  assert.equal(refusal.error.code, 'flagged_response');
+  for (const t of DVAA_HONEYTOKENS) assert.ok(!statuses[0].text.includes(t.value), `refusal leaks ${t.id}`);
   const alerts = allAlerts(outDir);
   assert.ok(alerts.length >= 1, 'T3 produced alerts');
   const cats = new Set(alerts.map((a) => a.Category));
@@ -74,7 +78,9 @@ test('T3 on aim-ab run A: response-side flagged:false/alert:true verdicts become
     assert.equal(a.PipelineContext.StandIn, false);
     assert.equal(a.PipelineContext.Direction, 'response');
     assert.equal(a.PipelineContext.Enforcement, 'alert_only');
-    assert.equal(a.PatternDispositionDescription, 'ReportOnly');
+    assert.equal(a.PipelineContext.ProxyAction, 'blocked_response');
+    assert.equal(a.PipelineContext.Outcome, 'reply_withheld_tool_already_executed');
+    assert.equal(a.PatternDispositionDescription, 'ReportOnly', 'never reported as a prevented (Blocked) action');
     assert.match(a.CaseCard.Narrative, /^\[response-side · alert_only\]/);
   }
   // The honeytoken alert names the real tool call from the DVAA reply.
@@ -87,7 +93,16 @@ test('post-#41: each T3 alert-only finding becomes exactly ONE alert (proxy-reco
   const ex = recs.find((r) => r.type === 'exchange');
   const t3Verdicts = ex.verdicts.filter((v) => v.detector === 'sentinel-t3');
   assert.equal(t3Verdicts.length, 1, 'the T3 response verdict is recorded once, by the proxy');
-  assert.ok(recs.some((r) => r.type === 'alert' && r.reason === 'detector_alert'), 'proxy emitted its detector_alert record');
+  // B1 (#56): the verdict is now flagged, so the proxy emits a `flagged` response ALERT with action
+  // `blocked` (block mode) instead of the alert-only `detector_alert` record.
+  assert.equal(t3Verdicts[0].flagged, true);
+  assert.equal(t3Verdicts[0].prevents, false);
+  assert.equal(t3Verdicts[0].postExecution, true);
+  assert.equal(ex.action, 'blocked_response');
+  const flaggedAlerts = recs.filter((r) => r.type === 'alert' && r.reason === 'flagged' && r.phase === 'response');
+  assert.equal(flaggedAlerts.length, 1, 'proxy emitted exactly one flagged response ALERT');
+  assert.equal(flaggedAlerts[0].action, 'blocked');
+  assert.ok(!recs.some((r) => r.type === 'alert' && r.reason === 'detector_alert'), 'no duplicate alert-only record for a flagged verdict');
   const alerts = allAlerts(outDir);
   // One alert per T3 finding on the single recorded verdict. Pre-fix (pipeline parking + #41 proxy
   // recording) this was 2x: every finding rendered twice on the dashboard.
@@ -97,6 +112,26 @@ test('post-#41: each T3 alert-only finding becomes exactly ONE alert (proxy-reco
   const opsPath = path.join(outDir, 'ops-alerts.jsonl');
   const ops = existsSync(opsPath) ? readFileSync(opsPath, 'utf8') : '';
   assert.doesNotMatch(ops, /detector_alert/, 'detector_alert is a detection duplicate, not an operational alert');
+});
+
+test('judge-facing text never calls a post-execution case "prevented" (B1 withholds the reply, the tool already ran)', () => {
+  const alerts = allAlerts(outDir);
+  assert.ok(alerts.length >= 1);
+  for (const a of alerts) {
+    const text = JSON.stringify(a);
+    assert.doesNotMatch(text, /\bprevent(ed|s|ion)?\b/i, `alert ${a.AlertId} claims prevention`);
+    assert.doesNotMatch(text, /blocked before reaching the agent/i, `alert ${a.AlertId} claims a pre-agent block`);
+    assert.notEqual(a.PatternDispositionDescription, 'Blocked');
+    assert.match(a.CaseCard.Narrative, /tool_already_executed/);
+  }
+  // The detector's own finding narrative (proxy-recorded verdict) says "AFTER in-process execution".
+  const recs = readFileSync(capturePath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const v = recs.find((r) => r.type === 'exchange').verdicts.find((x) => x.detector === 'sentinel-t3');
+  for (const f of v.findings) {
+    assert.equal(f.prevents, false, f.ruleId);
+    assert.match(f.caseCard.narrative, /AFTER in-process execution/, f.ruleId);
+    assert.doesNotMatch(f.caseCard.narrative, /\bprevented\b|blocked before reaching the agent/i, f.ruleId);
+  }
 });
 
 test('T3 canaries: rehydrated by toAlertVerdict for T4, and no honeytoken value is written anywhere', () => {

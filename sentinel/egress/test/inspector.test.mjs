@@ -170,7 +170,8 @@ test('#18 review (3): CONNECT targets parsed without split(":"): IPv6 literals w
     assert.equal(records[0].action, 'forward');
     records.length = 0;
     assert.match(await connect(port, `[2001:db8::7]:443`), /403/);
-    assert.equal(records[0].host, '2001:db8::7');
+    assert.equal(records[0].host, null, 'non-allowlisted host is logged as hash + length only');
+    assert.equal(records[0].host_len, '2001:db8::7'.length);
     assert.deepEqual(records[0].reasons, ['destination_not_allowlisted']);
     records.length = 0;
     assert.match(await connect(port, '::1:443'), /403/);
