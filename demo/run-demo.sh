@@ -198,8 +198,8 @@ headline_cmd() {
     'DVAA prevents more|$b.prevention.recall > .headlineLenses.prevention.recall'
     '63 percent (DVAA prevention recall)|($b.prevention.recall * 100 | round) == 63'
     'versus our 42 (T3 prevention recall)|(.headlineLenses.prevention.recall * 100 | round) == 42'
-    'DVAA prevention count includes benign hits|$b.prevention.fp > 0'
-    '12.8 percent of benign traffic (DVAA prevention FP)|($b.prevention.falsePositiveRate * 1000 | round) == 128'
+    'its scanner also blocks benign traffic|$b.prevention.fp > 0'
+    'blocks 12.8 percent of benign traffic (DVAA prevention FP)|($b.prevention.falsePositiveRate * 1000 | round) == 128'
     '8KB evasion 2 out of 2|(.beatsBaseline.eligible | length) == 2 and .beatsBaseline.byDetector.t3.beaten == 2'
     'median under a tenth of a millisecond|.detectors.t3.latencyMs.median < 0.1'
     'p95 around half a millisecond (0.25 to under 1 ms)|.detectors.t3.latencyMs.p95 >= 0.25 and .detectors.t3.latencyMs.p95 < 1'
@@ -622,7 +622,7 @@ advance
 # ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
-  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, because its count includes scanner hits that also flag 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
+  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus we detect slightly more than DVAA's scanner, with zero false alarms on 164 benign cases versus its 21. DVAA prevents more, 63 percent versus our 42, but its scanner also blocks 12.8 percent of benign traffic. 8KB evasion: 2 out of 2 fixtures. In-detector latency: median under a tenth of a millisecond, p95 around half a millisecond."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
   say "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 else
