@@ -1,4 +1,4 @@
-// SentinelProxy T3 — detector pipeline. Pure library: no network, no LLM, no I/O except the logger.
+// Tourniquet T3 — detector pipeline. Pure library: no network, no LLM, no I/O except the logger.
 //
 //   const det = createDetector({ policy, honeytokens: DVAA_HONEYTOKENS, agent: {name:'RAGBot', port:7005} });
 //   const decision = det.inspect({ sessionId, request, response });   // never throws; fails closed

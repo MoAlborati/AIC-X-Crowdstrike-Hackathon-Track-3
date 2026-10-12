@@ -1,8 +1,8 @@
 {
-  "name": "@sentinelproxy/egress",
+  "name": "@tourniquet/egress",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy T12 — tool-boundary egress inspector (forward proxy for DVAA's outbound tool calls). Zero dependencies.",
+  "description": "Tourniquet T12 — tool-boundary egress inspector (forward proxy for DVAA's outbound tool calls). Zero dependencies.",
   "type": "module",
   "main": "inspector.mjs",
   "engines": { "node": ">=22" },

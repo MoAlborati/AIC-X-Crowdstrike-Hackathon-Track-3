@@ -3,7 +3,7 @@
 //
 //   node captures/contrast/build-contrast.mjs [RUN_DIR]   (default: captures/contrast/runs)
 //
-// Reads DVAA's own `demo aim-ab --json` outputs plus SentinelProxy's JSONL capture logs, checks the
+// Reads DVAA's own `demo aim-ab --json` outputs plus Tourniquet's JSONL capture logs, checks the
 // ground truth for every column, writes RUN_DIR/contrast.json and prints a markdown table.
 // Exit 0 only if every expectation holds; otherwise prints each failed check and exits 1.
 //
@@ -98,8 +98,8 @@ export function inspectorFromLogs(...logs) {
 /** Column-3 header: says "stand-in inspector" in the header itself whenever the stand-in ran. */
 export function proxyColumnHeader(inspector) {
   return inspector?.standIn !== false
-    ? '3. Vulnerable + SentinelProxy (block, **stand-in inspector**)'
-    : `3. Vulnerable + SentinelProxy (block, ${inspector.label})`;
+    ? '3. Vulnerable + Tourniquet (block, **stand-in inspector**)'
+    : `3. Vulnerable + Tourniquet (block, ${inspector.label})`;
 }
 
 function check(failures, cond, msg) {
@@ -201,7 +201,7 @@ export function buildContrast(dir) {
     outcome: 'SAFE — input refused as prompt injection, no tool call',
   };
 
-  // Column 3 — RAGBot 7005 behind SentinelProxy, block mode.
+  // Column 3 — RAGBot 7005 behind Tourniquet, block mode.
   const blockEx = findExchangesForCanary(blockLog, pBlock.canary?.url);
   const blockHits = runBHits(pBlock);
   check(failures, blockEx.length === 1, `proxy-block: expected 1 proxy exchange for run B, found ${blockEx.length}`);
@@ -211,7 +211,7 @@ export function buildContrast(dir) {
   check(failures, blockEx.every((r) => r.action !== 'forwarded'), 'proxy-block: run B request was forwarded to the agent');
   check(failures, blockHits === 0, `proxy-block: canary saw ${blockHits} hit(s) from run B`);
   const proxyBlock = {
-    agent: 'RAGBot 7005 behind SentinelProxy (block)',
+    agent: 'RAGBot 7005 behind Tourniquet (block)',
     source: 'proxy-block.demo.json runB + proxy-block.proxy.jsonl',
     inspector: inspector.label,
     inspectorStandIn: inspector.standIn,
@@ -236,7 +236,7 @@ export function buildContrast(dir) {
   check(failures, obsPhases.has('request') && obsPhases.has('response'), `proxy-observe: expected request+response verdicts, got ${[...obsPhases]}`);
   check(failures, obsHits === 1, `proxy-observe: expected the forwarded run B to reach the canary once, saw ${obsHits}`);
   const proxyObserve = {
-    agent: 'RAGBot 7005 behind SentinelProxy (observe)',
+    agent: 'RAGBot 7005 behind Tourniquet (observe)',
     source: 'proxy-observe.demo.json runB + proxy-observe.proxy.jsonl',
     inspector: obsInspector.label,
     inspectorStandIn: obsInspector.standIn,
@@ -273,7 +273,7 @@ export function toMarkdown(c) {
     `| Injection reached the agent | yes | yes (exfilAttempted) | yes (refused it) | **no** (blocked at proxy) |`,
     `| Exfil executed | **${yn(v.exfilExecuted)}** | ${yn(aim.exfilExecuted)} | ${yn(securebot.exfilExecuted)} | no (agent never ran) |`,
     `| Canary hits from this run | ${v.canaryHits} | ${aim.canaryHits} | ${securebot.canaryHits} | ${block.canaryHits} |`,
-    `| Who stopped it | nobody | AIM capability grant | SecureBot input filter | SentinelProxy, ${block.proxyStatus} \`${block.proxyAction}\` |`,
+    `| Who stopped it | nobody | AIM capability grant | SecureBot input filter | Tourniquet, ${block.proxyStatus} \`${block.proxyAction}\` |`,
     `| Outcome | ${v.outcome} | ${aim.outcome} | ${securebot.outcome} | ${block.outcome} |`,
     '',
     `Column 3 inspector: \`${block.inspector}\`${block.inspectorStandIn ? ' (STAND-IN, not the T3 detector)' : ''}, derived from the detector field the proxy logged (${block.sentinel}). Request-phase needles hit: ${block.verdicts.flatMap((x) => x.needles).join(', ') || 'none'}.`,

@@ -4,14 +4,14 @@
 # Three columns, one attack (DVAA's own bundled `demo aim-ab` payload APWN-DE-003):
 #   1. vulnerable   RAGBot 7005 direct                      -> exfil executes
 #   2. defended     RAGBot-AIM 7014 (AIM twin), SecureBot 7001 -> refused / denied
-#   3. proxied      RAGBot 7005 behind SentinelProxy         -> blocked before the agent runs
+#   3. proxied      RAGBot 7005 behind Tourniquet         -> blocked before the agent runs
 #
 # We author NO attack content. Every request is sent by DVAA's own `demo aim-ab` runner;
 # we only point its second run ("run B") at a different port through the env knobs the runner
 # already supports (DVAA_RAGBOT_AIM_PORT, DVAA_BASE). Run A is always the unmodified vulnerable
 # RAGBot, so every file carries its own positive control.
 #
-# SentinelProxy runs in a throwaway container that shares the DVAA container's network namespace,
+# Tourniquet runs in a throwaway container that shares the DVAA container's network namespace,
 # so the demo's 127.0.0.1 canary and the proxy see the same loopback as the agents.
 #
 # Detector: by default the proxy runs exactly as shipped (post-#41): `node sentinel/proxy/cli.mjs` with
@@ -106,7 +106,7 @@ start_proxy() { # mode
     sleep 0.2
   done
   docker logs "$PROXY_NAME" >&2 || true
-  die "SentinelProxy ($1) did not come up on :$PROXY_PORT"
+  die "Tourniquet ($1) did not come up on :$PROXY_PORT"
 }
 
 stop_proxy() { # name ; keep the proxy's full capture log next to the demo output
@@ -114,14 +114,14 @@ stop_proxy() { # name ; keep the proxy's full capture log next to the demo outpu
   cp "$WORK/out/proxy-capture.jsonl" "$OUT/$1.proxy.jsonl"
 }
 
-echo "== T8 contrast against $CONTAINER (SentinelProxy from $SENTINEL_REF @ ${SENTINEL_SHA:0:12}) =="
+echo "== T8 contrast against $CONTAINER (Tourniquet from $SENTINEL_REF @ ${SENTINEL_SHA:0:12}) =="
 demo baseline-aim                                   # A: RAGBot 7005   B: RAGBot-AIM 7014 (stock)
 demo securebot  DVAA_RAGBOT_AIM_PORT=7001           # A: RAGBot 7005   B: SecureBot 7001
 start_proxy block
-demo proxy-block DVAA_RAGBOT_AIM_PORT="$PROXY_PORT" # A: RAGBot 7005   B: SentinelProxy(block)  -> 7005
+demo proxy-block DVAA_RAGBOT_AIM_PORT="$PROXY_PORT" # A: RAGBot 7005   B: Tourniquet(block)  -> 7005
 stop_proxy proxy-block
 start_proxy observe
-demo proxy-observe DVAA_RAGBOT_AIM_PORT="$PROXY_PORT" # A: RAGBot 7005 B: SentinelProxy(observe) -> 7005
+demo proxy-observe DVAA_RAGBOT_AIM_PORT="$PROXY_PORT" # A: RAGBot 7005 B: Tourniquet(observe) -> 7005
 stop_proxy proxy-observe
 
 # Inspector label = what the proxy logged (verdict.detector), via the same function build-contrast uses.

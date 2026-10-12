@@ -9,7 +9,7 @@ export const LANE_TITLES = {
   untrusted: 'Untrusted data (tool results, documents)',
   action: 'Agent actions (tool calls)',
   sink: 'Egress sinks',
-  detection: 'Detections (SentinelProxy)',
+  detection: 'Detections (Tourniquet)',
 };
 
 const LANE_H = 92;

@@ -42,7 +42,7 @@ rows.sort((a, b) => a.path.localeCompare(b.path));
 
 const manifest = {
   ticket: 'T6',
-  description: 'Labeled evaluation corpus for the SentinelProxy detector (T3) and scoring harness (T7).',
+  description: 'Labeled evaluation corpus for the Tourniquet detector (T3) and scoring harness (T7).',
   schema: 'captures/variants/README.md#fixture-schema',
   counts: {
     total: rows.length,

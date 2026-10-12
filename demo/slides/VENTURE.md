@@ -1,4 +1,6 @@
-# Venture slide: SentinelProxy as a product (Ciocca Venture Award)
+# Venture slide: Tourniquet as a product (Ciocca Venture Award)
+
+*A tourniquet stops the bleed: Tourniquet stops data exfiltration (the "bleed") and other agent tool-misuse vulnerabilities at the egress boundary.*
 
 One slide for @c-awad's 18:00 deck, plus about 30 seconds of speaker notes. Mo on #131: "Ciocca is a go".
 Every number on this slide comes from `sentinel/scoring/results.json`. There are no invented market figures or customers.
@@ -10,7 +12,7 @@ solution, how it stands apart from existing tools, and a credible path from prot
 
 ## Slide content
 
-**Title:** SentinelProxy: a drop-in egress guard for tool-using agents
+**Title:** Tourniquet: a drop-in egress guard for tool-using agents
 
 **Problem.** Agents with tools read untrusted text (tickets, docs, web pages). An indirect prompt injection hidden in
 that text makes the agent send private data out with the user's authority. This is the "lethal trifecta": private
@@ -28,7 +30,7 @@ data, untrusted content, external communication.
 like an attack?", and an attacker can reword it. We ask "did the user authorize this destination, and is it on the
 allowlist?" Rewording doesn't change where the data goes. We are *not* a better classifier:
 
-| | What it is | Where SentinelProxy fits |
+| | What it is | Where Tourniquet fits |
 |---|---|---|
 | Falcon AIDR | CrowdStrike's enterprise AI detection and response platform | We complement it at the tool boundary. We have not integrated with it. Our alerts use an AIDR-shaped schema |
 | NeMo Guardrails | NVIDIA's open-source toolkit of programmable rails inside the app | We need no app code changes: a sidecar in front of the chat endpoint plus an egress proxy |

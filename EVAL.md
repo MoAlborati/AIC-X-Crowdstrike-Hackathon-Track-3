@@ -1,4 +1,4 @@
-# EVAL — evaluate SentinelProxy locally with one command
+# EVAL — evaluate Tourniquet locally with one command
 
 For teammates and judges. Everything runs on your machine against DVAA, the organizers'
 intentionally vulnerable training sandbox, published on `127.0.0.1` only. No API keys are needed and no
@@ -80,7 +80,7 @@ which is the setting for judging the final build.
 
 ## SOC handoff
 
-SentinelProxy's alerts go to Track 1's SOC Brief, which turns them into a plain-English analyst brief. It runs offline, with no LLM key and no network.
+Tourniquet's alerts go to Track 1's SOC Brief, which turns them into a plain-English analyst brief. It runs offline, with no LLM key and no network.
 
 ```bash
 scripts/soc-handoff.sh            # prints the brief and writes .eval/soc-handoff/brief.md
@@ -91,9 +91,9 @@ node --test scripts/test/soc-handoff.test.mjs
   - the proxy-blocked T3 alert: `captures/contrast/runs/proxy-block.t4-alerts.json`
   - four egress-deny alerts: `sentinel/egress/evidence-block.jsonl`
   - the highest-severity post-execution (report-only) alert: `captures/contrast/runs/proxy-observe.proxy.jsonl`
-- **Output** gives, for each alert: the verdict, priority, what happened, the SentinelProxy stage, the recommended action, and the MITRE ATLAS/ATT&CK and OWASP LLM/Agentic tags. The expected overall verdict is `ESCALATE · P1` across 6 alerts.
+- **Output** gives, for each alert: the verdict, priority, what happened, the Tourniquet stage, the recommended action, and the MITRE ATLAS/ATT&CK and OWASP LLM/Agentic tags. The expected overall verdict is `ESCALATE · P1` across 6 alerts.
 - **Safety:** placeholder sidecars are refused. If the rendered brief contains any known honeytoken value, the script exits 3 and writes nothing. Canaries appear by id only.
-- **Known SOC Brief limit:** it uses one wording for every SentinelProxy alert ("the proxy stopped the send"). For the report-only alert, the brief adds a handoff note saying the data should be treated as already sent.
+- **Known SOC Brief limit:** it uses one wording for every Tourniquet alert ("the proxy stopped the send"). For the report-only alert, the brief adds a handoff note saying the data should be treated as already sent.
 
 ## Submission snapshot (#73)
 
@@ -106,7 +106,7 @@ scripts/make-submission-snapshot.sh   # [--skip-tests] [--no-fetch] [--force]
 
 1. It checks that the tree is clean and that HEAD == `origin/main` after a fetch.
 2. It runs `scripts/eval.sh test` (`--skip-tests` skips this). Run it from a checkout outside `/tmp`, since two isolation tests assert repo-local paths.
-3. It writes a parentless commit of `HEAD^{tree}`, "SentinelProxy — CrowdStrike Track 3 submission (squashed snapshot of main @ <sha>)", with the Co-Authored-By trailer.
+3. It writes a parentless commit of `HEAD^{tree}`, "Tourniquet — CrowdStrike Track 3 submission (squashed snapshot of main @ <sha>)", with the Co-Authored-By trailer.
 4. It scans that tree, minus gitignored paths, for three things:
    - secrets (`gitleaks` if installed, else a built-in regex set; `SNAPSHOT_NO_GITLEAKS=1` forces the regex set);
    - local home or scratch paths;

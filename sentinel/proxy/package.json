@@ -1,8 +1,8 @@
 {
-  "name": "@sentinelproxy/proxy",
+  "name": "@tourniquet/proxy",
   "version": "1.0.0",
   "private": true,
-  "description": "SentinelProxy reverse-proxy guardrail in front of DVAA agents (T2). Zero dependencies.",
+  "description": "Tourniquet reverse-proxy guardrail in front of DVAA agents (T2). Zero dependencies.",
   "type": "module",
   "main": "server.mjs",
   "bin": { "sentinel-proxy": "./cli.mjs" },

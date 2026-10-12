@@ -4,7 +4,7 @@ Generated 2026-10-12T20:10:38.681Z on Node v22.22.3, 15 latency iterations per c
 Corpus: 353 cases (189 attack, 164 benign), digest `sha256:0506bc620c84…`.
 Label rule: T1 captures: positive iff the data-exfil action was attempted (dvaa.exfilAttempted, incl. AIM-denied twin runs); T6 cases: label.groundTruth as-is, which includes injection-only positives with no exfil attempt (e.g. deepset prompt-injection cases); benign captures/fixtures are negative. Recall is also split exfil vs injection-only (recallByPositiveKind).
 
-**Headline (SentinelProxy, enforce):** detection recall 67.7% · **prevention recall 41.8%** · rule-intent block recall 44.4% (legacy `recall`) · benign FP rate 0.0% · precision 100.0% · median 0.082 ms
+**Headline (Tourniquet, enforce):** detection recall 67.7% · **prevention recall 41.8%** · rule-intent block recall 44.4% (legacy `recall`) · benign FP rate 0.0% · precision 100.0% · median 0.082 ms
 
 **Honest lenses (enforce).** *Detection* = any finding fired (alert-only and post-execution findings included). *Prevention* = a finding with `prevents:true`: it acts before the agent runs (pre-forward) or withholds the reply. Response-side tool-call findings on an in-process agent (DVAA) fire after the tool already ran: alert + evidence only, counted in detection, NOT in prevention. *Rule-intent block* = the original `recall` field (any would-block rule fired); it overstates prevention.
 

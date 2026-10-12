@@ -1,6 +1,6 @@
 # T6: Attack and benign corpus (labeled evaluation fixtures)
 
-This is the labeled evaluation dataset for **SentinelProxy**: the defensive detector (T3) and the
+This is the labeled evaluation dataset for **Tourniquet**: the defensive detector (T3) and the
 scoring harness (T7) for the CrowdStrike × SCU hackathon (Track 3). It is purely defensive test
 data. It pairs published attack cases with a benign corpus, so we can measure both detection
 (recall) and **false positives** on benign traffic.
@@ -125,7 +125,7 @@ middle variant: docLen=22805 inMiddleGap=true evadesBaseline=true signalPresentO
   comes from the injection.
 
 The start and end variants are controls. Their injection is inside the 8KB window, so the baseline
-catches them. This is the gap that SentinelProxy's full-payload scan (T3) must close.
+catches them. This is the gap that Tourniquet's full-payload scan (T3) must close.
 
 ```jsonc
 "baseline8kb": {

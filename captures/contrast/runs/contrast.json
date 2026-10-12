@@ -88,7 +88,7 @@
     },
     "proxy": {
       "block": {
-        "agent": "RAGBot 7005 behind SentinelProxy (block)",
+        "agent": "RAGBot 7005 behind Tourniquet (block)",
         "source": "proxy-block.demo.json runB + proxy-block.proxy.jsonl",
         "inspector": "detector:sentinel-t3",
         "inspectorStandIn": false,
@@ -111,7 +111,7 @@
         "outcome": "BLOCKED — refused at request phase; agent never ran, nothing left the box"
       },
       "observe": {
-        "agent": "RAGBot 7005 behind SentinelProxy (observe)",
+        "agent": "RAGBot 7005 behind Tourniquet (observe)",
         "source": "proxy-observe.demo.json runB + proxy-observe.proxy.jsonl",
         "inspector": "detector:sentinel-t3",
         "inspectorStandIn": false,

@@ -1,4 +1,4 @@
-// SentinelProxy config loader. Pure Node (no deps), Node >= 22.
+// Tourniquet config loader. Pure Node (no deps), Node >= 22.
 //
 // Resolution order (later wins; ported CLI flags from the retired PR #21 loader):
 //   1. sentinel/config/sentinel.config.json (or the file named by --config / SENTINEL_CONFIG)

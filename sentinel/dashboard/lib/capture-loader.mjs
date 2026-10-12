@@ -285,10 +285,10 @@ export function poisonedRagDocument(raw) {
 
 // T8 contrast recordings reuse DVAA's `demo aim-ab` runner but point run B somewhere else
 // (captures/contrast/README.md, runs/contrast.json `columns`). Label run B by what it actually was.
-// `proxyRefused`: SentinelProxy refused the request at the request phase (403), so the agent never ran.
+// `proxyRefused`: Tourniquet refused the request at the request phase (403), so the agent never ran.
 export const CONTRAST_RUN_B = Object.freeze({
-  'contrast/runs/proxy-block.demo': { name: 'RAGBot', port: 7005, role: 'protected', label: 'RAGBot :7005 behind SentinelProxy (block)', twinTitle: 'Behind SentinelProxy (block)', proxyRefused: true, denialReason: 'SentinelProxy refused the request before the agent (403, request phase)' },
-  'contrast/runs/proxy-observe.demo': { name: 'RAGBot', port: 7005, role: 'observed', label: 'RAGBot :7005 behind SentinelProxy (observe)', twinTitle: 'Behind SentinelProxy (observe)' },
+  'contrast/runs/proxy-block.demo': { name: 'RAGBot', port: 7005, role: 'protected', label: 'RAGBot :7005 behind Tourniquet (block)', twinTitle: 'Behind Tourniquet (block)', proxyRefused: true, denialReason: 'Tourniquet refused the request before the agent (403, request phase)' },
+  'contrast/runs/proxy-observe.demo': { name: 'RAGBot', port: 7005, role: 'observed', label: 'RAGBot :7005 behind Tourniquet (observe)', twinTitle: 'Behind Tourniquet (observe)' },
   'contrast/runs/securebot.demo': { name: 'SecureBot', port: 7001, role: 'protected', label: 'SecureBot :7001', twinTitle: 'Defended agent (SecureBot)' },
 });
 

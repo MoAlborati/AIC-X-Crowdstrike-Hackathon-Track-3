@@ -67,7 +67,7 @@ fi
 
 # --- 3. orphan commit of the exact tree --------------------------------------------------------------
 step "3/6 orphan commit of tree $TREE"
-MSG="SentinelProxy — CrowdStrike Track 3 submission (squashed snapshot of main @ $SHORT)
+MSG="Tourniquet — CrowdStrike Track 3 submission (squashed snapshot of main @ $SHORT)
 
 Single-commit snapshot of $REMOTE/main $HEAD_SHA, built by scripts/make-submission-snapshot.sh.
 
@@ -161,7 +161,7 @@ echo "  ok  scan clean"
 # --- 5. refs -----------------------------------------------------------------------------------------
 step "5/6 create branch $BRANCH and tag $TAG (local only)"
 if [ "$FORCE" = 1 ]; then git branch -f "$BRANCH" "$SNAP" >/dev/null; else git branch "$BRANCH" "$SNAP"; fi
-TAG_MSG="SentinelProxy CrowdStrike Track 3 submission, snapshot of main @ $SHORT"
+TAG_MSG="Tourniquet CrowdStrike Track 3 submission, snapshot of main @ $SHORT"
 if [ "$FORCE" = 1 ]; then git tag -f -a "$TAG" -m "$TAG_MSG" "$SNAP" >/dev/null; else git tag -a "$TAG" -m "$TAG_MSG" "$SNAP"; fi
 [ "$(git rev-list --count "$BRANCH")" = 1 ] || die "$BRANCH has more than one commit"
 git diff --quiet "$HEAD_SHA" "$BRANCH" || die "$BRANCH tree differs from main"
@@ -172,7 +172,7 @@ step "6/6 publish (repo OWNER runs this; this script pushed nothing)"
 cat <<EOF
   Option A, gh CLI (creates the public repo, pushes the snapshot as its main branch + the tag):
     gh repo create <owner>/$REPO_NAME --public \\
-      --description "SentinelProxy, CrowdStrike x SCU AI hackathon, Track 3"
+      --description "Tourniquet, CrowdStrike x SCU AI hackathon, Track 3"
     git push https://github.com/<owner>/$REPO_NAME.git $BRANCH:main
     git push https://github.com/<owner>/$REPO_NAME.git $TAG
 

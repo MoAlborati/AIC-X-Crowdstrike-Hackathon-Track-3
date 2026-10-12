@@ -1,4 +1,4 @@
-// SentinelProxy T3 -> T2 adapter. Matches the proxy's inspector hook (sentinel/proxy/inspectors.mjs, PR #14):
+// Tourniquet T3 -> T2 adapter. Matches the proxy's inspector hook (sentinel/proxy/inspectors.mjs, PR #14):
 //
 //   async function inspector({ phase, path, headers, body, requestId, status? })
 //     -> { flagged, detector, reasons: string[], disposition, ... } | null

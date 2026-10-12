@@ -278,7 +278,7 @@ export function runScoring({ detectors, root, iterations = 5, ruleModes = {}, de
   const hErrors = h?.available ? h.errors.length : 0;
   const hm = h?.available && hErrors === 0 ? h.modes.enforce.blocking : null;
   const nullHeadline = (detector, status) => ({
-    // No invented numbers: the SentinelProxy headline stays empty unless its detector scored every case.
+    // No invented numbers: the Tourniquet headline stays empty unless its detector scored every case.
     headline: { detector, mode: 'enforce', metric: 'blocking', status },
     detectionRate: null,
     recall: null,

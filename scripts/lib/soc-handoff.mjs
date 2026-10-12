@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SOC handoff adapter: SentinelProxy T4 alerts (sentinel.alert/1.0.0) -> Track 1 SOC Brief, offline.
+// SOC handoff adapter: Tourniquet T4 alerts (sentinel.alert/1.0.0) -> Track 1 SOC Brief, offline.
 //
 //   node scripts/lib/soc-handoff.mjs --block <t4-alerts.json> --observe <t4-alerts.json> \
 //        --egress <t4-alerts.json> --out <brief.md>
@@ -92,7 +92,7 @@ function section(i, { kind, alert, from }, briefing) {
     '',
     `- **Verdict:** ${briefing.disposition.toUpperCase()}`,
     `- **Priority:** ${briefing.priority}`,
-    `- **SentinelProxy stage:** ${STAGES[kind]} (disposition ${alert.PatternDispositionDescription}, outcome \`${outcome(alert)}\`)`,
+    `- **Tourniquet stage:** ${STAGES[kind]} (disposition ${alert.PatternDispositionDescription}, outcome \`${outcome(alert)}\`)`,
     `- **What happened:** ${briefing.headline} ${briefing.explain}`,
     `- **Why:** ${briefing.why.join(' ')}`,
     `- **Recommended action:** ${briefing.whatToDo}`,
@@ -113,7 +113,7 @@ export async function buildBrief(inputs) {
   const rows = [];
   for (const item of picked) {
     const card = normalize({ id: item.alert.AlertId, record: item.alert }, []);
-    if (card.source !== 'sentinel') die(`SOC Brief did not read ${item.alert.AlertId} as a SentinelProxy alert (source=${card.source})`);
+    if (card.source !== 'sentinel') die(`SOC Brief did not read ${item.alert.AlertId} as a Tourniquet alert (source=${card.source})`);
     // No `complete` function: SOC Brief's deterministic offline path, never a model call.
     const { briefing, model } = await runChain(card);
     if (model.status !== 'skipped') die(`expected offline briefing, got model status ${model.status}`);
@@ -123,11 +123,11 @@ export async function buildBrief(inputs) {
   const counts = { t3: 0, egress: 0, post: 0 };
   for (const { item } of rows) counts[item.kind] += 1;
   const head = [
-    '# SOC handoff brief: SentinelProxy -> SOC Brief',
+    '# SOC handoff brief: Tourniquet -> SOC Brief',
     '',
     `**Overall verdict: ${top.briefing.disposition.toUpperCase()} · ${top.briefing.priority}** (${rows.length} alerts: ${counts.t3} proxy-blocked T3, ${counts.egress} egress-deny, ${counts.post} post-execution)`,
     '',
-    'Generated offline by SOC Brief (track1) from real SentinelProxy T4 alerts. No LLM key, no network. Honeytoken values are never printed; alerts name canaries by id only.',
+    'Generated offline by SOC Brief (track1) from real Tourniquet T4 alerts. No LLM key, no network. Honeytoken values are never printed; alerts name canaries by id only.',
     '',
   ].join('\n');
   return { markdown: `${head}\n${rows.map((r, i) => section(i + 1, r.item, r.briefing)).join('\n')}`, rows, top };

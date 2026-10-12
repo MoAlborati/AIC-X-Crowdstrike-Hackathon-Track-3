@@ -55,7 +55,7 @@ test('delete-the-fix: a stale 83.1% detection claim injected into the real READM
   const dir = tempRepo();
   try {
     const p = path.join(dir, 'README.md');
-    writeFileSync(p, readFileSync(p, 'utf8') + '\n\nSentinelProxy T3 detection recall is 83.1% on the DVAA corpus.\n');
+    writeFileSync(p, readFileSync(p, 'utf8') + '\n\nTourniquet T3 detection recall is 83.1% on the DVAA corpus.\n');
     const r = cli(dir);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /README\.md:\d+\s+83\.1%/);

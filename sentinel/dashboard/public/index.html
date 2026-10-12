@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SentinelProxy Incident Replay</title>
+  <title>Tourniquet Incident Replay</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
@@ -13,8 +13,9 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">◆</span>
       <div>
-        <h1>SentinelProxy · Incident replay</h1>
+        <h1>Tourniquet · Incident replay</h1>
         <p class="sub">Recorded DVAA captures, replayed deterministically. No live LLM calls.</p>
+        <p class="sub">A tourniquet stops the bleed: Tourniquet stops data exfiltration and other agent tool-misuse at the egress boundary.</p>
       </div>
     </div>
     <div class="controls">
@@ -89,7 +90,7 @@
       <div id="detail" class="detail" aria-live="polite"><p class="muted">Select a node to see its recorded content.</p></div>
     </section>
     <section class="pane detector" aria-labelledby="det-h">
-      <h2 id="det-h"><span class="side-tag det">DETECTOR</span> SentinelProxy alert feed</h2>
+      <h2 id="det-h"><span class="side-tag det">DETECTOR</span> Tourniquet alert feed</h2>
       <div id="alert-source" class="alert-source"></div>
       <div id="feed" class="feed"></div>
     </section>

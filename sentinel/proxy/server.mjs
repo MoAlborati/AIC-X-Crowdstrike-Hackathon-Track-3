@@ -1,4 +1,4 @@
-// SentinelProxy reverse proxy (T2 skeleton). Zero deps, Node >= 22.
+// Tourniquet reverse proxy (T2 skeleton). Zero deps, Node >= 22.
 //
 // Pipeline per request:
 //   0. Admission: at most limits.maxInFlight exchanges at once (over -> 503 `overloaded` + ALERT).
@@ -433,7 +433,7 @@ export function buildRefusal({ requestId, phase, reason, verdicts = [], mode, de
     error: {
       type: 'sentinel_blocked',
       code,
-      message: `SentinelProxy refused this ${phase}: ${code}`,
+      message: `Tourniquet refused this ${phase}: ${code}`,
     },
     sentinel: {
       request_id: requestId,

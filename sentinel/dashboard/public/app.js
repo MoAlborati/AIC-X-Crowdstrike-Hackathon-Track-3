@@ -332,11 +332,11 @@ function renderTwin(rp) {
 function alertSourceLabel(src) {
   const o = String(src?.origin ?? '');
   if (src?.placeholder) return 'PLACEHOLDER fixtures (not detector output)';
-  if (o === 'embedded in capture') return 'recorded with this capture (live SentinelProxy run)';
+  if (o === 'embedded in capture') return 'recorded with this capture (live Tourniquet run)';
   if (o === 'none') return 'none recorded';
   if (o.startsWith('sentinel/dashboard/alerts/')) return 'real T3 detector, replayed over the recorded traffic';
   if (o.startsWith('sentinel/scoring/')) return 'T7 scoring replay';
-  return 'live pipeline (SentinelProxy + T3)';
+  return 'live pipeline (Tourniquet + T3)';
 }
 
 function switchRun(key) {

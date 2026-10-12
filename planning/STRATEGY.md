@@ -25,7 +25,7 @@ criteria formerly used here and in `RESEARCH.md` §B. Judge-score passes (critic
   tools · credible path from prototype to launch · alongside a working demo.
 
 ### How we map to the brief (honest)
-- **"One clear exploit or defense, demoed live"** maps to one defense: SentinelProxy at the tool boundary.
+- **"One clear exploit or defense, demoed live"** maps to one defense: Tourniquet at the tool boundary.
   - **Live:** the only live beat is the proxy's benign **HTTP 200** (forwarded untouched), then DVAA's aim-ab request
     **HTTP 403**, blocked pre-forward.
   - **Recorded:** default-deny egress at the tool boundary is the control that actually stops data leaving (RepoBot/RAGBot

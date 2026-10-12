@@ -1,4 +1,4 @@
-// SentinelProxy T4 — public entry point for alert building.
+// Tourniquet T4 — public entry point for alert building.
 export * from './schema.js';
 export * from './mapping.js';
 export {

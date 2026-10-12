@@ -1,4 +1,4 @@
-// Live replay: SentinelProxy (server.mjs, shipped T2 substring + T3 inspector set) in front of the REAL
+// Live replay: Tourniquet (server.mjs, shipped T2 substring + T3 inspector set) in front of the REAL
 // DVAA fleet (127.0.0.1:7001-7023). No upstream mocks. Ported from the retired PR #21 test/live.test.js
 // (issue #37): every case that exercised a real DVAA behaviour is kept, re-pointed at the .mjs proxy.
 // SENTINEL_REQUIRE_DVAA=1 (set by scripts/eval.sh when the fleet is up) turns a down agent into a FAIL.

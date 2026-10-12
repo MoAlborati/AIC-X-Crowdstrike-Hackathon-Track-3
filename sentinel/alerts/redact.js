@@ -1,4 +1,4 @@
-// SentinelProxy T4 — secret redaction for alert bodies.
+// Tourniquet T4 — secret redaction for alert bodies.
 //
 // Rule: an alert NEVER carries a secret value. Any string matching a secret pattern, or containing a
 // known canary (honeytoken) value — raw, case-varied, separator-split, base64/base64url, hex, fully

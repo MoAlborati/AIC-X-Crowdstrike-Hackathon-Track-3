@@ -2,7 +2,7 @@
   "name": "sentinel-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "SentinelProxy demo dashboard: deterministic replay of captures, Falcon-style incident graph, AIDR alert feed.",
+  "description": "Tourniquet demo dashboard: deterministic replay of captures, Falcon-style incident graph, AIDR alert feed.",
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
