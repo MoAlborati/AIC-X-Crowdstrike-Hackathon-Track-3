@@ -36,6 +36,21 @@ export async function startUpstream(handler) {
   };
 }
 
+/**
+ * A loopback port that is guaranteed refused: port 1 is privileged and outside the ephemeral range,
+ * so (unlike "bind, close, reuse") no concurrently-running test or agent can be handed it.
+ * Asserts the refusal so a misconfigured host fails loudly instead of silently changing the test.
+ */
+export async function deadPort() {
+  const net = await import('node:net');
+  await new Promise((resolve, reject) => {
+    const s = net.connect(1, '127.0.0.1');
+    s.once('connect', () => { s.destroy(); reject(new Error('something is listening on 127.0.0.1:1; dead-port fixture invalid')); });
+    s.once('error', (err) => (err.code === 'ECONNREFUSED' ? resolve() : reject(err)));
+  });
+  return 1;
+}
+
 /** DVAA-shaped chat.completion echoing a canned reply (mirrors the real 7005 response format). */
 export function dvaaCompletion(content, extra = {}) {
   return {

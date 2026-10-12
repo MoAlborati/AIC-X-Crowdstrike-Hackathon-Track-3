@@ -9,7 +9,7 @@ import zlib from 'node:zlib';
 import net from 'node:net';
 import http from 'node:http';
 import {
-  startUpstream, startProxy, makeConfig, readCapture, post, send, dvaaCompletion,
+  startUpstream, startProxy, makeConfig, readCapture, post, send, dvaaCompletion, deadPort,
   bigRequestWithMiddleSignal, manyRows,
 } from './helpers.mjs';
 import { DRAIN_LIMIT_BYTES, REFUSAL_CODES, createProxy } from '../server.mjs';
@@ -396,10 +396,7 @@ describe('bounds + fail-loud', () => {
   });
 
   test('upstream unreachable -> 502 structured; upstream timeout -> 504', async () => {
-    const dead = await startUpstream(() => ({ body: {} }));
-    const deadPort = dead.port;
-    await dead.close();
-    let cfg = makeConfig({ target: { port: deadPort } });
+    let cfg = makeConfig({ target: { port: await deadPort() } });
     let { proxy, url } = await startProxy(cfg);
     try {
       const r = await post(`${url}/v1/chat/completions`, {});
@@ -650,15 +647,13 @@ describe('H3 refusals carry only static codes (no inspector text, reasons or int
   });
 
   test('upstream_unreachable and the 500 handler expose no error text, address or port', async () => {
-    const dead = await startUpstream(() => ({ body: {} }));
-    const deadPort = dead.port;
-    await dead.close();
-    let { proxy, url } = await startProxy(makeConfig({ target: { port: deadPort } }));
+    const dport = await deadPort();
+    let { proxy, url } = await startProxy(makeConfig({ target: { port: dport } }));
     try {
       const r = await post(`${url}/v1/chat/completions`, {});
       assert.equal(r.status, 502);
       const t = r.body.toString();
-      for (const bad of ['ECONNREFUSED', String(deadPort), '127.0.0.1', 'connect']) assert.ok(!t.includes(bad), `leaked ${bad}`);
+      for (const bad of ['ECONNREFUSED', '127.0.0.1:1', '127.0.0.1', 'connect']) assert.ok(!t.includes(bad), `leaked ${bad}`);
     } finally { await proxy.close(); }
 
     // Force the internal-error path: the alert logger throws (with the secret in its message) on the
