@@ -31,7 +31,7 @@ hackathon rules" proxy criteria (now superseded; see `planning/RESEARCH.md` §B)
   exfiltration"** is Path A: OpsBot (`track3a/`), our own agent with all three risks, defended by the same unmodified
   proxy. It also fits the brief.
 - **"Rather than a fully hardened system"** supports our honest-scope framing (#123). We list our misses in RESULTS.md.
-- **Not in the brief:** DVAA's 22 CTF challenges. Solving them is not judged.
+- **Not in the brief:** DVAA's 22 CTF challenges. The brief does not mention them, so we don't pitch them as a goal.
 - **Ciocca:** no extra build. If the team targets it (#128, default YES), the deck adds one venture slide covering
   problem, who uses and pays, differentiation vs Falcon AIDR / NeMo Guardrails / Lakera, and path to launch.
   Open: is a separate submission/form needed, and can one project win both?
