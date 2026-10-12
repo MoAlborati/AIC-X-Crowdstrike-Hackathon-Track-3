@@ -24,7 +24,7 @@ import { validatePolicy, classifyTool, effectiveMode, SINK_KINDS } from './polic
 import { SessionStore, deriveGrant, verifyGrant, evaluateCall, recordAndCheckLedger, callDestinations } from './mandate.js';
 import {
   decodedVariants, findSecretShapes, findSsns, findCardNumbers, extractMarkdownLinks, splitUntrustedSegments,
-  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables,
+  findInjectionPhrases, hostAllowed, lookalikeOf, extractUrls, extractEmails, findIbans, findSpacedRuns, joinSpacedRuns, foldConfusables, safeUrlDecode,
 } from './text.js';
 import { findStructuralMarkers } from './structural.js';
 
@@ -348,7 +348,7 @@ export function createDetector(opts = {}) {
       const call = { id: String(tc?.id ?? `call-${randomUUID()}`), name, args, rawArgs, argBytes: Buffer.byteLength(rawArgs), kind, destinations: callDestinations(args) };
       const mode = effectiveMode(policy, name);
       const isSink = SINK_KINDS.has(kind);
-      const sinkEnt = sinkEntity(call, isSink);
+      const sinkEnt = sinkEntity(call);
       const callLabel = `${name}(${preview(args)})`;
 
       ts = performance.now();
@@ -831,10 +831,10 @@ function redactText(s, registry, bounds) {
   return out + s.slice(at);
 }
 
-function sinkEntity(call, isSink) {
+function sinkEntity(call) {
   const d = call.destinations[0];
   if (d) return { type: d.type, destination: d.url ?? d.destination };
-  const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : isSink ? 'tool' : 'tool';
+  const t = call.kind === 'exec' ? 'shell' : call.kind === 'write' ? 'filesystem' : 'tool';
   return { type: t, destination: `${call.name} (no network destination)` };
 }
 
@@ -906,8 +906,10 @@ function buildShingleIndex(untrusted, k) {
 function copiedSpan(sinkText, sh, bounds, principalText) {
   const { index, text, k } = sh;
   const variants = [sinkText];
-  // URL-encoded copies are still copies.
-  if (sinkText.includes('%')) variants.push(decodeSafe(sinkText));
+  // URL-encoded copies are still copies. safeUrlDecode decodes the valid %XX triplets even when another
+  // escape is malformed: the old local decodeSafe() returned the RAW string on any bad '%', so appending a
+  // lone '%' ("...100%") turned this variant off (#112 CRITIC-C #2).
+  if (sinkText.includes('%')) variants.push(safeUrlDecode(sinkText));
   let best = null;
   for (const s of variants) {
     for (let p = 0; p + k <= s.length; p++) {
@@ -930,14 +932,6 @@ function copiedSpan(sinkText, sh, bounds, principalText) {
     }
   }
   return best;
-}
-
-function decodeSafe(s) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
 }
 
 const round = (x) => Math.round(x * 1000) / 1000;
