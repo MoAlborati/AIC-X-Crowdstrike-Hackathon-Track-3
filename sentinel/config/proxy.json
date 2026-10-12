@@ -1,0 +1,17 @@
+{
+  "listen": { "host": "127.0.0.1", "port": 8005 },
+  "target": { "host": "127.0.0.1", "port": 7005, "name": "RAGBot" },
+  "mode": "observe",
+  "limits": {
+    "maxRequestBytes": 1048576,
+    "maxResponseBytes": 4194304,
+    "upstreamTimeoutMs": 15000,
+    "inspectorTimeoutMs": 500,
+    "maxInFlight": 32
+  },
+  "sink": {
+    "path": "../proxy/.capture/exchanges.jsonl",
+    "maxFileBytes": 67108864,
+    "maxFiles": 5
+  }
+}
