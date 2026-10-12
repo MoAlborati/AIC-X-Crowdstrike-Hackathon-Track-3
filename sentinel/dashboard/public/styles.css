@@ -254,6 +254,7 @@ select { max-width: 440px; }
 /* Stage mode (?stage=1): graph + case card come first, right under the controls; the corpus
    headline tiles follow below them. Order only; the tiles themselves are unchanged. */
 html.stage-mode body { display: flex; flex-direction: column; }
+html.stage-mode .legend-unresolved { display: none; } /* stage runs resolve every hop (tested) */
 html.stage-mode .topbar { order: 0; }
 html.stage-mode #banners { order: 1; }
 html.stage-mode .stage-grid { order: 2; }

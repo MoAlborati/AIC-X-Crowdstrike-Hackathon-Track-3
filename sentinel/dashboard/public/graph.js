@@ -13,6 +13,8 @@ export const LANE_TITLES = {
 };
 
 const LANE_H = 92;
+const WRAP_LANE = 'detection';
+const WRAP_ROW_H = 62;
 const LANE_LABEL_W = 0;
 const NODE_H = 52;
 const DOC_NODE_H = 70;
@@ -49,11 +51,43 @@ export function layoutGraph(graph) {
   const col = new Map();
   const lastCol = new Map();
   for (const n of ordered) {
+    if (n.lane === WRAP_LANE) continue;
     let c = (lastCol.get(n.lane) ?? -1) + 1;
     for (const p of preds.get(n.id) ?? []) if (col.has(p)) c = Math.max(c, col.get(p));
     col.set(n.id, c);
     lastCol.set(n.lane, c);
   }
+  // Detection nodes (alerts) wrap into extra rows inside their lane instead of widening the graph: six
+  // alerts on a 3-column incident would otherwise double its width. Each alert takes the first free
+  // column at or after its latest predecessor, else the first free column, else a new row.
+  const flowCols = col.size ? Math.max(...col.values()) + 1 : 0;
+  const wrapCols = Math.max(flowCols, 2);
+  const row = new Map();
+  const taken = [];
+  for (const n of ordered) {
+    if (n.lane !== WRAP_LANE) continue;
+    let want = 0;
+    for (const p of preds.get(n.id) ?? []) if (col.has(p)) want = Math.max(want, col.get(p));
+    want = Math.min(want, wrapCols - 1);
+    let placed = false;
+    for (let r = 0; !placed; r++) {
+      taken[r] ??= new Set();
+      const order = [...Array(wrapCols).keys()].map(i => (want + i) % wrapCols);
+      for (const c of order) {
+        if (!taken[r].has(c)) {
+          taken[r].add(c);
+          col.set(n.id, c);
+          row.set(n.id, r);
+          placed = true;
+          break;
+        }
+      }
+    }
+  }
+  const wrapRows = Math.max(1, taken.length);
+  const laneH = lanes.map(l => (l === WRAP_LANE ? LANE_H + (wrapRows - 1) * WRAP_ROW_H : LANE_H));
+  const laneY = [];
+  lanes.forEach((_, i) => laneY.push(i === 0 ? PAD_TOP : laneY[i - 1] + laneH[i - 1]));
   const cols = ordered.length ? Math.max(...col.values()) + 1 : 0;
   const colW = columnWidth(cols);
   const w = colW - 24;
@@ -64,7 +98,7 @@ export function layoutGraph(graph) {
     positions.set(n.id, {
       col: col.get(n.id),
       x: LANE_LABEL_W + PAD_X + col.get(n.id) * colW,
-      y: PAD_TOP + li * LANE_H + LANE_TITLE_H + (LANE_H - LANE_TITLE_H - h) / 2,
+      y: laneY[li] + LANE_TITLE_H + (LANE_H - LANE_TITLE_H - h) / 2 + (row.get(n.id) ?? 0) * WRAP_ROW_H,
       w,
       h,
     });
@@ -74,7 +108,9 @@ export function layoutGraph(graph) {
     cols,
     colW,
     width: LANE_LABEL_W + PAD_X * 2 + Math.max(cols, 1) * colW,
-    height: PAD_TOP + lanes.length * LANE_H + 8,
+    height: PAD_TOP + laneH.reduce((a, b) => a + b, 0) + 8,
+    laneY,
+    laneH,
   };
 }
 
@@ -93,12 +129,14 @@ function fit(label, w, charW = 7.2) {
 }
 
 /** Zoom factor that fits the laid-out graph to `fitWidth` px, clamped to [1, MAX_ZOOM]. */
-export function fitZoom(layoutWidth, fitWidth) {
+export function fitZoom(layoutWidth, fitWidth, minZoom = 1) {
   if (!Number.isFinite(fitWidth) || fitWidth <= 0 || !layoutWidth) return 1;
-  return Math.max(1, Math.min(MAX_ZOOM, fitWidth / layoutWidth));
+  return Math.max(minZoom, Math.min(MAX_ZOOM, fitWidth / layoutWidth));
 }
+// Stage mode may shrink a little so the whole incident fits the pane without a horizontal scrollbar.
+export const STAGE_MIN_ZOOM = 0.8;
 
-const hasDoc = (n) => n.lane === 'untrusted' && typeof n.text === 'string' && n.text.trim() !== '' && n.recorded !== false;
+const hasDoc = (n) => (n.lane === 'untrusted' || n.embeddedDoc === true) && typeof n.text === 'string' && n.text.trim() !== '' && n.recorded !== false;
 
 /**
  * Document excerpt lines for an untrusted node that carries text (e.g. the poisoned document): up to
@@ -150,7 +188,7 @@ export function displayLabel(n, w, icon) {
 export function renderGraph(svg, replay, view) {
   const { graph } = replay;
   const L = layoutGraph(graph);
-  const zoom = fitZoom(L.width, view.fitWidth);
+  const zoom = fitZoom(L.width, view.fitWidth, view.minZoom ?? 1);
   svg.replaceChildren();
   svg.setAttribute('viewBox', `0 0 ${L.width} ${L.height}`);
   svg.setAttribute('width', String(Math.round(L.width * zoom)));
@@ -173,8 +211,8 @@ export function renderGraph(svg, replay, view) {
   // lanes
   const lanesG = el('g', { class: 'lanes' }, svg);
   graph.lanes.forEach((lane, i) => {
-    const y = PAD_TOP + i * LANE_H;
-    el('rect', { x: 0, y, width: L.width, height: LANE_H, class: `lane lane-${lane} ${i % 2 ? 'odd' : ''}` }, lanesG);
+    const y = L.laneY[i];
+    el('rect', { x: 0, y, width: L.width, height: L.laneH[i], class: `lane lane-${lane} ${i % 2 ? 'odd' : ''}` }, lanesG);
     const t = el('text', { x: 8, y: y + 14, class: 'lane-title' }, lanesG);
     t.textContent = LANE_TITLES[lane] ?? lane;
   });
@@ -253,9 +291,10 @@ export function renderGraph(svg, replay, view) {
 
 export function nodeSubtitle(n) {
   if (n.kind === 'truncation_marker') return 'TaintPath truncated by T4';
-  if (n.kind === 'alert') return `${n.severityName ?? ''} · sev ${n.severity ?? '?'}`;
+  if (n.kind === 'alert') return `${n.instance ? `${n.instance} · ` : ''}${n.severityName ?? ''} · sev ${n.severity ?? '?'}`;
   if (n.kind === 'canary_hit') return 'attacker endpoint received data';
-  if (n.kind === 'sink') return 'egress destination';
+  if (n.kind === 'sink') return n.named ? 'destination named in the request' : 'egress destination';
+  if (n.kind === 'proxy_refusal') return 'agent never saw the request';
   if (n.rowCount != null) return `${n.rowCount.toLocaleString('en-US')} rows · ${fmtBytes(n.bytes)}`;
   if (n.recorded === false) return 'body not recorded';
   if (n.recorded === 'reconstructed') return `${fmtBytes(n.bytes)} · rebuilt from DVAA template`;

@@ -10,10 +10,10 @@ import { createServer } from '../server.mjs';
 import { poisonedRagDocument, REPO_ROOT } from '../lib/capture-loader.mjs';
 import { resolveStage, STAGE_ENTRIES } from '../lib/stage-set.mjs';
 import { prepareExport, canaryValues } from '../lib/alert-export.mjs';
-import { generateRealAlerts, REAL_ALERTS_DIR } from '../fixtures/make-real-alerts.mjs';
+import { generateRealAlerts, REAL_ALERTS_DIR, stageCaptureAlerts, STAGE_CAPTURE_FILE } from '../fixtures/make-real-alerts.mjs';
 import { sidecarName } from '../lib/alert-store.mjs';
 import { parseDeepLink, deepLinkSearch, chooseInitial, stageOptions, sinkLabel, cleanNarrative, alertClipboardText, warningSummary, excerpt } from '../public/stage-view.js';
-import { docLines, fitZoom, MAX_ZOOM } from '../public/graph.js';
+import { docLines, fitZoom, MAX_ZOOM, layoutGraph, nodeSubtitle, STAGE_MIN_ZOOM } from '../public/graph.js';
 import { buildAlert, validateAlert, sinkPhrase } from '../../alerts/index.js';
 import { DVAA_HONEYTOKENS } from '../../detectors/index.js';
 
@@ -251,4 +251,49 @@ test('replay warnings collapse to one summary line (all kept for the expanded li
   const w = ['alert a: taint hop 1 (x) has no matching node in the capture; shown as unresolved', 'alert b: taint hop 2 (y) has no matching node in the capture; shown as unresolved', 'something else'];
   assert.equal(warningSummary(w), '3 replay warnings · 2 unresolved taint hops (drawn as dashed "?" nodes) · 1 other');
   assert.equal(warningSummary([]), null);
+});
+
+// ---- review round 1 (#76): hero screens ---------------------------------------------------------
+test('stage hero screens: no "unresolved", no "no tool call →", no "blocking" on alerts that did not block; refusals are refusals', async () => {
+  await withServer(async (base) => {
+    const { body } = await getJson(`${base}/api/captures`);
+    for (const s of body.stage) {
+      const { body: rp } = await getJson(`${base}/api/replay?id=${encodeURIComponent(s.id)}&run=${s.run}`);
+      assert.deepEqual(rp.warnings, [], `${s.key}: no replay warnings`);
+      const text = rp.graph.nodes.map(n => `${n.label} ${nodeSubtitle(n)} ${(n.flags ?? []).join(' ')} ${n.kind}`).join('\n');
+      assert.doesNotMatch(text, /unresolved/i, `${s.key}: every taint hop resolves to a real node`);
+      const alertLabels = rp.graph.nodes.filter(n => n.kind === 'alert').map(n => `${n.label} ${nodeSubtitle(n)}`);
+      assert.equal(new Set(alertLabels).size, alertLabels.length, `${s.key}: no two identical detection nodes`);
+      for (const a of rp.alerts) {
+        const narr = cleanNarrative(a.caseCard.narrative);
+        assert.doesNotMatch(narr, /no tool call →|influenced tool call no tool call/, `${s.key} ${a.id}`);
+        assert.notEqual(a.caseCard.influencedToolCall, 'no tool call', `${s.key} ${a.id}`);
+        if (!a.prevented) {
+          assert.doesNotMatch(narr, /blocking|proxy refuses it|no tool runs/, `${s.key} ${a.id}: not blocked, so the narrative never says so`);
+        }
+        // the sink hop lands on a sink node (the canary / attacker host), never an invented placeholder
+        const sinkHops = a.taintPath.filter(h => h.kind === 'sink');
+        if (sinkHops.length) assert.ok(rp.taint.nodeIds.some(id => rp.graph.nodes.find(n => n.id === id)?.lane === 'sink'), `${s.key} ${a.id}: sink resolved`);
+      }
+      if (s.key === 'vulnerable') {
+        assert.ok(rp.alerts.every(a => /this run had no proxy, so the tool executed/.test(a.caseCard.narrative)));
+      }
+      if (s.key === 'proxy-blocked') {
+        const actions = rp.graph.nodes.filter(n => n.lane === 'action');
+        assert.equal(actions.filter(n => n.kind === 'proxy_refusal' && n.label === 'proxy 403 refusal').length, 2, 'both refused requests are refusals');
+        assert.equal(actions.filter(n => /reply$/.test(n.label)).length, 1, 'only the forwarded benign request shows an agent reply');
+        const src = rp.taint.nodeIds.map(id => rp.graph.nodes.find(n => n.id === id)).filter(n => n.lane === 'input');
+        assert.ok(src.length === 2 && src.every(n => n.embeddedDoc && /INDEXED DOCUMENT/.test(n.text)), 'sources are the user turns with the embedded document');
+      }
+      // 1440x900 stage pane (~795 px usable): the graph fits at the stage zoom floor, no horizontal scroll
+      assert.ok(layoutGraph(rp.graph).width * STAGE_MIN_ZOOM <= 795, `${s.key}: graph width ${layoutGraph(rp.graph).width}`);
+    }
+  });
+});
+
+test('stage capture 3 alerts are rebuilt reproducibly from its embedded proxy records (real T3, convert.mjs)', async () => {
+  const strip = (v) => JSON.parse(JSON.stringify(v, (k, x) => (/latency/i.test(k) ? undefined : x)));
+  const cap = JSON.parse(await readFile(STAGE_CAPTURE_FILE, 'utf8'));
+  assert.deepEqual(strip(cap.alerts.run), strip(stageCaptureAlerts(cap)));
+  assert.ok(cap.alerts.run.every(a => a.PipelineContext.Detector === 'sentinel-t3' && a.PipelineContext.ProxyAction === 'blocked_request'));
 });

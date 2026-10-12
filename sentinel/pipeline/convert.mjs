@@ -100,11 +100,17 @@ export function agentOf(record, resJson) {
 
 const VERB = { block: 'blocked', report: 'reported (alert-only)', allow: 'allowed (observed)' };
 
+// The bracket prefix states what actually happened ("blocking" only when this verdict blocked), so an
+// observe-mode / forwarded record never reads as a block. With no tool call, say what the instruction
+// asked for instead of "influenced tool call no tool call".
 function narrativeFor({ policy, outcome, originatedIn, toolCall, sink, disposition, ruleId }) {
-  const tc = toolCall ? `${toolCall.name}(${toolCall.id})` : 'no tool call';
-  return `[${policy.label} · ${policy.enforcement}] Instruction originated in ${originatedIn} → ` +
-    `influenced tool call ${tc}${sink ? ` → toward ${sinkPhrase(sink)}` : ''} → ` +
-    `${VERB[disposition]} by rule ${ruleId}. Outcome: ${outcome}. ${policy.note}`;
+  const enforcement = disposition === 'block' ? 'blocking' : 'alert_only';
+  const action = toolCall ? `influenced tool call ${toolCall.name}(${toolCall.id})${sink ? ` → toward ${sinkPhrase(sink)}` : ''}`
+    : sink ? `asked the agent to send session data to ${sinkPhrase(sink)}` : 'no tool call was made';
+  const note = disposition === 'block' || policy.label !== 'request-side' ? policy.note
+    : 'Checked before the agent saw the request, but this exchange was not refused, so the agent ran.';
+  return `[${policy.label} · ${enforcement}] Instruction originated in ${originatedIn} → ${action} → ` +
+    `${VERB[disposition]} by rule ${ruleId}. Outcome: ${outcome}. ${note}`;
 }
 
 /** Normalize one recorded verdict into T4-verdict "parts" (before entities/disposition are filled). */
@@ -242,6 +248,8 @@ function buildOne({ record, ctx, agent, direction, part: rawPart, n, reqBytes, i
     ...(Number.isFinite(part.severity) ? { severity: part.severity } : {}),
     caseCard: {
       ...(part.caseCard ?? {}),
+      // No tool call: say why, instead of T3/T4's literal "no tool call".
+      ...(tc ? {} : { influencedToolCall: disposition === 'block' && direction === 'request' ? 'none: refused before the agent saw the request' : 'none recorded' }),
       narrative: narrativeFor({ policy, outcome, originatedIn: part.caseCard?.originatedIn ?? originatedIn, toolCall: tc, sink, disposition, ruleId: part.ruleId }),
     },
     timestamp: record.ts,

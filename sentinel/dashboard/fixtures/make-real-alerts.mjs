@@ -9,7 +9,9 @@
 // response is the recorded reply + tool calls. These runs went DIRECT to DVAA (no proxy), so verdicts are
 // a retrospective replay in observe mode: request-side findings are "would block", and on runA (canary
 // hit recorded) every finding is post-execution evidence. Nothing here claims a block that did not happen.
-// The third stage capture (stage/proxy-blocked-t3) already embeds the alerts its live proxy run produced.
+// The third stage capture (stage/proxy-blocked-t3) is a live proxy run. Its alerts are rebuilt here from
+// the T2 exchange records it embeds (`proxyRecords`, verbatim from the proxy capture log) through the same
+// convert.mjs path the live pipeline uses, so narrative fixes reach it too.
 //
 // Deterministic: fixed request ids and timestamps from the capture; detector latency is measured, so it is
 // the only field that varies between runs. Usage: node sentinel/dashboard/fixtures/make-real-alerts.mjs [--check]
@@ -19,7 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { poisonedRagDocument } from '../lib/capture-loader.mjs';
 import { sidecarName } from '../lib/alert-store.mjs';
-import { createT3Source, T3_CANARIES } from '../../pipeline/t3.mjs';
+import { createT3Source, t3Rehydrator, T3_CANARIES } from '../../pipeline/t3.mjs';
 import { alertsForExchange } from '../../pipeline/convert.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -59,16 +61,39 @@ export async function realAlertsForRun(raw, runKey, captureId) {
   const alerts = alertsForExchange(record, { session: requestId, canaries: T3_CANARIES, t3, captureRef: { replayOf: captureId, run: runKey } });
   const executed = run.dvaa?.exfilExecuted === true;
   const aimDenied = run.dvaa?.aim?.allowed === false;
+  const call = (run.toolCalls ?? [])[0];
+  // These runs went straight to DVAA. Say so, and say what DVAA recorded happening, instead of the
+  // proxy-centric outcome convert.mjs writes for a live exchange.
+  const happened = executed ? 'Detected; this run had no proxy, so the tool executed and the attacker endpoint received the data.'
+    : aimDenied ? 'Detected; this run had no proxy. DVAA AIM denied the tool call (capability grant), so nothing was sent.'
+      : 'Detected; this run had no proxy.';
   return alerts.map(a => {
-    let cc = a.CaseCard;
-    // convert.mjs assumes a response-side tool call already ran (true for a bare DVAA agent). On the AIM
-    // twin DVAA recorded the call as DENIED, so say that instead of "tool already executed".
-    if (aimDenied && !executed && /tool_already_executed/.test(cc.Narrative)) {
-      cc = { ...cc, Narrative: cc.Narrative.replace(/Outcome: [a-z_]+\./, 'Outcome: tool call denied by DVAA AIM (capability grant); exfil not executed.') };
+    let narrative = a.CaseCard.Narrative.replace(/Outcome: .*$/, `Outcome: ${happened}`);
+    let influenced = a.CaseCard.InfluencedToolCall;
+    if (call && /asked the agent to send session data to /.test(narrative)) {
+      // Request-side finding on a run where the agent DID act: name the tool call the instruction drove.
+      const tc = `${call.function?.name ?? 'tool'}(${call.id})`;
+      narrative = narrative.replace(/asked the agent to send session data to (\S+(?: \(\w+\))?)/, `influenced tool call ${tc} → toward $1`);
+      influenced = tc;
     }
-    return { ...a, CaseCard: cc, Direction: a.PipelineContext.Direction, Prevents: false, PostExecution: executed };
+    return { ...a, CaseCard: { ...a.CaseCard, Narrative: narrative, InfluencedToolCall: influenced }, Direction: a.PipelineContext.Direction, Prevents: false, PostExecution: executed };
   });
 }
+
+/** Rebuild the live stage capture's alerts from its embedded T2 exchange records (real T3 verdicts). */
+export function stageCaptureAlerts(cap) {
+  const t3 = t3Rehydrator();
+  const out = [];
+  for (const { line, record } of cap.proxyRecords ?? []) {
+    out.push(...alertsForExchange(record, {
+      session: cap.pipeline?.session ?? 'stage', canaries: T3_CANARIES, t3,
+      captureRef: { path: '<scratch>/proxy-cap.jsonl (proxy capture log, not committed)', line },
+    }));
+  }
+  if (!out.length) throw new Error('stage capture has no proxyRecords with verdicts');
+  return out;
+}
+export const STAGE_CAPTURE_FILE = path.resolve(HERE, '..', 'stage', 'proxy-blocked-t3.json');
 
 export async function generateRealAlerts() {
   const out = new Map();
@@ -89,6 +114,10 @@ export async function generateRealAlerts() {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = await generateRealAlerts();
+  const cap = JSON.parse(await readFile(STAGE_CAPTURE_FILE, 'utf8'));
+  cap.alerts = { run: stageCaptureAlerts(cap) };
+  await writeFile(STAGE_CAPTURE_FILE, `${JSON.stringify(cap, null, 1)}\n`);
+  console.log(`[make-real-alerts] ${path.relative(REPO, STAGE_CAPTURE_FILE)}: run=${cap.alerts.run.length} alert(s) rebuilt from proxyRecords`);
   await mkdir(REAL_ALERTS_DIR, { recursive: true });
   for (const [id, doc] of out) {
     const file = path.join(REAL_ALERTS_DIR, sidecarName(id));

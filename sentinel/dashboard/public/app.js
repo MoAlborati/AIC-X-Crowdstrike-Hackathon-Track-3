@@ -1,6 +1,6 @@
 // Dashboard controller. Fetches /api/* and drives the replay player.
 // All capture/alert text is inserted as DOM text nodes (textContent); no data is ever parsed as markup.
-import { renderGraph, fmtBytes, nodeSubtitle } from './graph.js';
+import { renderGraph, fmtBytes, nodeSubtitle, STAGE_MIN_ZOOM } from './graph.js';
 import { viewAt, twinPair, latestGate } from './replay-view.js';
 import { headlineView } from './headline-view.js';
 import { parseDeepLink, deepLinkSearch, chooseInitial, stageOptions, cleanNarrative, sinkLabel, excerpt, warningSummary, alertClipboardText } from './stage-view.js';
@@ -218,7 +218,7 @@ function setStep(s) {
   renderTimeline(rp, v);
   renderFeed(rp, v);
   renderGauge(v.trust);
-  renderGraph($('graph'), rp, { revealed: v.revealed, focus: v.focus, selected: state.selected, onSelect: (n) => selectNode(n), fitWidth: $('graph-scroll').clientWidth });
+  renderGraph($('graph'), rp, { revealed: v.revealed, focus: v.focus, selected: state.selected, onSelect: (n) => selectNode(n), fitWidth: $('graph-scroll').clientWidth - 18, minZoom: state.stageMode ? STAGE_MIN_ZOOM : 1 });
   if (!state.selected) renderSourcePreview(rp);
   // Keep the current step visible inside its own pane only; never scroll the page under the presenter.
   const cur = document.querySelector('#timeline .current');

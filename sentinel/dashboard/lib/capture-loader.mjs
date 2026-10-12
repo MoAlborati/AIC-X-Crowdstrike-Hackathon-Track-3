@@ -360,7 +360,9 @@ function normalizeOpenAI(raw, entry) {
   if (!exRaw.length) throw new CaptureFormatError(entry.id, 'exchanges[] is empty');
   // T6 fixtures carry their ground truth in label.dvaa (pre-computed, not a recorded run).
   const labelDvaa = !Array.isArray(raw.exchanges) && raw.label?.dvaa ? raw.label.dvaa : undefined;
-  const exchanges = exRaw.map((ex, i) => openaiExchange(ex.request, ex.response, i, ex.dvaa ?? labelDvaa));
+  // requestId: the proxy's request id (sentinel/pipeline captures), so an alert (AlertId "<requestId>:<dir>:<n>")
+  // resolves to its own exchange by targeted lookup.
+  const exchanges = exRaw.map((ex, i) => ({ ...openaiExchange(ex.request, ex.response, i, ex.dvaa ?? labelDvaa), requestId: typeof ex.sentinel?.requestId === 'string' ? ex.sentinel.requestId : null }));
   const port = raw.agent?.port ?? raw.port ?? (entry.id.match(/(\d{4})_/)?.[1] ? Number(entry.id.match(/(\d{4})_/)[1]) : null);
   const name = raw.agent?.name ?? raw.agentName ?? entry.id.match(/\d{4}_([\w-]+)$/)?.[1] ?? 'agent';
   const dv = exchanges.map(e => e.dvaa).find(Boolean);
