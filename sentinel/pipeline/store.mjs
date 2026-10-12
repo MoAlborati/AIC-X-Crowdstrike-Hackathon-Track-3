@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { BOUNDS, enforce, defaultLog } from './bounds.mjs';
 import { decodeBody, sessionSlug, inspectedBody } from './convert.mjs';
+import { egressSummaryLine } from './egress.mjs';
 
 export const CAPTURE_SUBDIR = 'live';
 export const RUN_KEY = 'run'; // T5 normalizeOpenAI always names the single run 'run'
@@ -144,6 +145,7 @@ export class OutputStore {
       nodes: 0,
       alerts: [],
       standInCount: 0,
+      egressOnly: meta.egressOnly === true,
     };
     s.current = part;
     this.sessions.set(session, s);
@@ -205,6 +207,20 @@ export class OutputStore {
     return part.captureId;
   }
 
+  /**
+   * T12 egress alerts. Correlated ones join their chat session's current part (next to that agent's
+   * chat-proxy alerts). Standalone ones go to the `egress-boundary` session: an egress incident capture.
+   */
+  addEgressAlerts({ session, agent, alerts, standalone }) {
+    if (!alerts.length) return null;
+    enforce('MAX_ALERTS_PER_CAPTURE', alerts.length, `egress alerts for session ${session}`, this.caps, this.log);
+    let part = this.sessions.get(session)?.current;
+    if (!part || part.alerts.length + alerts.length > this.caps.MAX_ALERTS_PER_CAPTURE) part = this._newPart(session, { agent, egressOnly: standalone });
+    part.alerts.push(...alerts);
+    this.dirty.add(part.captureId);
+    return part.captureId;
+  }
+
   recordOps(entry) {
     this.opsCount += 1;
     this._opsQueue = (this._opsQueue ?? Promise.resolve()).then(() => appendFile(this.opsPath, `${JSON.stringify(entry)}\n`, { mode: 0o600 }));
@@ -213,6 +229,7 @@ export class OutputStore {
 
   captureDoc(part) {
     const port = part.agent?.port ?? null;
+    if (part.egressOnly) return this.egressCaptureDoc(part);
     return {
       title: `LIVE proxy · ${part.session}${part.partNo > 1 ? ` · part ${part.partNo}` : ''} · ${part.agent?.name ?? 'agent'}`,
       scenario: 'live-proxy',
@@ -235,6 +252,32 @@ export class OutputStore {
     };
   }
 
+  /** Standalone egress incident: no chat exchange to replay, so the stub exchange narrates the events. */
+  egressCaptureDoc(part) {
+    const prevented = part.alerts.filter((a) => a.PipelineContext?.Preventive).length;
+    const lines = part.alerts.map(egressSummaryLine);
+    return {
+      title: `EGRESS incident · tool boundary · ${prevented} prevented / ${part.alerts.length} alerts${part.partNo > 1 ? ` · part ${part.partNo}` : ''}`,
+      scenario: 'egress-boundary',
+      role: 'single',
+      agent: { name: part.agent?.name ?? 'egress boundary', port: part.agent?.port ?? null },
+      pipeline: {
+        schema: 'sentinel.pipeline.capture/1.0.0',
+        session: part.session,
+        part: part.partNo,
+        exchangeCount: 0,
+        alertCount: part.alerts.length,
+        preventiveAlerts: prevented,
+        standInAlerts: 0,
+        egressCapture: true,
+      },
+      exchanges: [{
+        request: { messages: [{ role: 'user', content: '[tool-boundary egress incident: outbound tool requests seen by the T12 egress inspector that could not be attributed to a single chat-proxy turn]' }] },
+        response: { choices: [{ message: { role: 'assistant', content: lines.join('\n') }, finish_reason: null }] },
+      }],
+    };
+  }
+
   sidecarDoc(part) {
     const standIn = part.standInCount > 0;
     return {
@@ -242,7 +285,7 @@ export class OutputStore {
       placeholder: standIn,
       note: standIn
         ? `${STANDIN_NOTE} ${part.standInCount} of ${part.alerts.length} alerts are stand-in.`
-        : 'Alerts built by T4 buildAlert from proxy verdicts (sentinel/pipeline).',
+        : 'Alerts built by T4 buildAlert from proxy verdicts and T12 egress inspector records (sentinel/pipeline).',
       pipeline: {
         schema: 'sentinel.pipeline.sidecar/1.0.0',
         session: part.session,
@@ -250,7 +293,9 @@ export class OutputStore {
         byDirection: {
           request: part.alerts.filter((a) => a.PipelineContext?.Direction === 'request').length,
           response: part.alerts.filter((a) => a.PipelineContext?.Direction === 'response').length,
+          egress: part.alerts.filter((a) => a.PipelineContext?.Direction === 'egress').length,
         },
+        preventive: part.alerts.filter((a) => a.PipelineContext?.Preventive === true).length,
       },
       runs: { [RUN_KEY]: part.alerts },
     };
@@ -287,13 +332,17 @@ export class OutputStore {
     let exchanges = 0;
     let alerts = 0;
     let standIn = 0;
-    const byDirection = { request: 0, response: 0 };
+    const byDirection = { request: 0, response: 0, egress: 0 };
+    let preventive = 0;
     for (const p of this.parts.values()) {
       exchanges += p.exchanges.length;
       alerts += p.alerts.length;
       standIn += p.standInCount;
-      for (const a of p.alerts) byDirection[a.PipelineContext.Direction] += 1;
+      for (const a of p.alerts) {
+        byDirection[a.PipelineContext.Direction] += 1;
+        if (a.PipelineContext.Preventive === true) preventive += 1;
+      }
     }
-    return { captures: this.parts.size, sessions: this.sessions.size, exchanges, alerts, standIn, byDirection, opsAlerts: this.opsCount };
+    return { captures: this.parts.size, sessions: this.sessions.size, exchanges, alerts, standIn, byDirection, preventive, opsAlerts: this.opsCount };
   }
 }

@@ -52,6 +52,31 @@ export const BOUNDS = Object.freeze({
   // Proxy `alert` records waiting for their `exchange` record (same request_id). The proxy writes
   // them back to back, so only in-flight requests are pending. Overflow: PipelineBoundError.
   MAX_PENDING_ALERTS: 4096,
+
+  // T12 egress records waiting for agent correlation (tail: held until no chat-proxy request that
+  // started before them is still in flight, or EGRESS_MAX_HOLD_MS passes; convert: held until end of
+  // input). The demo writes a handful per turn. Overflow: PipelineBoundError (never dropped).
+  MAX_PENDING_EGRESS: 4096,
+
+  // Chat-proxy exchange windows [ts, ts+latency_ms] kept for egress time-window correlation. Overflow
+  // evicts the OLDEST window and logs ALERT `correlation_window_evicted`. Any later egress record older
+  // than the evicted horizon is labeled `correlation_history_evicted` and shown as a standalone egress
+  // incident: attribution is lost loudly, never guessed. Correlation is display/attribution only; the
+  // egress inspector already made the allow/deny decision.
+  MAX_CORRELATION_WINDOWS: 20000,
+
+  // Write-ahead `request` records whose exchange has not arrived (in-flight chat turns). Used to decide
+  // that a pending egress record may still belong to an unfinished turn. Overflow: PipelineBoundError.
+  MAX_INFLIGHT_REQUESTS: 4096,
+
+  // Hard hold (ms) for an egress record in `tail` while an earlier chat turn is still in flight. Past
+  // this the record is converted as a standalone egress incident with reason `in_flight_turn_timeout`.
+  // 120 s covers DVAA's slowest agent turn (LLM latency) with headroom. Never infinite.
+  EGRESS_MAX_HOLD_MS: 120000,
+
+  // Minimum hold (ms) in `tail` before a pending egress record is resolved, so the proxy follower
+  // (separate file, separate poll) has read the write-ahead record of the turn that caused it.
+  EGRESS_MIN_HOLD_MS: 1500,
 });
 
 export class PipelineBoundError extends Error {
