@@ -202,7 +202,8 @@ async function loadReplay(initialStep = 0) {
   const L = rp.metrics.detectionLatencyMs;
   $('latency').textContent = L.n ? `${L.median} ms` : '—';
   $('latency-note').textContent = L.n ? `median of ${L.n} alert(s) · p95 ${L.p95} ms · max ${L.max} ms (T4 DetectionLatencyMs)` : 'no detector verdicts for this run';
-  $('alert-source').textContent = `Alerts: ${rp.alertSource.origin} · validator: ${rp.alertSource.validator}`;
+  $('alert-source').textContent = `Alerts: ${alertSourceLabel(rp.alertSource)} · T4 schema-validated`;
+  $('alert-source').title = `${rp.alertSource.origin} · validator: ${rp.alertSource.validator}`;
   renderTwin(rp);
   setStep(rp.timeline.length ? initialStep : -1);
 }
@@ -321,8 +322,21 @@ function renderTwin(rp) {
     r.outcome.trustScore != null ? h('div', { class: 'twin-trust' }, `AIM trust score ${r.outcome.trustScore}`) : null,
     r.key !== rp.run.key ? h('button', { class: 'linkish', onclick: () => switchRun(r.key) }, 'replay this run →') : null);
   box.replaceChildren(
-    h('div', { class: 'twin-head' }, 'AIM twin contrast · same agent code, guard off vs on (recorded by DVAA)'),
-    h('div', { class: 'twin-grid' }, side(pair.vuln, 'Unprotected'), side(pair.prot, 'AIM-protected twin')));
+    h('div', { class: 'twin-head' }, pair.prot.twinTitle
+      ? `Contrast · same attack: vulnerable agent direct vs ${pair.prot.twinTitle} (recorded)`
+      : 'AIM twin contrast · same agent code, guard off vs on (recorded by DVAA)'),
+    h('div', { class: 'twin-grid' }, side(pair.vuln, 'Unprotected'), side(pair.prot, pair.prot.twinTitle ?? 'AIM-protected twin')));
+}
+
+/** Human label for where the alerts came from (the raw path stays in the tooltip). */
+function alertSourceLabel(src) {
+  const o = String(src?.origin ?? '');
+  if (src?.placeholder) return 'PLACEHOLDER fixtures (not detector output)';
+  if (o === 'embedded in capture') return 'recorded with this capture (live SentinelProxy run)';
+  if (o === 'none') return 'none recorded';
+  if (o.startsWith('sentinel/dashboard/alerts/')) return 'real T3 detector, replayed over the recorded traffic';
+  if (o.startsWith('sentinel/scoring/')) return 'T7 scoring replay';
+  return 'live pipeline (SentinelProxy + T3)';
 }
 
 function switchRun(key) {
@@ -410,7 +424,7 @@ function renderGauge(t) {
   }
   const txt = mk('text', { x: cx, y: cy - 6, 'text-anchor': 'middle', class: 'gauge-num' });
   txt.textContent = v == null ? '—' : String(v);
-  const band = v == null ? '' : v >= 70 ? ' (healthy)' : v >= 40 ? ' (degraded)' : ' (compromised)';
+  const band = v == null ? '' : t.protected ? ' (protected)' : v >= 70 ? ' (healthy)' : v >= 40 ? ' (degraded)' : ' (compromised)';
   $('gauge-text').textContent = `${v == null ? '' : `${v}/100${band} · `}${t.note}`;
 }
 

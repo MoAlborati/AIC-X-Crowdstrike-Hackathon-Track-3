@@ -43,7 +43,12 @@ export function defaultRoots(env = process.env) {
   const roots = [{ dir: env.SENTINEL_CAPTURES_DIR || path.join(REPO_ROOT, 'captures'), source: 'captures' }];
   // Stage evidence: real recordings kept for the on-stage demo (sentinel/dashboard/stage/README.md).
   // Not under captures/, so T6/T7 scoring never counts them. Ids are prefixed `stage/`.
-  if (!env.SENTINEL_HIDE_STAGE) roots.push({ dir: path.join(DASHBOARD_DIR, 'stage'), source: 'stage' });
+  if (!env.SENTINEL_HIDE_STAGE) {
+    roots.push({ dir: path.join(DASHBOARD_DIR, 'stage'), source: 'stage' });
+    // run-demo.sh points SENTINEL_CAPTURES_DIR at live pipeline output; the stage set still needs the
+    // recorded aim-ab runs, so index the repo's attack captures too (ids unchanged: attack/<name>).
+    if (env.SENTINEL_CAPTURES_DIR) roots.push({ dir: path.join(REPO_ROOT, 'captures', 'attack'), source: 'stage-attack' });
+  }
   if (!env.SENTINEL_HIDE_PLACEHOLDERS) roots.push({ dir: path.join(DASHBOARD_DIR, 'fixtures', 'captures'), source: 'placeholder' });
   return roots;
 }
@@ -124,7 +129,7 @@ export async function indexCaptures(roots = defaultRoots()) {
       let rel = path.relative(dir, file).split(path.sep).join('/').replace(/\.json$/, '');
       const pairPart = manifestCase ? null : rel.match(/^(.*)\.(req|resp)$/);
       if (pairPart) rel = pairPart[1];
-      const id = source === 'placeholder' ? `placeholder/${rel}` : source === 'stage' ? `stage/${rel}` : rel;
+      const id = source === 'placeholder' ? `placeholder/${rel}` : source === 'stage' ? `stage/${rel}` : source === 'stage-attack' ? `attack/${rel}` : rel;
       const entry = index.get(id) ?? { id, source, files: {}, bytes: 0 };
       if (manifestCase) {
         entry.expected = manifestCase.groundTruth === 'negative' ? 'benign' : manifestCase.groundTruth === 'positive' ? 'attack' : null;
@@ -274,27 +279,38 @@ export function poisonedRagDocument(raw) {
   ].join('\n');
 }
 
-function normalizeDemoAB(raw) {
+// T8 contrast recordings reuse DVAA's `demo aim-ab` runner but point run B somewhere else
+// (captures/contrast/README.md, runs/contrast.json `columns`). Label run B by what it actually was.
+// `proxyRefused`: SentinelProxy refused the request at the request phase (403), so the agent never ran.
+export const CONTRAST_RUN_B = Object.freeze({
+  'contrast/runs/proxy-block.demo': { name: 'RAGBot', port: 7005, role: 'protected', label: 'RAGBot :7005 behind SentinelProxy (block)', twinTitle: 'Behind SentinelProxy (block)', proxyRefused: true, denialReason: 'SentinelProxy refused the request before the agent (403, request phase)' },
+  'contrast/runs/proxy-observe.demo': { name: 'RAGBot', port: 7005, role: 'observed', label: 'RAGBot :7005 behind SentinelProxy (observe)', twinTitle: 'Behind SentinelProxy (observe)' },
+  'contrast/runs/securebot.demo': { name: 'SecureBot', port: 7001, role: 'protected', label: 'SecureBot :7001', twinTitle: 'Defended agent (SecureBot)' },
+});
+
+function normalizeDemoAB(raw, entryId = '') {
   const agents = DEMO_AGENTS[raw.scenario] ?? DEMO_AGENTS['aim-ab'];
+  const contrastB = CONTRAST_RUN_B[entryId] ?? null;
   const doc = poisonedRagDocument(raw);
   return ['runA', 'runB'].filter(k => raw[k]).map(key => {
     const run = raw[key];
-    const [name, port, role] = agents[key] ?? [key, null, 'single'];
+    const over = key === 'runB' ? contrastB : null;
+    const [name, port, role] = over ? [over.name, over.port, over.role] : agents[key] ?? [key, null, 'single'];
     const exchange = {
       index: 0,
       messages: [doc != null
         ? { index: 0, role: 'tool', name: 'poisoned_document', content: doc, recorded: 'reconstructed', provenance: RECONSTRUCTED_PROVENANCE, payload: payloadLabel(raw.payload) }
         : notRecorded(`Poisoned document from payload ${payloadLabel(raw.payload)} delivered via POST /v1/chat/completions (document body not stored in the T1 capture)`)],
-      assistant: { content: asText(run.message), toolCalls: toolCallsFrom(run.toolCalls, key), finishReason: run.finishReason ?? null },
+      assistant: { content: asText(run.message), toolCalls: toolCallsFrom(run.toolCalls, key), finishReason: over?.proxyRefused ? 'sentinel_blocked' : run.finishReason ?? null },
       dvaa: run.dvaa ?? null,
     };
     return {
-      key, role, label: `${name} :${port}`, agent: { name, port },
+      key, role, label: over?.label ?? `${name} :${port}`, twinTitle: over?.twinTitle ?? null, agent: { name, port },
       exchanges: [exchange], toolResults: [],
       outcome: {
         exfilExecuted: run.dvaa?.exfilExecuted === true,
-        blocked: run.dvaa?.aim?.allowed === false,
-        denialReason: run.dvaa?.aim?.denialReason ?? null,
+        blocked: run.dvaa?.aim?.allowed === false || over?.proxyRefused === true,
+        denialReason: over?.denialReason ?? run.dvaa?.aim?.denialReason ?? null,
         trustScore: trustOf(run.dvaa?.aim?.trustScore),
       },
     };
@@ -408,7 +424,7 @@ export function normalizeCapture(raw, entry = { id: raw?.id ?? 'inline', source:
   const shape = detectShape(raw);
   if (!shape) throw new CaptureFormatError(entry.id, 'unrecognized capture shape (expected runA/runB, beat2/beat3, act2/act3, request/response or exchanges[])');
   const runs =
-    shape === 'demo-ab' ? normalizeDemoAB(raw)
+    shape === 'demo-ab' ? normalizeDemoAB(raw, entry.id)
       : shape === 'demo-ledger' ? normalizeDemoLedger(raw)
         : shape === 'demo-acts' ? normalizeDemoActs(raw)
           : normalizeOpenAI(raw, entry);
