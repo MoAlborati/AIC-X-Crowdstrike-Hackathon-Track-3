@@ -41,7 +41,10 @@ clone() {
   if [ ! -d "$DVAA_DIR/.git" ]; then
     git clone "$DVAA_REPO" "$DVAA_DIR"
   fi
-  git -C "$DVAA_DIR" fetch --all --tags
+  # Fetch only when the pinned commit is missing, so an existing checkout works offline.
+  if ! git -C "$DVAA_DIR" cat-file -e "${DVAA_PIN}^{commit}" 2>/dev/null; then
+    git -C "$DVAA_DIR" fetch --all --tags
+  fi
   git -C "$DVAA_DIR" checkout "$DVAA_PIN"
   # Fail loud unless the checkout is exactly the pin with a clean tree (the same gate baseline.mjs
   # applies before importing DVAA code).
