@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tourniquet Numbers Dashboard</title>
+<!--
+  Numbers-first, single-screen dashboard. Same data path as deck.html: every number is fetched from the repo's
+  committed result files at load time and derived by demo/slides/deck-data.mjs (checked by
+  demo/slides/test/dashboard.test.mjs). Nothing is hard-coded: a missing file or key renders "⚠ missing: <file>#<key>".
+  Hover any number to see its source file#key.
+
+  Serve from the repo root (loopback only):   demo/slides/serve-deck.sh
+  then open http://127.0.0.1:8765/demo/slides/dashboard.html
+
+  Keys: 1–6 switch tabs · ← / → cycle tabs · the URL hash keeps the tab and selections (#tab=heldout&set=ipi).
+  Layout: the page never scrolls (100vh grid, overflow hidden, clamp() type). Offline: no external scripts or fonts.
+-->
+<style>
+  :root {
+    --navy: #0b1a33;
+    --navy-2: #12264a;
+    --navy-3: #1b3463;
+    --ink: #f4f1ea;
+    --ink-dim: #b9c2d3;
+    --leak: #ff8a3d;      /* orange: leaked / attack */
+    --held: #5aaeff;      /* blue: blocked / held */
+    --ok: #c9d6ea;
+    --rule: #2c4677;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --gut: clamp(12px, 1.6vw, 32px);
+    --fs: clamp(13px, min(1.05vw, 1.9vh), 21px);
+    --fs-s: clamp(11px, min(0.85vw, 1.55vh), 17px);
+    --fs-big: clamp(22px, min(2.6vw, 4.6vh), 54px);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--navy); color: var(--ink); font-family: var(--font); font-size: var(--fs); line-height: 1.3; }
+  body {
+    height: 100vh; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    gap: clamp(6px, 1.1vh, 14px); padding: clamp(8px, 1.4vh, 20px) var(--gut);
+  }
+  .mono { font-family: var(--mono); }
+  .dim { color: var(--ink-dim); }
+  .small { font-size: var(--fs-s); color: var(--ink-dim); }
+  .leak { color: var(--leak); }
+  .held { color: var(--held); }
+  a { color: var(--held); }
+
+  header { display: flex; align-items: baseline; gap: 18px; min-width: 0; }
+  header h1 { margin: 0; font-size: calc(var(--fs) * 1.45); font-weight: 700; white-space: nowrap; }
+  header .sub { flex: 1; min-width: 0; font-size: var(--fs-s); color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* KPI strip */
+  #kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: clamp(6px, 0.8vw, 14px); }
+  .kpi { background: var(--navy-2); border: 2px solid var(--rule); border-radius: 12px; padding: clamp(6px, 1vh, 14px) clamp(8px, 0.8vw, 16px); min-width: 0; }
+  .kpi .lbl { font-size: var(--fs-s); color: var(--ink-dim); min-height: 2.6em; line-height: 1.3; }
+  .kpi .who { font-size: calc(var(--fs-s) * 0.9); letter-spacing: 1px; text-transform: uppercase; color: var(--ink-dim); margin-top: 4px; }
+  .kpi .big { display: block; font-size: var(--fs-big); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi .base { display: block; font-size: calc(var(--fs) * 1.15); color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Tabs */
+  nav#tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--rule); min-width: 0; }
+  nav#tabs button {
+    font: inherit; color: var(--ink-dim); background: transparent; border: 2px solid transparent; border-bottom: 0;
+    border-radius: 10px 10px 0 0; padding: 6px clamp(8px, 0.9vw, 16px); cursor: pointer; white-space: nowrap; margin-bottom: -2px;
+  }
+  nav#tabs button .k { font-family: var(--mono); font-size: var(--fs-s); opacity: .7; margin-right: 6px; }
+  nav#tabs button[aria-selected="true"] { color: var(--ink); background: var(--navy-2); border-color: var(--rule); font-weight: 700; }
+  nav#tabs button:focus-visible { outline: 2px solid var(--held); }
+
+  main { min-height: 0; overflow: hidden; background: var(--navy-2); border: 2px solid var(--rule); border-radius: 0 0 12px 12px; border-top: 0; padding: clamp(8px, 1.4vh, 20px) clamp(10px, 1.2vw, 24px); }
+  .panel { display: none; height: 100%; min-height: 0; flex-direction: column; gap: clamp(6px, 1vh, 12px); }
+  .panel.active { display: flex; }
+  .panel h2 { margin: 0; font-size: calc(var(--fs) * 1.25); }
+  .controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  .seg { display: inline-flex; border: 2px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  .seg span.l { padding: 4px 10px; color: var(--ink-dim); font-size: var(--fs-s); align-self: center; }
+  .seg button { font: inherit; font-size: var(--fs-s); background: transparent; color: var(--ink-dim); border: 0; border-left: 1px solid var(--rule); padding: 4px 12px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--navy-3); color: var(--ink); font-weight: 700; }
+  .cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: clamp(10px, 1.4vw, 28px); min-height: 0; flex: 1; }
+  .cols > div { min-width: 0; min-height: 0; overflow: hidden; }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: clamp(3px, 0.7vh, 10px) 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: var(--fs-s); color: var(--ink-dim); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .t-ours { color: var(--ink); font-weight: 700; }
+  .t-base { color: var(--ink-dim); }
+  table.big td { font-size: calc(var(--fs) * 1.2); }
+
+  .tag { display: inline-block; font-weight: 800; letter-spacing: 1px; padding: 1px 8px; border-radius: 6px; font-size: var(--fs-s); white-space: nowrap; }
+  .tag.leak { background: rgba(255,138,61,.16); border: 2px solid var(--leak); color: var(--leak); }
+  .tag.held { background: rgba(90,174,255,.14); border: 2px solid var(--held); color: var(--held); }
+  .tag.ok { border: 2px solid var(--ok); color: var(--ok); }
+  .tag.dim { border: 2px dashed var(--ink-dim); color: var(--ink-dim); }
+
+  .card { background: var(--navy); border: 2px solid var(--rule); border-radius: 10px; padding: clamp(6px, 1vh, 14px) clamp(8px, 0.9vw, 16px); min-width: 0; }
+  .card.heldb { border-color: var(--held); }
+  .card.dashed { border-style: dashed; }
+  .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(6px, 0.8vw, 14px); }
+  .stat .v { display: block; font-size: calc(var(--fs-big) * 0.8); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: var(--fs-s); color: var(--ink-dim); }
+
+  /* paired bars: always labelled in text, colour is never the only cue */
+  .bars { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; }
+  .bar { height: clamp(10px, 2vh, 22px); background: var(--navy-3); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; }
+  .bar.ours i { background: var(--held); }
+  .bar.base i { background: var(--ink-dim); }
+
+  [data-src] { cursor: help; }
+  .missing { color: var(--leak) !important; font-weight: 700; font-family: var(--mono); font-size: var(--fs-s) !important; border: 2px dashed var(--leak); padding: 1px 6px; border-radius: 6px; word-break: break-all; white-space: normal !important; }
+
+  footer { display: flex; justify-content: space-between; gap: 18px; font-size: var(--fs-s); color: var(--ink-dim); border-top: 1px solid var(--rule); padding-top: 4px; white-space: nowrap; overflow: hidden; }
+  footer span { overflow: hidden; text-overflow: ellipsis; }
+  #banner { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 20; background: var(--leak); color: #111; font-size: 14px; padding: 6px 14px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div id="banner"></div>
+
+<header>
+  <h1>Tourniquet · the numbers</h1>
+  <div class="sub">Ours paired with DVAA's own scanner on every number · <span data-m="scoring.corpus.positives"></span> attacks + <span data-m="scoring.corpus.negatives"></span> benign cases, labelled by DVAA's ground truth and the published benchmarks · hover a number for its source</div>
+  <a class="small" href="deck.html">← deck</a>
+</header>
+
+<section id="kpis" aria-label="Headline numbers, ours paired with DVAA's baseline"></section>
+
+<nav id="tabs" role="tablist" aria-label="Detail views"></nav>
+
+<main>
+  <!-- 1. Scored corpus -->
+  <section class="panel" id="p-scored" role="tabpanel">
+    <div class="controls">
+      <h2>Scored corpus · request-side detector</h2>
+      <div class="seg" data-ctl="lens"><span class="l">Lens</span><button data-v="detection">Detection</button><button data-v="prevention">Prevention</button></div>
+      <div class="seg" data-ctl="kind"><span class="l">Positive kind</span><button data-v="all">All</button><button data-v="exfil">Exfil</button><button data-v="injectionOnly">Injection-only</button></div>
+    </div>
+    <div class="cols">
+      <div>
+        <table class="big">
+          <thead><tr><th></th><th class="num">Tourniquet (T3)</th><th class="num">DVAA baseline</th></tr></thead>
+          <tbody>
+            <tr><td id="sc-recall-l"></td><td class="num t-ours" id="sc-recall-t3"></td><td class="num t-base" id="sc-recall-dvaa"></td></tr>
+            <tr><td id="sc-fp-l"></td><td class="num t-ours" id="sc-fp-t3"></td><td class="num t-base" id="sc-fp-dvaa"></td></tr>
+            <tr><td>Detection recall, all attacks (any finding)</td><td class="num t-ours" data-m="scoring.detection.t3.recall"></td><td class="num t-base" data-m="scoring.detection.dvaa.recall"></td></tr>
+            <tr><td>Prevention recall, all attacks (request-side block)</td><td class="num t-ours" data-m="scoring.prevention.t3.recall"></td><td class="num t-base" data-m="scoring.prevention.dvaa.recall"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="small" id="sc-bars-title"></div>
+        <div class="bars" id="sc-bars" style="margin-top:8px"></div>
+        <p class="small" style="margin:12px 0 0">Corpus: <span data-m="scoring.corpus.t1Positives"></span> + <span data-m="scoring.corpus.t6Positives"></span> attacks (DVAA captures + variants), <span data-m="scoring.corpus.t1Negatives"></span> + <span data-m="scoring.corpus.t6Negatives"></span> benign. Labelled by DVAA's ground truth and the published benchmarks.</p>
+        <p class="small" style="margin:8px 0 0">Request-side detector numbers only: egress is not in the scored harness. Our benign set was also used for tuning, so the benign count is a small-sample result, not a guarantee.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Held-out -->
+  <section class="panel" id="p-heldout" role="tabpanel">
+    <div class="controls">
+      <h2>Held-out · we attacked ourselves</h2>
+      <div class="seg" data-ctl="set"><span class="l">Set</span><button data-v="hf">hf</button><button data-v="ipi">ipi</button><button data-v="hackmyagent">hackmyagent</button></div>
+    </div>
+    <div class="cols">
+      <div>
+        <p style="margin:0 0 8px"><b id="ho-label"></b><br><span class="small mono" id="ho-file"></span></p>
+        <table class="big">
+          <thead><tr><th>Request-side detector, paired</th><th class="num">Tourniquet (T3)</th><th class="num">DVAA baseline</th></tr></thead>
+          <tbody>
+            <tr><td>Detected</td><td class="num t-ours" id="ho-det-t3"></td><td class="num t-base" id="ho-det-dvaa"></td></tr>
+            <tr><td>Prevented (request-side)</td><td class="num t-ours" id="ho-prev-t3"></td><td class="num t-base" id="ho-prev-dvaa"></td></tr>
+            <tr><td id="ho-fp-l">Benign blocked</td><td class="num t-ours" id="ho-fp-t3"></td><td class="num t-base" id="ho-fp-dvaa"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <p class="small" style="margin:0">Sets we never tuned on. Request-side detector only. Our request-side rule is narrow, which is why default-deny egress is the control.</p>
+        <p class="small" id="ho-note" style="margin:10px 0 0"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Egress -->
+  <section class="panel" id="p-egress" role="tabpanel">
+    <div class="controls"><h2>Egress guard · default-deny by destination</h2><span class="tag dim">NOT SCORED</span><span class="small">Egress is not in the scored harness.</span></div>
+    <div class="small">Recorded block run · <span class="mono">sentinel/egress/evidence-block.jsonl</span> · recorded <span data-m="egress.recordedAt"></span></div>
+    <div class="stat-row">
+      <div class="card heldb stat"><span class="v held" data-m="egress.denies"></span><span class="l">egress requests denied <span class="tag held">BLOCKED</span></span></div>
+      <div class="card stat"><span class="v" data-m="egress.passes"></span><span class="l">let through</span></div>
+      <div class="card stat"><span class="v" data-m="egress.destinationOnly"></span><span class="l">denied on destination alone (not allowlisted)</span></div>
+      <div class="card heldb stat"><span class="v" data-m="egress.canaryHits"></span><span class="l">attacker canary hits</span></div>
+    </div>
+    <div class="cols">
+      <div class="card">
+        <div class="small">Contrast run, block mode (request check in front of the unmodified agent)</div>
+        <table>
+          <thead><tr><th>Agent</th><th class="num">Proxy status</th><th class="num">Canary hits</th></tr></thead>
+          <tbody><tr><td id="eg-block-agent"></td><td class="num" id="eg-block-status"></td><td class="num" id="eg-block-hits"></td></tr></tbody>
+        </table>
+        <p class="small" style="margin:8px 0 0">Holds against every non-allowlisted destination we tried. Data sent to an allowlisted host still passes; the guard doesn't read TLS.</p>
+      </div>
+      <div class="card dashed">
+        <div><span class="tag dim">UNSCORED / REPLAY</span></div>
+        <p style="margin:8px 0 0">Policy replay (not a live run): all 12 corpus attacks that send to a web address are denied, 9 of them missed by the request check; email exfil is out of scope for network egress.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Same attack, outcomes -->
+  <section class="panel" id="p-contrast" role="tabpanel">
+    <div class="controls"><h2>Same attack, different outcomes</h2><span class="small">Recorded · <span data-m="contrast.attackId"></span> “<span data-m="contrast.attackName"></span>” against live DVAA · captured <span data-m="contrast.capturedAt"></span></span></div>
+    <div id="contrast-table" style="min-height:0;overflow:hidden"></div>
+    <p class="small" style="margin:0">Rebuilding the agent works if you own the code. Tourniquet protects the unmodified agent from outside.</p>
+  </section>
+
+  <!-- 5. Path A, OpsBot -->
+  <section class="panel" id="p-opsbot" role="tabpanel">
+    <div class="controls">
+      <h2>Path A · our own OpsBot (all secrets fake)</h2>
+      <div class="seg" data-ctl="stack"><span class="l">Stack</span></div>
+    </div>
+    <div class="cols">
+      <div>
+        <p style="margin:0 0 8px"><b id="ops-label"></b></p>
+        <table class="big" id="ops-table"><thead><tr><th>Scenario</th><th>Kind</th><th>Outcome</th><th>Detail</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="card">
+        <div class="small">This stack</div>
+        <div class="stat-row" style="grid-template-columns:1fr 1fr;margin-top:6px">
+          <div class="stat"><span class="v" id="ops-stopped"></span><span class="l">attacks stopped</span></div>
+          <div class="stat"><span class="v" id="ops-benign"></span><span class="l">benign tasks OK</span></div>
+        </div>
+        <p class="small" style="margin:10px 0 0">No single layer is enough. Source: <span class="mono">track3a/runs/results.json</span>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Alert -->
+  <section class="panel" id="p-alert" role="tabpanel">
+    <div class="controls"><h2><span data-m="alert.detectName"></span></h2><span class="tag held" data-m="alert.disposition"></span><span class="small">Recorded · real AIDR-shaped alert from the egress block run · <span data-m="alert.timestamp"></span></span></div>
+    <p style="margin:0" data-m="alert.description"></p>
+    <table style="min-height:0">
+      <tbody>
+        <tr><td>Rule</td><td class="mono" data-m="alert.ruleId"></td></tr>
+        <tr><td>Severity</td><td><span data-m="alert.severityName"></span> (<span data-m="alert.severity"></span>)</td></tr>
+        <tr><td>MITRE ATLAS</td><td><span data-m="alert.techniqueId"></span> <span data-m="alert.technique"></span> · <span data-m="alert.tactic"></span></td></tr>
+        <tr><td>MITRE ATT&amp;CK</td><td data-m="alert.attack"></td></tr>
+        <tr><td>OWASP LLM · Agentic</td><td><span data-m="alert.owaspLlm"></span> · <span data-m="alert.owaspAgentic"></span></td></tr>
+        <tr><td>Benchmark</td><td data-m="alert.oasb"></td></tr>
+        <tr><td>Sink (redacted)</td><td class="mono" data-m="alert.sink"></td></tr>
+        <tr><td>Decision latency</td><td><span data-m="alert.latencyMs"></span> ms</td></tr>
+      </tbody>
+    </table>
+    <p class="small" style="margin:0">Schema <span data-m="alert.schema"></span>: AIDR-shaped schema only; it does not connect to Falcon.</p>
+  </section>
+</main>
+
+<footer>
+  <span>numbers: <span class="mono">sentinel/scoring/results.json</span> · generated <span data-m="scoring.generatedAt"></span></span>
+  <span>keys: 1–6 tabs · ← → cycle</span>
+</footer>
+
+<script type="module">
+const DATA_ROOT = '../../';
+let D; // deck-data module
+let MODEL, RAW;
+
+const TABS = [
+  { id: 'scored', label: 'Scored corpus' },
+  { id: 'heldout', label: 'Held-out (we attacked ourselves)' },
+  { id: 'egress', label: 'Egress' },
+  { id: 'contrast', label: 'Same attack, outcomes' },
+  { id: 'opsbot', label: 'Path A, OpsBot' },
+  { id: 'alert', label: 'Alert' },
+];
+const SETS = { hf: 'hf', ipi: 'ipi', hackmyagent: 'hma' };
+const state = { tab: 'scored', lens: 'detection', kind: 'all', set: 'hf', stack: '' };
+
+async function loadModule() {
+  try {
+    return await import('./deck-data.mjs');
+  } catch (e) {
+    const src = await (await fetch('./deck-data.mjs', { cache: 'no-store' })).text();
+    return import(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  }
+}
+
+async function loadRaw(files) {
+  const raw = {};
+  const failed = [];
+  await Promise.all(Object.entries(files).map(async ([k, f]) => {
+    try {
+      const res = await fetch(DATA_ROOT + f, { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const text = await res.text();
+      raw[k] = f.endsWith('.json') ? JSON.parse(text) : text;
+    } catch (e) {
+      failed.push(f);
+    }
+  }));
+  return { raw, failed };
+}
+
+function setMetric(el, m, how) {
+  el.classList.remove('missing');
+  el.textContent = D.fmt(m, how);
+  el.dataset.src = m ? m.src : 'unknown';
+  el.title = 'source: ' + el.dataset.src;
+  if (!m || !m.ok) el.classList.add('missing');
+}
+function byId(id) { return document.getElementById(id); }
+function span(m, how, cls) {
+  const s = document.createElement('span');
+  if (cls) s.className = cls;
+  setMetric(s, m, how);
+  return s;
+}
+
+// ---------- KPI strip ----------
+function buildKpis() {
+  const host = byId('kpis');
+  for (const k of D.deriveKpis(MODEL)) {
+    const tile = document.createElement('div');
+    tile.className = 'kpi';
+    tile.dataset.kpi = k.key;
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = k.label;
+    const who = document.createElement('div'); who.className = 'who'; who.textContent = 'Tourniquet';
+    const big = span(k.t3, k.how, 'big t-ours');
+    const base = document.createElement('span'); base.className = 'base';
+    base.append('DVAA ', span(k.dvaa, k.how));
+    tile.append(lbl, who, big, base);
+    host.appendChild(tile);
+  }
+}
+
+// ---------- Tabs + hash ----------
+function readHash() {
+  const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (TABS.some((t) => t.id === p.get('tab'))) state.tab = p.get('tab');
+  if (['detection', 'prevention'].includes(p.get('lens'))) state.lens = p.get('lens');
+  if (['all', 'exfil', 'injectionOnly'].includes(p.get('kind'))) state.kind = p.get('kind');
+  if (p.get('set') in SETS) state.set = p.get('set');
+  const stack = (p.get('stack') || '').replace(/ /g, '+'); // a literal '+' in the hash decodes as a space
+  if (stack && MODEL && MODEL.track3a.stacks.includes(stack)) state.stack = stack;
+}
+function writeHash() {
+  const p = new URLSearchParams({ tab: state.tab });
+  if (state.tab === 'scored') { p.set('lens', state.lens); p.set('kind', state.kind); }
+  if (state.tab === 'heldout') p.set('set', state.set);
+  if (state.tab === 'opsbot' && state.stack) p.set('stack', state.stack);
+  const h = '#' + p.toString();
+  if (location.hash !== h) history.replaceState(null, '', h);
+}
+function buildTabs() {
+  const nav = byId('tabs');
+  TABS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.setAttribute('role', 'tab');
+    b.dataset.tab = t.id;
+    b.innerHTML = `<span class="k">${i + 1}</span>`;
+    b.append(t.label);
+    b.addEventListener('click', () => { state.tab = t.id; render(); });
+    nav.appendChild(b);
+  });
+}
+function wireSegments() {
+  for (const seg of document.querySelectorAll('.seg[data-ctl]')) {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]');
+      if (!b) return;
+      state[seg.dataset.ctl] = b.dataset.v;
+      render();
+    });
+  }
+}
+
+// ---------- Panels ----------
+const KIND_LABEL = { all: 'all attacks', exfil: 'exfil-labelled attacks', injectionOnly: 'injection-only attacks' };
+function renderScored() {
+  const r = RAW.scoring;
+  const pair = D.deriveRecallByKind(r, state.lens, state.kind);
+  const lensText = state.lens === 'prevention' ? 'Prevention recall (request-side block)' : 'Detection recall (any finding)';
+  byId('sc-recall-l').textContent = `${lensText}, ${KIND_LABEL[state.kind]}`;
+  setMetric(byId('sc-recall-t3'), pair.t3);
+  setMetric(byId('sc-recall-dvaa'), pair.dvaa);
+  const fp = MODEL.scoring[state.lens];
+  byId('sc-fp-l').textContent = state.lens === 'prevention' ? 'Benign requests blocked (request-side)' : 'Benign requests flagged (any finding)';
+  setMetric(byId('sc-fp-t3'), fp.t3.fp, 'frac');
+  setMetric(byId('sc-fp-dvaa'), fp.dvaa.fp, 'frac');
+  byId('sc-bars-title').textContent = `${lensText}, ${KIND_LABEL[state.kind]}`;
+  const bars = byId('sc-bars');
+  bars.replaceChildren();
+  for (const [who, m, cls] of [['Tourniquet', pair.t3, 'ours'], ['DVAA baseline', pair.dvaa, 'base']]) {
+    const name = document.createElement('span'); name.textContent = who; name.className = cls === 'ours' ? 't-ours' : 't-base';
+    const bar = document.createElement('div'); bar.className = 'bar ' + cls;
+    const fill = document.createElement('i');
+    fill.style.width = m.ok ? `${(100 * m.num) / m.den}%` : '0';
+    bar.appendChild(fill);
+    bars.append(name, bar, span(m, 'pct', cls === 'ours' ? 't-ours' : 't-base'));
+  }
+}
+
+function renderHeldout() {
+  const h = MODEL.holdouts[SETS[state.set]];
+  byId('ho-label').textContent = h.label;
+  byId('ho-file').textContent = h.file;
+  for (const k of ['det', 'prev', 'fp']) {
+    const how = k === 'fp' ? 'frac' : 'auto';
+    setMetric(byId(`ho-${k}-t3`), h.t3[k], how);
+    setMetric(byId(`ho-${k}-dvaa`), h.dvaa[k], how);
+  }
+  byId('ho-fp-l').textContent = `Benign blocked (${h.fpNote})`;
+  byId('ho-note').textContent = state.set === 'hackmyagent'
+    ? "hackmyagent is the DVAA authors' own battery, written against their scanner. Disclosed, not defended."
+    : state.set === 'ipi'
+      ? 'Public indirect-injection sets that name a destination. Benign: clean benign emails, prevention lens.'
+      : 'Jailbreak and injection text from three Hugging Face sets.';
+}
+
+function renderOpsbot() {
+  const t = MODEL.track3a;
+  const seg = document.querySelector('.seg[data-ctl="stack"]');
+  if (!t.ok) {
+    byId('ops-label').replaceChildren(span(D.missing(t.src)));
+    return;
+  }
+  if (!state.stack) state.stack = t.stacks[0];
+  if (!seg.querySelector('button')) {
+    for (const s of t.stacks) {
+      const b = document.createElement('button'); b.dataset.v = s; b.textContent = s; b.title = D.STACK_LABELS[s] || s;
+      seg.appendChild(b);
+    }
+  }
+  byId('ops-label').textContent = D.STACK_LABELS[state.stack] || state.stack;
+  const tb = byId('ops-table').tBodies[0];
+  tb.replaceChildren();
+  for (const sc of t.scenarios) {
+    const m = t.cells[`${state.stack}|${sc}`];
+    const tr = tb.insertRow();
+    const row = (RAW.track3a || []).find((x) => x && x.stack === state.stack && x.scenario === sc);
+    tr.insertCell().textContent = sc;
+    tr.insertCell().textContent = row ? row.kind : '';
+    const out = tr.insertCell(); const det = tr.insertCell(); det.className = 'small';
+    if (!m || !m.ok) { out.appendChild(span(m || D.missing(`${D.FILES.track3a}#[stack=${state.stack}, scenario=${sc}]`))); continue; }
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + m.v.tone; tag.textContent = m.v.label; tag.dataset.src = m.src; tag.title = 'source: ' + m.src;
+    out.appendChild(tag);
+    det.textContent = m.v.detail;
+  }
+  setMetric(byId('ops-stopped'), t.summary[state.stack].stopped, 'frac');
+  setMetric(byId('ops-benign'), t.summary[state.stack].benignOk, 'frac');
+}
+
+function buildContrast() {
+  const c = MODEL.contrast;
+  const t = document.createElement('table');
+  t.innerHTML = '<thead><tr><th>Agent</th><th>Outcome</th><th class="num">Attacker canary hits</th></tr></thead>';
+  const tb = t.createTBody();
+  const verdict = { vulnerable: ['LEAKED', 'leak'], observe: ['FLAGGED, STILL LEAKED', 'leak'], block: ['BLOCKED by Tourniquet', 'held'], aim: ['BLOCKED by a rebuild', 'held'], securebot: ['BLOCKED by a rebuild', 'held'] };
+  for (const r of c.rows) {
+    const tr = tb.insertRow();
+    tr.insertCell().appendChild(span(r.agent));
+    const td = tr.insertCell();
+    const tag = document.createElement('span'); tag.className = 'tag ' + verdict[r.key][1]; tag.textContent = verdict[r.key][0];
+    td.append(tag, ' ', span(r.outcome, 'auto', 'small'));
+    const n = tr.insertCell(); n.className = 'num'; n.appendChild(span(r.canaryHits));
+  }
+  byId('contrast-table').appendChild(t);
+  const block = c.rows.find((r) => r.key === 'block');
+  setMetric(byId('eg-block-agent'), block.agent);
+  setMetric(byId('eg-block-status'), block.status);
+  setMetric(byId('eg-block-hits'), block.canaryHits);
+}
+
+function bindAll() {
+  for (const el of document.querySelectorAll('[data-m]')) {
+    const m = D.getPath(MODEL, el.dataset.m);
+    setMetric(el, m && typeof m === 'object' && 'src' in m ? m : D.missing(`dashboard model: ${el.dataset.m}`), el.dataset.f || 'auto');
+  }
+}
+
+function render() {
+  for (const b of document.querySelectorAll('#tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === state.tab));
+  for (const p of document.querySelectorAll('.panel')) p.classList.toggle('active', p.id === 'p-' + state.tab);
+  if (state.tab === 'opsbot') renderOpsbot();
+  for (const seg of document.querySelectorAll('.seg[data-ctl]')) {
+    for (const b of seg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === state[seg.dataset.ctl]));
+  }
+  renderScored();
+  renderHeldout();
+  writeHash();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const i = TABS.findIndex((t) => t.id === state.tab);
+  if (/^[1-6]$/.test(e.key)) state.tab = TABS[Number(e.key) - 1].id;
+  else if (e.key === 'ArrowRight') state.tab = TABS[(i + 1) % TABS.length].id;
+  else if (e.key === 'ArrowLeft') state.tab = TABS[(i - 1 + TABS.length) % TABS.length].id;
+  else return;
+  e.preventDefault();
+  render();
+});
+window.addEventListener('hashchange', () => { readHash(); render(); });
+
+(async () => {
+  D = await loadModule();
+  const { raw, failed } = await loadRaw(D.FILES);
+  RAW = raw;
+  MODEL = D.deriveAll(raw);
+  if (failed.length) {
+    const b = byId('banner');
+    b.style.display = 'block';
+    b.textContent = '⚠ could not load: ' + failed.join(', ') + '. Serve from the repo root (demo/slides/serve-deck.sh).';
+  }
+  buildKpis();
+  buildTabs();
+  wireSegments();
+  bindAll();
+  buildContrast();
+  readHash();
+  render();
+  // Probe for the no-scroll check: the page records its own overflow so a headless --dump-dom can read it.
+  if (new URLSearchParams(location.search).has('probe')) {
+    const start = state.tab;
+    const out = [];
+    const main = document.querySelector('main');
+    for (const t of TABS) {
+      state.tab = t.id; render();
+      const de = document.documentElement;
+      out.push(`${t.id}:page=${de.scrollHeight}/${innerHeight},w=${de.scrollWidth}/${innerWidth},panel=${main.scrollHeight}/${main.clientHeight}`);
+    }
+    state.tab = start; render();
+    document.body.dataset.probe = out.join(' ');
+    document.body.dataset.missing = [...document.querySelectorAll('.missing')].map((e) => e.textContent).join(' | ') || 'none';
+  }
+})();
+</script>
+</body>
+</html>
