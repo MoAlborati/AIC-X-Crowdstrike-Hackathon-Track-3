@@ -41,3 +41,16 @@ test('main scoring output is unchanged in shape (no set/byGroup fields)', () => 
   assert.equal(r.set, undefined);
   assert.equal(r.detectors.noop.byGroup, undefined);
 });
+
+test('--set holdout-ipi loads only its own held-out cases and never mixes with main or holdout-hf', async () => {
+  const { cases: main } = loadCorpus();
+  assert.equal(main.filter((c) => c.source === 'ipi-holdout' || c.id.startsWith('IPI-')).length, 0);
+  const { cases } = await loadSet(undefined, 'holdout-ipi');
+  assert.equal(cases.length, 770);
+  assert.ok(cases.every((c) => c.source === 'ipi-holdout' && c.id.startsWith('IPI-')));
+  assert.equal(cases.filter((c) => c.groundTruth === 'positive').length, 370);
+  assert.equal(cases.filter((c) => c.channel === 'tool_output').length, 385);
+  const r = runScoring({ detectors: [noopDetector()], iterations: 1, corpus: { cases, excluded: [], t6Present: true }, set: 'holdout-ipi', headline: 'noop' });
+  assert.equal(r.set, 'holdout-ipi');
+  assert.match(r.setNote, /NOT part of the main-corpus headline/);
+});
