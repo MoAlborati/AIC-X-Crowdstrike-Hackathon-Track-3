@@ -152,6 +152,7 @@ These are the known gaps, grouped by layer. Each line says what isn't covered an
   - Lakera Guard and Prompt Guard classify text. We decide on where data goes, and we pair with a classifier for generic jailbreaks.
 - **Path to launch:** prototype (today) → open-source sidecar run by design partners in observe mode; the exit test is a partner leaving it in block mode → paid managed policy and alert routing, priced with those partners → SOC integration. The SOC step already has a working offline prototype: our alerts feed the Track 1 SOC Brief (`scripts/soc-handoff.sh`).
 - **Evidence:** where data actually leaves, we prevent 57 of 71 exfil attempts with 0 of 164 legitimate requests blocked. DVAA's own scanner prevents 64 of 71 but blocks 21 of 164 (`sentinel/scoring/results.json`).
+- **Market evidence (public, cited; not our numbers):** the exact failure we stop is a shipped-product reality (EchoLeak / CVE-2025-32711, CVSS 9.3, zero-click Microsoft 365 Copilot data exfiltration), the deploying company is held liable for its agent (*Moffatt v. Air Canada*, 2024), and comparable guards were acquired by major vendors in 2025 (Prompt Security → SentinelOne ~$250M; Lakera → Check Point). Observe-then-block matches the established SASE/SWG/DLP rollout pattern. Full brief with URLs: [`demo/slides/MARKET-EVIDENCE.md`](demo/slides/MARKET-EVIDENCE.md).
 - **Working demo:** `demo/run-demo.sh --auto`. Slide content: [`demo/slides/VENTURE.md`](demo/slides/VENTURE.md).
 
 ## Provenance and licenses
