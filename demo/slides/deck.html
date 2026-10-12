@@ -138,10 +138,9 @@
     <p style="font-size:34px">Team SentinelProxy · presented by Catherine</p>
     <p class="small">Deterministic sandbox (DVAA, offline, canned replies). No LLM in the loop.</p>
   </div>
-  <aside class="notes" data-budget="10">
-    <p>Beat 1 hook. Don't read the slide.</p>
+  <aside class="notes" data-budget="8">
+    <p>Beat 1 (0:00). Don't read the slide.</p>
     <p><q>In under a minute I'll make an AI agent send its admin password to an attacker using one poisoned document, then stop it without touching its code.</q></p>
-    <p><q>It's a deterministic sandbox, no LLM.</q></p>
   </aside>
 </section>
 
@@ -157,7 +156,8 @@
   <p class="quote">"The 'lethal trifecta': private data, untrusted content, external communication (Simon Willison, Jun 2025)."</p>
   <p class="quote" style="font-size:30px">"AI is rewriting the enterprise attack surface at breakneck speed. Each prompt becomes an entry point for the adversary." — George Kurtz, CEO &amp; founder</p>
   <p class="tiny">Quotes verbatim from planning/CITATIONS.md "Safe slide wording". Confused deputy: Hardy, "The Confused Deputy", ACM SIGOPS OSR 22(4):36–38, 1988.</p>
-  <aside class="notes" data-budget="20">
+  <aside class="notes" data-budget="30">
+    <p><q>It's a deterministic sandbox, no LLM.</q></p>
     <p>Beat 2. The quotes stay on the slide, unspoken.</p>
     <p><q>Your agent is a bank teller who obeys any note slipped into a deposit envelope. Every document, web page and repo file it reads is an envelope. The attacker never breaks in; the teller does the work.</q></p>
     <p><q>We protect the agents you can't rebuild, from the outside.</q></p>
@@ -175,38 +175,17 @@
 <span class="cmd">$ jq -r '.canary.hits[0].query.data' captures/attack/aim-ab.demo.json</span>
 <span class="out leak" style="font-size:30px;font-weight:700" data-m="exploit.canaryData"></span></div>
   <p style="margin-top:18px"><span class="tag leak">LEAKED</span> canary hits: <b data-m="exploit.canaryHits"></b> · admin secret + SSN reached the attacker. All values are fake sandbox data.</p>
-  <aside class="notes" data-budget="25">
-    <p>Beat 3. Terminal + dashboard tab <code>?stage=1&amp;capture=vulnerable&amp;step=last</code>.</p>
+  <aside class="notes" data-budget="30">
+    <p>Beat 3. Terminal, then dashboard tab <code>?stage=1&amp;capture=vulnerable&amp;step=last</code>.</p>
     <p><q>Recorded. A deliberately vulnerable agent from the organizers' sandbox gets one document with a hidden instruction.</q></p>
-    <p><q>It just sent the admin password and an SSN to the attacker's server.</q> Pause two seconds.</p>
-    <p>Beat 3b (run-demo.sh prints it; numbers in appendix A2): <q>Recorded. The sandbox's scanner reads only the first and last 8 KB, so attackers hide the payload in the middle. We read every byte, typically in under a tenth of a millisecond.</q> Say "2 of 2" only if asked.</p>
+    <p><q>It just sent the admin password and an SSN to the attacker's server.</q></p> <p>Pause two seconds.</p>
+    <p>Beat 3b (run-demo.sh prints it; numbers in appendix A2):</p>
+    <p><q>Recorded. The sandbox's scanner reads only the first and last 8 KB, so attackers hide the payload in the middle. We read every byte, typically in under a tenth of a millisecond.</q></p>
+    <p>Say "2 of 2" only if asked.</p>
   </aside>
 </section>
 
-<!-- ============================================ 4. Two enforcement points ============================================ -->
-<section class="slide" data-title="Two enforcement points">
-  <div class="kicker">How it works</div>
-  <h1>Two enforcement points. Egress is what holds.</h1>
-  <div class="flow" role="img" aria-label="caller, then request check, then agent, then tools, then default-deny egress, then internet">
-    <div class="node">caller</div><div class="arrow">→</div>
-    <div class="node gate"><span class="n">①</span>request check</div><div class="arrow">→</div>
-    <div class="node">agent</div><div class="arrow">→</div>
-    <div class="node">tools</div><div class="arrow">→</div>
-    <div class="node gate"><span class="n">②</span>default-deny egress</div><div class="arrow">→</div>
-    <div class="node">internet</div>
-  </div>
-  <div class="row">
-    <div class="col card"><b>① Request check (SentinelProxy)</b><br>Refuses a request whose content orders data sent somewhere the user never named. Narrow on purpose: it reads words, so wording can slip past it.</div>
-    <div class="col card heldb"><b class="held">② Default-deny egress</b><br>Decides on the destination, not the words. A guest list, not a lie detector: it holds against every non-allowlisted destination we tried.</div>
-  </div>
-  <aside class="notes" data-budget="20">
-    <p>Beat 6 line, moved before the live demo so the room knows the two points.</p>
-    <p><q>Only you decide where data goes. Our egress guard is a guest list, not a lie detector: every unlisted destination we tried was denied, whatever the words said.</q></p>
-    <p>If asked: request-side "payee not confirmed" raises risk but never blocks alone; the only unconditional destination block is the egress allowlist.</p>
-  </aside>
-</section>
-
-<!-- ============================================ 5. Live ============================================ -->
+<!-- ============================================ 4. Live ============================================ -->
 <section class="slide" data-title="Live">
   <div class="kicker"><span class="badge live">LIVE</span>&nbsp; Beat 4 then Beat 4b · <span class="mono">demo/run-demo.sh</span> drives both</div>
   <h1>Same document, through SentinelProxy</h1>
@@ -228,7 +207,7 @@ ENCORE PASS</span></div>
       <p class="small" style="margin-top:14px">Recorded block run: <b data-m="egress.denies"></b> egress requests denied, <b data-m="egress.passes"></b> let through; attacker canary hits <b data-m="egress.canaryHits"></b> <span class="tag held">BLOCKED</span></p>
     </div>
   </div>
-  <aside class="notes" data-budget="55">
+  <aside class="notes" data-budget="40">
     <p>Beat 4 (live 200 then 403). Dashboard tab <code>?stage=1&amp;capture=proxy-blocked&amp;step=last</code>.</p>
     <p><q>Same agent, same document, now through SentinelProxy. First, a normal question: it passes.</q> … <q>Now the attack.</q></p>
     <p><q>Refused before the agent ever saw it: the document slipped in an order to send data somewhere the user never named.</q></p>
@@ -239,16 +218,39 @@ ENCORE PASS</span></div>
   </aside>
 </section>
 
-<!-- ============================================ 6. Three outcomes ============================================ -->
+<!-- ============================================ 5. Three outcomes ============================================ -->
 <section class="slide" data-title="Same attack, three outcomes">
   <div class="kicker"><span class="badge rec">RECORDED</span>&nbsp; <span data-m="contrast.attackId"></span> against live DVAA · captured <span data-m="contrast.capturedAt"></span></div>
   <h1>Same attack, three outcomes</h1>
   <div id="contrast-table" class="grow"></div>
   <p class="small">Rebuilding the agent works if you own the code. SentinelProxy protects the unmodified agent from outside.</p>
-  <aside class="notes" data-budget="20">
+  <aside class="notes" data-budget="13">
     <p>Beat 5a. Slide only, no dashboard tab.</p>
     <p><q>Recorded. The other fix is rebuilding the agent with a capability guard: its twin is denied. That works if you own the code. Most companies don't.</q></p>
-    <p>Outcomes: leaked (and flagged but still leaked in observe mode), blocked by the proxy, blocked by a rebuild. Don't claim we beat AIM; we complement it.</p>
+    <p>Don't claim we beat AIM; we complement it.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 6. Two enforcement points ============================================ -->
+<section class="slide" data-title="Two enforcement points">
+  <div class="kicker">How it works</div>
+  <h1>Two enforcement points. Egress is what holds.</h1>
+  <div class="flow" role="img" aria-label="caller, then request check, then agent, then tools, then default-deny egress, then internet">
+    <div class="node">caller</div><div class="arrow">→</div>
+    <div class="node gate"><span class="n">①</span>request check</div><div class="arrow">→</div>
+    <div class="node">agent</div><div class="arrow">→</div>
+    <div class="node">tools</div><div class="arrow">→</div>
+    <div class="node gate"><span class="n">②</span>default-deny egress</div><div class="arrow">→</div>
+    <div class="node">internet</div>
+  </div>
+  <div class="row">
+    <div class="col card"><b>① Request check (SentinelProxy)</b><br>Refuses a request whose content orders data sent somewhere the user never named. Narrow on purpose: it reads words, so wording can slip past it.</div>
+    <div class="col card heldb"><b class="held">② Default-deny egress</b><br>Decides on the destination, not the words. A guest list, not a lie detector: it holds against every non-allowlisted destination we tried.</div>
+  </div>
+  <aside class="notes" data-budget="14">
+    <p>Beat 6.</p>
+    <p><q>Only you decide where data goes. Our egress guard is a guest list, not a lie detector: every unlisted destination we tried was denied, whatever the words said.</q></p>
+    <p>If asked: request-side "payee not confirmed" raises risk but never blocks alone; the only unconditional destination block is the egress allowlist.</p>
   </aside>
 </section>
 
@@ -266,28 +268,57 @@ ENCORE PASS</span></div>
       <tr><td>In-detector latency, median · p95</td><td class="num t-ours"><span data-m="scoring.latency.t3.median" data-f="ms"></span> · <span data-m="scoring.latency.t3.p95" data-f="ms2"></span></td><td class="num t-base"><span data-m="scoring.latency.dvaa.median" data-f="ms"></span> · <span data-m="scoring.latency.dvaa.p95" data-f="ms2"></span></td></tr>
     </tbody>
   </table>
-  <p style="margin-top:22px">Held out, on public indirect-injection sets that name a destination we prevent <b data-m="holdouts.ipi.t3.prev" data-f="pct"></b> (DVAA <span data-m="holdouts.ipi.dvaa.prev" data-f="pct"></span>). Our request-side rule is narrow, which is why default-deny egress is the control. Full held-out table on the last slide.</p>
   <p class="tiny">Egress is not in the scoring harness: these are request-side detector numbers. Our benign set was also used for tuning, so 0 blocked is a small-sample result, not a guarantee.</p>
-  <aside class="notes" data-budget="45">
-    <p>Beat 7, first half. Table not read aloud.</p>
+  <aside class="notes" data-budget="20">
+    <p>Beat 7, first line. The table is not read aloud.</p>
     <p><q>On 189 attacks and 164 normal requests, we detect slightly more than the sandbox's scanner. It stops more outright, 63 percent to our 42, but it blocks one in eight normal requests. We blocked zero.</q></p>
-    <p><q>We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo.</q></p>
-    <p>If the numbers on the slide differ from these spoken ones, the slide is right: say the slide's numbers. Never quote 57/71 without 64/71.</p>
+    <p>If the slide differs from these words, say the slide's numbers. Never quote 57/71 without 64/71.</p>
   </aside>
 </section>
 
-<!-- ============================================ 8. OpsBot (Path A) ============================================ -->
+<!-- ============================================ 8. We attacked ourselves + limits ============================================ -->
+<section class="slide" data-title="We attacked ourselves">
+  <div class="kicker">We attacked ourselves</div>
+  <h1 style="font-size:52px">Flagging isn't stopping. Default-deny egress is the control.</h1>
+  <p style="font-size:30px;margin-bottom:10px">Held-out sets we never tuned on (request-side detector only, paired). On public indirect-injection sets that name a destination we prevent <b data-m="holdouts.ipi.t3.prev" data-f="pct"></b> (DVAA <span data-m="holdouts.ipi.dvaa.prev" data-f="pct"></span>); our request-side rule is narrow, which is why default-deny egress is the control.</p>
+  <div id="holdout-table"></div>
+  <div class="row" style="margin-top:20px">
+    <div class="col">
+      <b>Honest limits</b>
+      <ul class="b small" style="margin-top:6px">
+        <li>A plain "send it to my URL" phrasing walks past the request check (1 of 22 in our test).</li>
+        <li>Data sent to an allowlisted host still passes; the egress guard doesn't read TLS.</li>
+        <li>Egress isn't scored on a corpus yet: it holds against every non-allowlisted destination we tried.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <b>What holds</b>
+      <ul class="b small" style="margin-top:6px">
+        <li>Default-deny egress decides on the destination, so rewording the request doesn't change it.</li>
+        <li>Benign blocked stays paired with DVAA's on every set.</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes" data-budget="23">
+    <p>Beat 7, second and third lines. In the expanded run, drop the final "Thank you." here; say it once at the very end.</p>
+    <p><q>We attacked ourselves too: on a held-out set of injections that do name a destination, our front-door rule stops only 3 percent; the sandbox's scanner stops 51. Our known misses are listed in the repo.</q></p>
+    <p><q>Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize.</q></p>
+    <p>hackmyagent, if asked: the DVAA authors' own battery, written against their scanner; we lose on recall in every category and win only on false positives. Disclose it, don't defend it. "1 of 22" source: demo/QA-PREP.md Q17.</p>
+  </aside>
+</section>
+
+<!-- ============================================ 9. OpsBot (Path A) ============================================ -->
 <section class="slide" data-title="Path A: OpsBot layers">
   <div class="kicker">Path A · our own OpsBot (ticket reader, customer lookup, http_post) · all secrets fake</div>
   <h1>No single layer is enough</h1>
   <div id="track3a-table" class="grow"></div>
-  <aside class="notes" data-budget="30">
-    <p>Path A. Encore command if asked: <code>node track3a/run-demo.mjs</code> (about 2 s).</p>
-    <p>Say: the chat proxy alone stops the direct attack but leaks the indirect one; the mandate alone stops the indirect one but leaks the direct one. Stacking the proxy with the egress guard stops both, and normal traffic passes on every stack.</p>
+  <aside class="notes" data-budget="35">
+    <p>Beat 8 (cut first if running long, after Beat 10). Terminal: <code>node track3a/run-demo.mjs</code> (about 2 s). Fallback: open track3a/RESULTS.md.</p>
+    <p><q>That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified SentinelProxy, a different agent.</q></p>
   </aside>
 </section>
 
-<!-- ============================================ 9. Ciocca: who uses it, who pays ============================================ -->
+<!-- ============================================ 10. Ciocca: who uses it, who pays ============================================ -->
 <section class="slide" data-title="Who uses it and who pays">
   <div class="kicker">Ciocca Venture · 1 of 3</div>
   <h1>Who uses it, and who pays</h1>
@@ -298,13 +329,13 @@ ENCORE PASS</span></div>
     <li><b>Their blocker:</b> "we can't ship this agent until security signs off on what it can send out."</li>
     <li><b>Wedge:</b> an egress sidecar for agent tool calls: one container that becomes the agent's only route out. No code or model changes.</li>
   </ul>
-  <aside class="notes" data-budget="25">
-    <p><q>Agents read untrusted text and act with your authority, so one hidden instruction can send customer data out. Who pays: teams running agents they can't rebuild, without an enterprise AIDR budget.</q></p>
-    <p>No market size, price or customer names. If pressed: "we haven't sized it yet".</p>
+  <aside class="notes" data-budget="28">
+    <p>Beat 9, part 1 of 3. Never cut Beat 9. No market size, price or customer name.</p>
+    <p><q>As a product, for the Ciocca award: who pays? Teams running agents they can't rebuild — a vendor agent, an open-source one, a legacy internal one — where you can't rewrite the prompt or the tool code, but you can control the network. The budget holder can't ship an agent until security signs off on what it can send out.</q></p>
   </aside>
 </section>
 
-<!-- ============================================ 10. Ciocca: how it stands apart ============================================ -->
+<!-- ============================================ 11. Ciocca: how it stands apart ============================================ -->
 <section class="slide" data-title="How it stands apart">
   <div class="kicker">Ciocca Venture · 2 of 3</div>
   <h1>How it stands apart</h1>
@@ -318,13 +349,14 @@ ENCORE PASS</span></div>
     </tbody>
   </table>
   <p class="small" style="margin-top:18px">Edge: drop-in sidecar · default-deny egress at the tool boundary · deterministic rules (same input, same verdict) · low false-positive posture.</p>
-  <aside class="notes" data-budget="25">
-    <p><q>Our wedge is an egress sidecar for agent tool calls. Classifiers judge the wording. We judge the destination, and rewording doesn't change it.</q></p>
-    <p>SASE/SWG: they can allowlist hosts too, but they don't know which agent turn or user request a call belongs to. Never say "better than" any of these at detection.</p>
+  <aside class="notes" data-budget="28">
+    <p>Beat 9, part 2 of 3.</p>
+    <p><q>How we stand apart: classifiers ask whether text looks like an attack, and an attacker can reword it. We ask whether the user authorized the destination, and rewording doesn't change where the data goes. It's the secure web gateway model — a destination allowlist on egress — applied one layer down, to an agent's tool calls.</q></p>
+    <p>The SWG line is an analogy for what the egress guard is, not a claim it works because gateways work. Never say "better than" any of these.</p>
   </aside>
 </section>
 
-<!-- ============================================ 11. Ciocca: path to launch ============================================ -->
+<!-- ============================================ 12. Ciocca: path to launch ============================================ -->
 <section class="slide" data-title="Path to launch">
   <div class="kicker">Ciocca Venture · 3 of 3</div>
   <h1>Path to launch: observe first, then enforce</h1>
@@ -335,40 +367,37 @@ ENCORE PASS</span></div>
     <li><b>SOC:</b> alerts into analyst triage. Works offline today as a prototype with Track 1's SOC Brief.</li>
   </ol>
   <p class="card" style="margin-top:8px">Evidence, paired: where data actually leaves we prevent <b data-m="scoring.exfil.t3" data-f="of"></b> exfil attempts with <b data-m="scoring.prevention.t3.fp" data-f="of"></b> legitimate requests blocked. DVAA's scanner prevents <span data-m="scoring.exfil.dvaa" data-f="of"></span> but blocks <span data-m="scoring.prevention.dvaa.fp" data-f="of"></span>.</p>
-  <aside class="notes" data-budget="25">
-    <p><q>Where data actually leaves, we prevent 57 of 71 attempts with zero of 164 legitimate requests blocked. The baseline stops 64 but blocks 21. Path: open-source sidecar with design partners, then paid managed policy, then SOC integration.</q></p>
-    <p>(Read the numbers off the slide if they differ.) Observe for a week, see the alerts, then turn on block.</p>
+  <aside class="notes" data-budget="29">
+    <p>Beat 9, part 3 of 3. If you skip Beat 10, say "Thank you." here.</p>
+    <p><q>Our path to launch: today, a prototype against the sandbox and our own OpsBot; next, an open-source sidecar that design partners run in observe mode on real traffic; then a paid managed tier for hosted allowlists and alert routing; then SOC integration. Where data actually leaves, we prevent 57 of 71 exfil attempts with zero of 164 legitimate requests blocked; the sandbox's scanner prevents 64 of 71 but blocks 21 of 164.</q></p>
+    <p>Read the numbers off the slide if they differ.</p>
   </aside>
 </section>
 
-<!-- ============================================ 12. Close and limits ============================================ -->
-<section class="slide" data-title="Close and limits">
+<!-- ============================================ 13. SOC handoff + thank you ============================================ -->
+<section class="slide" data-title="Thank you">
   <div class="kicker">Close</div>
-  <h1 style="font-size:52px">Flagging isn't stopping. Default-deny egress is the control.</h1>
-  <h2 style="font-size:30px;margin-bottom:6px">Held-out sets we never tuned on (request-side detector only, paired)</h2>
-  <div id="holdout-table"></div>
+  <h1 style="font-size:72px">A document can ask. Only the user can authorize.</h1>
+  <p style="font-size:40px">SentinelProxy: a drop-in egress guard for tool-using agents. Flagging isn't stopping; default-deny egress is the control.</p>
   <div class="row" style="margin-top:20px">
     <div class="col">
-      <b>Honest limits</b>
-      <ul class="b small" style="margin-top:6px">
-        <li>A plain "send it to my URL" phrasing walks past the request check (1 of 22 in our test).</li>
-        <li>Data sent to an allowlisted host still passes; the egress guard doesn't read TLS.</li>
-        <li>Egress isn't scored on a corpus yet: it holds against every non-allowlisted destination we tried.</li>
-      </ul>
+      <h2>If time: SOC handoff (offline, no model key)</h2>
+      <div class="term">$ scripts/soc-handoff.sh
+  # proxy blocks, post-execution flags and egress denies,
+  # briefed by Track 1's SOC Brief → .eval/soc-handoff/brief.md</div>
     </div>
     <div class="col">
-      <b>Next</b>
-      <ul class="b small" style="margin-top:6px">
-        <li>TLS-aware egress; test against a real LLM agent.</li>
+      <h2>Next</h2>
+      <ul class="b small">
+        <li>TLS-aware egress; tests against a real LLM agent.</li>
         <li>Open-source sidecar; design partners in observe mode.</li>
       </ul>
-      <p style="margin-top:14px;font-size:38px"><b>A document can ask. Only the user can authorize.</b> Thank you.</p>
+      <p style="font-size:56px;margin-top:24px"><b>Thank you.</b></p>
     </div>
   </div>
-  <aside class="notes" data-budget="40">
-    <p><q>Flagging isn't stopping: in our watch-only run, the attacker still got the key. So we built the layer that doesn't need to read. A document can ask. Only the user can authorize. Thank you.</q></p>
-    <p>If asked about hackmyagent: it's the DVAA authors' own battery, written against their scanner; we lose on recall in every category and win only on false positives. Disclose it, don't defend it.</p>
-    <p>"1 of 22" source: demo/QA-PREP.md Q17 (creative pass 2, #105). Not a committed capture.</p>
+  <aside class="notes" data-budget="25">
+    <p>Beat 10, only if time (cut it first). Terminal: <code>scripts/soc-handoff.sh</code>. If skipped, "Thank you." was said on the previous slide.</p>
+    <p><q>And if there's time: our alerts don't stop at a dashboard. One offline command hands them to our Track 1 SOC brief, which turns them into a plain-English priority-one analyst brief — the source document, the tool, and the destination — ready for triage. No model key, no network. Thank you.</q></p>
   </aside>
 </section>
 
@@ -377,9 +406,9 @@ ENCORE PASS</span></div>
   <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
     <div class="kicker">Appendix</div>
     <h1>For Q&amp;A</h1>
-    <p>A1 · The AIDR-shaped alert &nbsp;·&nbsp; A2 · 8 KB evasion (n = 2) &nbsp;·&nbsp; A3 · SOC handoff</p>
+    <p>A1 · The AIDR-shaped alert &nbsp;·&nbsp; A2 · 8 KB evasion (n = 2)</p>
   </div>
-  <aside class="notes" data-budget="0"><p>Not presented. Hold slide 12 during Q&amp;A.</p></aside>
+  <aside class="notes" data-budget="0"><p>Not presented. Hold slide 8 ("We attacked ourselves") during Q&amp;A.</p></aside>
 </section>
 
 <section class="slide" data-title="A1 AIDR-shaped alert" data-appendix="1">
@@ -415,17 +444,6 @@ ENCORE PASS</span></div>
   </table>
   <p class="small" style="margin-top:20px">Cases: <span class="mono" id="evasion-ids"></span>. A narrow result against a weakness DVAA has on purpose. Not a differentiator.</p>
   <aside class="notes" data-budget="0"><p>Say "2 of 2" only if asked, and always "n = 2, fixtures we built".</p></aside>
-</section>
-
-<section class="slide" data-title="A3 SOC handoff" data-appendix="1">
-  <div class="kicker">A3 · optional · offline, no LLM key</div>
-  <h1>SOC handoff</h1>
-  <div class="term">$ scripts/soc-handoff.sh
-  # proxy-blocked T3 alerts, post-execution flags and egress denies,
-  # converted by the T10 pipeline and briefed by Track 1's SOC Brief.
-  # writes .eval/soc-handoff/brief.md</div>
-  <p style="margin-top:20px">The same AIDR-shaped alerts become a plain-English analyst brief: the "SOC" step of the path to launch, as a prototype.</p>
-  <aside class="notes" data-budget="0"><p>Only if asked and time allows. If it fails, skip it.</p></aside>
 </section>
 
 </div></div>

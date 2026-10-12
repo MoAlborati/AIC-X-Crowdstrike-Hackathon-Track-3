@@ -205,12 +205,12 @@ test('wording rules (#123, #110 pass 3) hold in the slide markup', () => {
   }
   assert.match(markup, /labelled by DVAA's ground truth and the published benchmarks/);
   assert.match(markup, /holds against every non-allowlisted destination we tried/);
-  assert.match(markup, /on public indirect-injection sets that name a destination we prevent/);
+  assert.match(markup, /on public indirect-injection sets that name a destination we prevent/i);
   assert.match(markup, /our request-side rule is narrow, which is why default-deny egress is the control/i);
   assert.match(markup, /1 of 22 in our test/);
   // Every slide has a speaker-notes budget; the main flow sums to roughly 6 minutes.
   const budgets = [...html.matchAll(/<aside class="notes" data-budget="(\d+)"/g)].map((x) => Number(x[1]));
   const total = budgets.reduce((a, b) => a + b, 0);
   assert.equal(budgets.length, [...html.matchAll(/<section class="slide"/g)].length);
-  assert.ok(total >= 330 && total <= 420, `main flow ~6:00 (got ${total}s)`);
+  assert.ok(total >= 300 && total <= 400, `main flow ~5:20–6:00, per the #173 SCRIPT (got ${total}s)`);
 });
