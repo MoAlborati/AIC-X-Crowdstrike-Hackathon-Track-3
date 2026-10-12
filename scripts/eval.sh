@@ -14,9 +14,14 @@
 #   dashboard       start the T5 dashboard on loopback in the background, print its URL
 #   dashboard-stop  stop the dashboard started by `dashboard`
 #   all             doctor, up, test, score, contrast, dashboard; then a summary table
-#   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs); NOT YET MERGED if absent
+#   track3a         run the Track 3 Path A demo (node track3a/run-demo.mjs; needs Node >= 24, writes .eval/track3a/);
+#                   NOT YET MERGED if absent
 #   gate <PR#>      MERGE GATE: merge the PR into origin/main in a temp worktree and run `test` there;
 #                   exit 1 on a conflict or any failing suite. Required before merging any PR.
+#                   Also on the merged tree: claim drift (scripts/claim-drift.mjs: T3/DVAA %s in the pitch docs
+#                   must match sentinel/scoring/results.json), demo/run-demo.sh --check-script, and one
+#                   demo/run-demo.sh --auto --no-dvaa pass when the PR touches sentinel/detectors,
+#                   sentinel/scoring, demo/ or sentinel/dashboard.
 #
 # Every step prints PASS, FAIL or NOT YET MERGED. Nothing is skipped silently: a component that is not
 # on this branch yet prints "NOT YET MERGED" with its ticket, and a failing step exits non-zero.
@@ -73,14 +78,15 @@ nym_rc() { if [ "$STRICT" = 1 ]; then echo 1; else echo "$RC_NYM"; fi; }
 
 # ---------------------------------------------------------------------------------------------------
 # Node selection (.nvmrc pins 24): the sentinel/detectors timing budget is calibrated on Node 24, and Node 26
-# misses it (#61). Order: `node` on PATH if it is major 24; else the newest major-24 install from nvm or a
-# keg-only Homebrew node@24 (/opt/homebrew, /usr/local); else `node` on PATH if >= 22 (WARN in doctor when
-# it is not 24); else the newest nvm/Homebrew node >= 22.
+# misses it (#61). Order: `node` on PATH if it is major 24; else the newest major-24 install from nvm,
+# $HOME/.cache/node24 (#124) or a keg-only Homebrew node@24 (/opt/homebrew, /usr/local); else `node` on PATH if
+# >= 24; else `node` on PATH if >= 22 (WARN in doctor when it is not 24); else the newest nvm/Homebrew node >= 22.
 node_major() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null; }
 NODE_NOTE=""
 node_candidates() {
   local nvm_dir="${NVM_DIR:-$HOME/.nvm}" v
-  for v in "$nvm_dir"/versions/node/v*/bin/node /opt/homebrew/opt/node@*/bin/node /usr/local/opt/node@*/bin/node \
+  for v in "$nvm_dir"/versions/node/v*/bin/node "$HOME/.cache/node24/bin/node" \
+           /opt/homebrew/opt/node@*/bin/node /usr/local/opt/node@*/bin/node \
            /opt/homebrew/bin/node /usr/local/bin/node; do
     [ -x "$v" ] && echo "$v"
   done
@@ -95,6 +101,8 @@ select_node() {
     m="$(node_major "$v")"; m="${m:-0}"
     if [ "$m" = "$NODE_PREFERRED" ]; then best="$v"; best_major="$m"; fi   # last = newest v24 (glob order)
   done < <(node_candidates)
+  # No v24 install found: a `node` on PATH that is >= 24 beats falling back to an older (22) install (#124).
+  if [ -z "$best" ] && [ "$cur_major" -ge "$NODE_PREFERRED" ]; then NODE_NOTE="node on PATH (v${cur_major}); no Node $NODE_PREFERRED install found"; return 0; fi
   if [ -z "$best" ] && [ "$cur_major" -lt "$NODE_MIN" ]; then
     while IFS= read -r v; do
       m="$(node_major "$v")"; m="${m:-0}"
@@ -596,8 +604,10 @@ cmd_dashboard() {
   echo "  log: .eval/dashboard.log   stop: scripts/eval.sh dashboard-stop"
   return 0
 }
-# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Note: run-demo.mjs
-# rewrites track3a/runs/results.json + RESULTS.md (its own recorded outputs), so this is not part of `all`.
+# Track 3 Path A (track3a/, PR #62): OpsBot attacked and defended with SentinelProxy. Since #113, run-demo.mjs
+# writes its run outputs to the gitignored .eval/track3a/ (override: TRACK3A_OUT), not track3a/runs/. It needs
+# Node >= 24 (NODE_USE_ENV_PROXY for the egress-guard stacks; nvm v24.16.0 on the team box) and exits 2 on
+# Node < 24, so it is not part of `all` (the default Node on some machines is 22).
 cmd_track3a() {
   hdr "track3a (Track 3 Path A: node track3a/run-demo.mjs)"
   require_node || return 1
@@ -623,6 +633,52 @@ cmd_dashboard_stop() {
 # Merge gate: PR head merged into the current origin/main, in a throwaway worktree, then `test`.
 # A merge conflict or any failing suite fails the gate. Logs: .eval/gate-pr<N>/.
 GATE_TMP=""; GATE_TMP2=""
+# Demo + claim checks on the merged tree (issue #110, overseer rec #1). Returns 1 if any fails.
+#   claim drift   T3/DVAA %s in README/SUBMISSION/QA-PREP/DECK must match sentinel/scoring/results.json
+#   script sync   demo/run-demo.sh --check-script (spoken lines verbatim in demo/SCRIPT.md)
+#   demo --auto   one full replay, only when the PR touches detectors, scoring, demo/ or the dashboard
+GATE_DEMO_PATHS='^(sentinel/detectors/|sentinel/scoring/|demo/|sentinel/dashboard/)'
+gate_demo_checks() { # merged-tree base-sha pr
+  local tree="$1" base="$2" pr="$3" log="$OUT/gate-pr$3/demo" crc=0 changed port
+  mkdir -p "$log"
+  hdr "gate demo checks (merged tree)"
+  if ! require_node; then return 1; fi
+  if [ ! -f "$tree/scripts/claim-drift.mjs" ]; then
+    bad "claim drift: scripts/claim-drift.mjs missing on the merged tree"; crc=1
+  elif node "$tree/scripts/claim-drift.mjs" --repo "$tree" > "$log/claim-drift.log" 2>&1 \
+       && node --test "$tree/scripts/test/claim-drift.test.mjs" > "$log/claim-drift-test.log" 2>&1; then
+    ok "claim drift: quoted T3/DVAA percentages match sentinel/scoring/results.json"
+  else
+    bad "claim drift (logs .eval/gate-pr$pr/demo/claim-drift*.log)"
+    sed 's/^/        | /' "$log/claim-drift.log" | head -n 12; crc=1
+  fi
+  if [ ! -x "$tree/demo/run-demo.sh" ]; then
+    nym "demo/run-demo.sh not on the merged tree"
+  elif bash "$tree/demo/run-demo.sh" --check-script > "$log/check-script.log" 2>&1; then
+    ok "demo/run-demo.sh --check-script"
+  else
+    bad "demo/run-demo.sh --check-script (log .eval/gate-pr$pr/demo/check-script.log)"
+    tail -n 8 "$log/check-script.log" | sed 's/^/        | /'; crc=1
+  fi
+  changed="$(git -C "$tree" diff --name-only "$base" HEAD 2>/dev/null | grep -E "$GATE_DEMO_PATHS" || true)"
+  if [ -z "$changed" ]; then
+    echo "  SKIP  demo --auto (PR touches none of sentinel/detectors, sentinel/scoring, demo/, sentinel/dashboard)"
+  elif [ ! -x "$tree/demo/run-demo.sh" ]; then
+    :
+  else
+    # Own loopback dashboard port per gate run, so parallel gates and a running demo never collide.
+    port=$(( 19100 + ($$ % 800) ))
+    echo "  demo --auto: PR touches $(echo "$changed" | wc -l | tr -d ' ') demo-relevant file(s), e.g. $(echo "$changed" | head -n 1)"
+    if EVAL_DASHBOARD_PORT="$port" run_with_timeout "$SUITE_TIMEOUT" bash "$tree/demo/run-demo.sh" --auto --no-dvaa \
+         > "$log/demo-auto.log" 2>&1; then
+      ok "demo/run-demo.sh --auto --no-dvaa: every beat PASS (dashboard :$port)"
+    else
+      bad "demo/run-demo.sh --auto --no-dvaa (log .eval/gate-pr$pr/demo/demo-auto.log)"
+      grep -E 'FAIL' "$log/demo-auto.log" | head -n 8 | sed 's/^/        | /'; crc=1
+    fi
+  fi
+  return $crc
+}
 cmd_gate() {
   local rc
   gate_run "$@"; rc=$?
@@ -663,6 +719,7 @@ gate_run() {
   echo "  merged tree ${merged:0:12} in $tmp"
   rm -rf "$OUT/gate-pr$pr"
   EVAL_REPO="$tmp" EVAL_OUT="$OUT/gate-pr$pr" EVAL_STRICT=0 bash "$SELF" test; rc=$?
+  gate_demo_checks "$tmp" "$base" "$pr" || rc=1
   # Attribute failures: run the same suites on origin/main alone, so a red main is not blamed on the PR.
   if [ "$rc" != 0 ] && [ "$base" != "$merged" ]; then
     local btmp="$tmp.main"
