@@ -8,6 +8,9 @@ export function dispositionRank(disposition) {
   return RANK[disposition] ?? 1;
 }
 
+// From #141: phrases that ask the reader to sign back in from the message itself.
+const ACCOUNT_LURE = /log\s*back\s*in|log in to your|sign in to your|edit my return|identity protection|ip pin|tax return was rejected/;
+
 function trustedDomain(domain) {
   if (!domain) return false;
   return TRUSTED_EMAIL_DOMAINS.some((item) => domain === item || domain.endsWith(`.${item}`));
@@ -120,6 +123,31 @@ export function matchSignal(card) {
       ],
       whatToDo: 'Quarantine the message. If anyone opened the link or entered a password, reset that account and check sign-in logs. Do not visit the link.',
       explain: 'The message creates a deadline and then asks for a password on a site the company does not own. That is credential phishing. The goal is the password itself. Reporting it and resetting any account that touched the link is the whole response.',
+    });
+  }
+
+  // Ported from #141 (@shrutidoshi94): a pasted "log back in / Edit My Return" note is an account lure
+  // even with no From line or link, so the destination of its button is unknown. Internal mail with no
+  // mismatched link is left to the rules below.
+  if (mail && (!mail.trusted || mail.mismatched) && ACCOUNT_LURE.test(text)) {
+    const tax = /tax return|ip pin|identity protection/.test(text);
+    return hit({
+      ruleId: 'account-lure',
+      activity: 'account_lure',
+      disposition: 'escalate',
+      priority: 'P1',
+      headline: tax
+        ? 'This email says a tax return was rejected and asks the reader to log back in and edit it.'
+        : 'This email asks the reader to log back in from the message itself.',
+      why: [
+        tax ? 'It creates urgency: the return was rejected and must be fixed.' : 'It asks the reader to sign in from the message.',
+        `Sender: ${card.email.from}.`,
+        mail.linkHosts.length ? `Link host: ${mail.linkHosts.join(', ')}.` : 'There is no link in the paste, so the button\'s destination is unknown.',
+      ],
+      whatToDo: tax
+        ? 'Do not click Edit My Return. Open the tax account from a bookmark or by typing the address, and check the return there. If the notice is not in the account, treat the email as phishing.'
+        : 'Do not use the sign-in button in the message. Open the account from a bookmark or by typing the address. If the notice is not there, treat the email as phishing.',
+      explain: 'A rejected-return or "log back in" notice with a button is a common way to steal a login. A pasted copy has no reliable sender or link, so a genuine notice and a lure look the same. Do not use the button either way.',
     });
   }
 
