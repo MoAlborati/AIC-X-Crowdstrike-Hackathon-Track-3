@@ -23,7 +23,8 @@ deterministic replay is not a lucky one-off. Driver: `demo/run-demo.sh` (interac
 - [ ] Every spoken fact matches `planning/CITATIONS.md` "Safe slide wording" (don't paraphrase, don't add).
 - [ ] `<<METRIC:>>` slots filled **verbatim** from `sentinel/scoring/results.json`, never hand-typed. Show detection
       and prevention recall for T3 **and** DVAA's baseline, with FP. Say "8KB evasion: 2/2 fixtures", never a blanket
-      "beats baseline". Quote one latency figure: "in-detector ~0.5 ms".
+      "beats baseline". Quote one latency phrase: "under half a millisecond".
+- [ ] `demo/run-demo.sh --check-script` passes: every spoken line in SCRIPT.md is verbatim from the runner.
 - [ ] Mechanisms on slide 7 (Confirmation of Payee / limited-mandate / dead-man fail-closed) are each
       actually implemented in merged T3 — drop any that isn't rather than claim it.
 

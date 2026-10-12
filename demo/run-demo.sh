@@ -22,14 +22,19 @@
 #                 live fleet; use this on a machine without Docker)
 #   --keep-dvaa   leave the DVAA fleet running on teardown (default: stop what we started)
 #   --no-teardown leave the dashboard running on exit (default: stop it)
+#   --check-script only check that every spoken line below appears verbatim in demo/SCRIPT.md, and exit
 #   -h | --help   this help
 #
 # Components not yet merged are wired behind a single registry below (see "WIRING
 # REGISTRY"). Each prints "NOT YET MERGED: <component>" instead of being skipped
 # silently; finalizing them at feature-freeze (14:30) is a one-place edit.
 #
-# Exit code: 0 if every beat that is wired-and-merged passed; 1 if any such beat
-# failed. NOT-YET-MERGED beats are reported but do not fail the run before freeze.
+# Exit code: 0 if every beat that is wired-and-merged passed; 1 if any row FAILed
+# (including the SCRIPT.md sync check). NOT-YET-MERGED and WARN rows do not fail the run.
+#
+# Spoken lines: every `say "..."` below is a STATIC string and is the source of truth for what the
+# presenter says. demo/SCRIPT.md quotes each one verbatim, as a single `> "..."` line. Any number in a
+# spoken line is guarded by a check against the evidence, so the run fails if the data changes.
 set -uo pipefail
 
 # --------------------------------------------------------------------------- paths
@@ -38,13 +43,14 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 # --------------------------------------------------------------------------- flags
-AUTO=0; DO_DVAA=1; KEEP_DVAA=0; DO_TEARDOWN=1
+AUTO=0; DO_DVAA=1; KEEP_DVAA=0; DO_TEARDOWN=1; CHECK_ONLY=0
 for a in "$@"; do
   case "$a" in
     --auto) AUTO=1 ;;
     --no-dvaa) DO_DVAA=0 ;;
     --keep-dvaa) KEEP_DVAA=1 ;;
     --no-teardown) DO_TEARDOWN=0 ;;
+    --check-script) CHECK_ONLY=1 ;;
     -h|--help) sed -n '2,/^set -uo/p' "$SELF" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $a (try --help)" >&2; exit 2 ;;
   esac
@@ -127,8 +133,17 @@ headline_cmd() {
     "  prevention (pre-forward) recall \($h.prevention.recall|pct)  FP \($h.prevention.falsePositiveRate|pct)        recall \($d["dvaa-baseline"].modes.enforce.prevention.recall|pct)  FP \($d["dvaa-baseline"].modes.enforce.prevention.falsePositiveRate|pct)",
     "",
     "  8KB evasion: \(.beatsBaseline.byDetector.t3.beaten)/\(.beatsBaseline.eligible|length) fixtures (T3)",
-    "  in-detector latency: p95 \($d.t3.latencyMs.p95 * 100 | round / 100) ms over \($d.t3.latencyMs.n) cases (under 0.5 ms)"' "$SCORE_JSON" || return 1
-  jq -e '.detectors.t3.latencyMs.p95 < 0.5' "$SCORE_JSON" >/dev/null || { echo "T3 p95 latency is no longer under 0.5 ms: fix the spoken line"; return 1; }
+    "  in-detector latency: p95 \($d.t3.latencyMs.p95 * 100 | round / 100) ms over \($d.t3.latencyMs.n) cases (under half a millisecond)"' "$SCORE_JSON" || return 1
+  jq -e '.detectors.t3.latencyMs.p95 < 0.5' "$SCORE_JSON" >/dev/null || { echo "T3 p95 latency is no longer under half a millisecond: fix the spoken line"; return 1; }
+  # Every number in the static Beat 7 spoken line, checked against the file it comes from.
+  jq -e '.counts.attack == 189 and .counts.benign == 164
+         and ((.detectors["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate * 1000 | round) == 128)
+         and .headlineLenses.detection.falsePositiveRate == 0 and .headlineLenses.prevention.falsePositiveRate == 0
+         and .detectors["dvaa-baseline"].modes.enforce.prevention.recall > .headlineLenses.prevention.recall
+         and .detectors["dvaa-baseline"].modes.enforce.anyFinding.recall > .headlineLenses.detection.recall
+         and (.beatsBaseline.eligible | length) == 2 and .beatsBaseline.byDetector.t3.beaten == 2' "$SCORE_JSON" >/dev/null \
+    || { echo "results.json no longer matches the Beat 7 spoken line (189/164, baseline FP 12.8%, T3 FP 0, baseline higher recall, evasion 2/2): update the say line in run-demo.sh and SCRIPT.md together"; return 1; }
+  echo "spoken Beat 7 numbers match results.json"
 }
 
 # Beat 4 — request-side proxy block, T3 detector (#24) wired into the shipped proxy CLI (#41).
@@ -205,6 +220,32 @@ proxy_block_cmd() {   # the recording: blocked exchange only (the duplicate aler
     "$REPO/captures/contrast/runs/run-meta.json" >/dev/null || { echo "run-meta.json does not record the T3 detector"; return 1; }
   check_credit "$PROXY_BLOCK_JSONL"
 }
+# Response-side tripwire claim: in block mode a response carrying a honeytoken is WITHHELD (403
+# flagged_response, outcome reply_withheld_tool_already_executed; T3-fix #56). Proven on the real seam: the recorded
+# observe-mode exchange (its response carries the planted honeytoken) is replayed through the SHIPPED inspector
+# set (buildDefaultInspectors). The response verdict must be flagged, which is what makes block mode withhold it.
+# Fails, and so fails the run, on any code where the tripwire is still alert-only.
+PROXY_OBSERVE_JSONL="$REPO/captures/contrast/runs/proxy-observe.proxy.jsonl"
+withhold_check_cmd() {
+  node --input-type=module - "${SENTINEL_CODE_ROOT:-$REPO}" "$PROXY_OBSERVE_JSONL" <<'JS'
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const [root, log] = process.argv.slice(2);
+const { loadConfig } = await import(pathToFileURL(`${root}/sentinel/config/load.mjs`));
+const { buildDefaultInspectors } = await import(pathToFileURL(`${root}/sentinel/proxy/default-inspectors.mjs`));
+const ex = readFileSync(log, 'utf8').split('\n').filter(Boolean).map(JSON.parse)
+  .find((r) => r.type === 'exchange' && r.request?.path === '/v1/chat/completions');
+if (!ex?.response?.body?.data) { console.log('no recorded chat exchange with a response'); process.exit(1); }
+const config = loadConfig({ path: `${root}/sentinel/config/sentinel.config.json` });
+const { t3 } = buildDefaultInspectors({ ...config, mode: 'block' }, { write: () => {} });
+const base = { path: ex.request.path, headers: ex.request.headers, requestId: 'withhold-check' };
+await t3({ ...base, phase: 'request', body: Buffer.from(ex.request.body.data) });
+const v = await t3({ ...base, phase: 'response', body: Buffer.from(ex.response.body.data) });
+console.log(JSON.stringify({ phase: 'response', detector: v?.detector, flagged: v?.flagged ?? null, disposition: v?.disposition ?? null }));
+if (v?.flagged !== true) { console.log('response-side honeytoken is alert-only in this code: block mode would NOT withhold the reply'); process.exit(1); }
+console.log('block mode withholds this reply: the secret never reaches the client');
+JS
+}
 t4_alert_cmd() {   # the T4 alert the T10 pipeline built from the recorded verdict
   jq -rc '.runs[][] | {DetectName, RuleId, SeverityName, Atlas:.TechniqueId, OwaspLlm:[.OwaspLlm[].Id],
           Agentic:[.OwaspAgentic[].Id], Oasb:.Oasb.Benchmark, Disposition:.PatternDispositionDescription}' "$PROXY_BLOCK_T4"
@@ -222,6 +263,7 @@ egress_block_cmd() {
           + (if .host == "api.oa2a.org" then {note:"DVAA startup telemetry, blocked by the allowlist"}
              elif (.canary_ids | index("DVAA-ADMIN-PASSWORD")) then {agent:"RAGBot 7005"}
              elif (.canary_ids | index("DVAA-AWS-KEY-ID")) then {agent:"RepoBot 7022 (FAKE credentials)"}
+             elif .host == "canary" and (.canary_ids | length) == 0 then {agent:"RepoBot 7022: the poisoned repo'"'"'s bootstrap.sh fetch (no secret in it; denied because the attacker host is not allowlisted)"}
              else {} end)' "$EGRESS_BLOCK_JSONL"
 }
 egress_truth_cmd() {
@@ -230,6 +272,50 @@ egress_truth_cmd() {
     || { echo "recorded run does not show both RAGBot and RepoBot PREVENTED"; return 1; }
 }
 # =================================================================================
+
+# SCRIPT.md sync: (a) every say line in this file is static and appears verbatim in SCRIPT.md as `> "<line>"`;
+# (b) in the beats this runner drives (3, 3b, 4, 4b, 5a, 7), every `> "..."` line in SCRIPT.md is a say line here.
+SCRIPT_MD="$REPO/demo/SCRIPT.md"
+script_sync_cmd() {
+  python3 - "$SELF" "$SCRIPT_MD" <<'PY'
+import re, sys
+runner, script = open(sys.argv[1]).read(), open(sys.argv[2]).read()
+says, bad = [], []
+for n, line in enumerate(runner.splitlines(), 1):
+    m = re.match(r'^\s*say (.*)$', line)
+    if not m:
+        continue
+    arg = m.group(1)
+    if not re.fullmatch(r'"[^"$`\\]*"', arg):
+        bad.append(f"run-demo.sh:{n}: say line is not a static string: {arg[:80]}")
+        continue
+    says.append(arg[1:-1])
+quoted = set(re.findall(r'^> "(.*)"\s*$', script, re.M))
+for t in dict.fromkeys(says):
+    if t not in quoted:
+        bad.append(f'missing from SCRIPT.md (as a single > "..." line): "{t}"')
+driven = re.compile(r'^### Beat (3|3b|4|4b|5a|7) ')
+section, fenced = None, False
+for n, line in enumerate(script.splitlines(), 1):
+    if line.startswith('```'):
+        fenced = not fenced
+        continue
+    if fenced:
+        continue
+    if line.startswith('#'):
+        section = line if driven.match(line) else None
+        continue
+    if section and line.startswith('> '):
+        m = re.fullmatch(r'> "(.*)"\s*', line)
+        if not m or m.group(1) not in says:
+            bad.append(f"SCRIPT.md:{n}: spoken line in a runner-driven beat is not a run-demo.sh say line: {line[:90]}")
+for b in bad:
+    print(b)
+print(f"{len(set(says))} spoken lines checked against demo/SCRIPT.md: {'OK' if not bad else str(len(bad)) + ' mismatch(es)'}")
+sys.exit(1 if bad else 0)
+PY
+}
+if [ "$CHECK_ONLY" = 1 ]; then script_sync_cmd; exit $?; fi
 
 STARTED_DASHBOARD=0; STARTED_DVAA=0
 teardown() {
@@ -246,7 +332,9 @@ teardown() {
     warn "DVAA fleet left running (--keep-dvaa)"
   fi
   print_summary
+  exit "$FINAL_RC"
 }
+FINAL_RC=0
 trap teardown EXIT
 
 print_summary() {
@@ -257,7 +345,7 @@ print_summary() {
   fails=$(printf '%s\n' "${SUMMARY[@]}" | awk -F'|' '$2=="FAIL"' | wc -l | tr -d ' ')
   echo
   if [ "$fails" = 0 ]; then ok "demo run clean — no failing beats"
-  else bad "$fails beat(s) FAILED — this is not a clean replay"; fi
+  else bad "$fails beat(s) FAILED — this is not a clean replay"; FINAL_RC=1; fi
 }
 
 # =================================================================================
@@ -266,6 +354,9 @@ print_summary() {
 hdr "SentinelProxy demo  ·  mode=$([ "$AUTO" = 1 ] && echo AUTO || echo interactive)"
 note "repo: $REPO"
 note "SCRIPT: demo/SCRIPT.md    (deterministic replay from captures/)"
+
+hdr "Preflight 0 — spoken lines match demo/SCRIPT.md verbatim"
+run_cmd "script sync: every spoken line is verbatim in demo/SCRIPT.md" script_sync_cmd
 
 hdr "Preflight 1/3 — environment doctor (scripts/eval.sh doctor)"
 if [ -x "$EVAL" ]; then
@@ -372,7 +463,8 @@ if [ -f "$PROXY_BLOCK_JSONL" ]; then
       jq -rc 'select(.type=="exchange" and .action=="forwarded") | {action, path:.request.path, status:.response.status}' "$PROXY_BLOCK_JSONL"
     say "Now the attack."
   fi
-  say "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side, not the response-side tripwire, which only raises an alert."
+  say "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side. If a honeytoken shows up in a response instead, the tool already ran (alert-only for prevention), but in block mode the reply is withheld, so the secret never reaches the client."
+  run_cmd "response-side honeytoken: block mode withholds the reply (shipped inspectors, recorded observe exchange)" withhold_check_cmd
   run_cmd "recorded: same block on the live DVAA run (captures/contrast, detector:sentinel-t3)" proxy_block_cmd
   if [ -f "$PROXY_BLOCK_T4" ]; then
     run_cmd "recorded: the T4 alert built from that verdict (T10 pipeline)" t4_alert_cmd
@@ -389,7 +481,7 @@ advance
 
 # ---- Beat 4b — egress guard BLOCK (T12, sentinel/egress/, PR #45) --------------
 hdr "Beat 4b — tool-boundary EGRESS GUARD · fail-closed on exfil"
-say "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy can only raise an alert, the egress guard is what stops the exfil. It denies non-allowlisted destinations and honeytokens, and fails closed."
+say "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
 if [ -f "$EGRESS_BLOCK_JSONL" ] && [ -f "$EGRESS_GROUND_TRUTH" ]; then
   run_cmd "egress guard: deny decisions at the tool boundary (sentinel/egress/evidence-block.jsonl)" egress_block_cmd
   say "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
@@ -407,6 +499,7 @@ if [ -f "$CAP_ATTACK" ]; then
   # runB has no exfilExecuted key (AIM denies before execution); default to false for a clean readout.
   run_cmd "AIM twin: exfil executed? + denial reason" \
     jq -r '(.runB.dvaa.exfilExecuted // false), .runB.dvaa.aim.denialReason' "$CAP_ATTACK"
+  say "Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
 else
   nym "T1 attack capture (captures/attack/aim-ab.demo.json)"
   record "Beat 5a AIM twin" "NOT YET MERGED" "capture absent"
@@ -416,14 +509,9 @@ advance
 # ---- Beat 7 — headline metrics (T7, sentinel/scoring/results.json) -----------
 hdr "Beat 7 — headline · detection and prevention vs DVAA's baseline"
 if [ -f "$SCORE_JSON" ]; then
-  # The spoken numbers are read from the same file the table prints, so they cannot drift apart.
-  BASE_FP="$(jq -r '.detectors["dvaa-baseline"].modes.enforce.anyFinding.falsePositiveRate * 1000 | round as $x | "\($x / 10 | floor).\($x % 10)"' "$SCORE_JSON")"
-  T3_FP="$(jq -r '.headlineLenses.detection.falsePositiveRate * 1000 | round as $x | "\($x / 10 | floor).\($x % 10)"' "$SCORE_JSON")"
-  BASE_AHEAD="$(jq -r '.detectors["dvaa-baseline"].modes.enforce.prevention.recall > .headlineLenses.prevention.recall' "$SCORE_JSON")"
-  if [ "$BASE_AHEAD" = true ]; then RECALL_LINE="On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives."
-  else RECALL_LINE="T3 matches or beats the baseline's prevention recall."; fi
-  say "Scored against DVAA's own ground-truth labels. $RECALL_LINE DVAA's baseline flags benign traffic $BASE_FP percent of the time; T3's benign false-positive rate is $T3_FP percent. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
+  say "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives: it flags 12.8 percent of benign traffic, and T3 flags none. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
   run_cmd "headline: T3 vs DVAA baseline, detection + prevention + FP (sentinel/scoring/results.json)" headline_cmd
+  say "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
 else
   nym "T7 results (sentinel/scoring/results.json)"
   record "Beat 7 headline" "NOT YET MERGED" "results absent"

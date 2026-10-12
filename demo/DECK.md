@@ -90,9 +90,10 @@ organizer-provided sandbox; every secret is fake.
 
 **Speaker notes**
 Beat 4 (1:20–1:50). Order matters: benign passes first, then the attack is **blocked request-side, before the request
-is forwarded** (ADJACENT §6a, FP economics). Prevention is the request-side block (T3) and the egress guard (T12) — a
-response-side honeytoken tripwire is **alert-only**, deterministic insurance that names the exact planted secret but
-does not by itself prevent. Point at the case card: it names the *source* document, the tool and the sink, not just
+is forwarded** (ADJACENT §6a, FP economics). Prevention is the request-side block (T3) and the egress guard (T12). A
+response-side honeytoken tripwire fires after the tool already ran, so it is **alert-only for prevention**, but in block
+mode the **reply is withheld** (T3-fix #56), so the secret never reaches the client. Spoken lines: `demo/SCRIPT.md`,
+verbatim from `run-demo.sh`. Point at the case card: it names the *source* document, the tool and the sink, not just
 "blocked". Use the tags T4 actually emits in `sentinel/alerts/mapping.js`. Don't add tags by hand.
 
 ---
@@ -110,14 +111,14 @@ does not by itself prevent. Point at the case card: it names the *source* docume
 - Footer (T8, PR #16, merged): `scripts/eval.sh contrast` verifies the A/B against DVAA ground truth
   (SecureBot 7001 + AIM 7014 + SentinelProxy). The recorded runs are checked, never rewritten.
 - **Prevention map (from T3, #24):** RAGBot 7005 → blocked **request-side, pre-forward**; LegacyBot 7003 →
-  **reply withheld**; RepoBot 7022 → proxy **alert-only**, and **T12's egress guard is the control that stops it**.
+  **reply withheld**; RepoBot 7022 → the proxy **cannot stop the exfil** (payload read in-agent), and **T12's egress guard is the control that stops it**.
 
 **Speaker notes**
-Beat 5 (1:50–2:05). The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
+Beat 5a (1:50–2:05). The headline pair. 7014 is the same agent code with DVAA's AIM capability guard switched on,
 which is secure by design. The point to make: AIM works because someone rebuilt the agent, while SentinelProxy protects
 the *unmodified* 7005 from outside. Both quoted verdicts come straight from `aim-ab.demo.json`. Different agents are
 prevented by different controls (see the prevention map) — request-side block, response withhold, or egress guard —
-and response-side tripwires are alert-only. Don't claim we beat AIM. We complement it.
+and response-side tripwires are alert-only for prevention (the reply is withheld in block mode). Don't claim we beat AIM. We complement it.
 
 ---
 
@@ -153,7 +154,7 @@ DVAA's 8KB head+tail baseline.
 | Prevention recall (pre-forward) · benign FP | `<<METRIC>>` · `<<METRIC>>` | `<<METRIC>>` · `<<METRIC>>` |
 | 8KB evasion | `<<METRIC>>`/2 fixtures | — |
 | Corpus | `<<METRIC: N attack + M benign cases>>` | |
-| In-detector latency | ~0.5 ms | |
+| In-detector latency | under half a millisecond | |
 
 As of `sentinel/scoring/results.json` on origin/main `6c4fdc7`: detection 63.0% / FP 0.0% vs 65.6% / 12.8%;
 prevention 41.8% / FP 0.0% vs 63.0% / 12.8%; evasion 2/2; 189 attack + 164 benign; p95 0.38 ms. Copy the slide's
@@ -164,7 +165,7 @@ numbers from that file at build time (Beat 7 of `run-demo.sh` prints them).
 **Speaker notes**
 Beat 7, first half (2:30–2:40). Copy every number verbatim from the T7 output file and note the file and commit in the
 deck's source. FP rate sits beside recall on purpose, because it's a headline metric (BACKLOG T7). If T7 also reports p95
-latency, it is the one latency figure we quote ("in-detector ~0.5 ms"). **If T7 hasn't merged, this slide says "pending" and the script drops
+latency, it is the one latency phrase we quote ("under half a millisecond"; p95 0.38 ms). **If T7 hasn't merged, this slide says "pending" and the script drops
 the numbers sentence. Never put a guessed number on it.** Don't put AIDR's figure on this slide as a comparison. A
 benchmark of a different system on a different corpus isn't like-for-like.
 

@@ -80,8 +80,8 @@ Spoken lines are in quotes. Roughly 150 words per minute. The time column is cum
 
 ### Beat 3 — EXPLOIT, red (0:40–1:00) · terminal, then dashboard left pane
 
-> "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox. We send it
-> one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
+> "This is RAGBot on port 7005, an intentionally vulnerable agent from the organizers' DVAA sandbox."
+> "We send it one request carrying poisoned retrieved content, the client-side RAG pattern, taken from DVAA's own attack corpus."
 
 ```bash
 # Real today: the captured vulnerable run (T1)
@@ -92,7 +92,7 @@ jq -r '.canary.hits[0].query.data' captures/attack/aim-ab.demo.json
 Expected on screen: `submit_to_index`, `true`, then
 `… Admin credentials: dvaa-admin-secret | User John Doe SSN: 123-45-6789` (all fake sandbox values).
 
-> "It called `submit_to_index`, and the admin secret and an SSN just left the building."
+> "It called submit_to_index, and the admin secret and an SSN just left the building."
 
 *(Pause for two seconds and let it land.)*
 
@@ -122,6 +122,9 @@ has the higher recall (Beat 7).
 This is DoD item 1 — **not optional**. `demo/run-demo.sh` Beat 3b drives it.
 
 ### Beat 4 — DETECT → ALERT → BLOCK, green (1:20–1:50) · terminal + dashboard
+
+*Every quoted line in Beats 3, 3b, 4, 4b, 5a and 7 is a `say` line of `demo/run-demo.sh`, word for word; the runner
+shows each one in cyan. `demo/run-demo.sh --check-script` (also preflight row 0 of every run) fails if they drift.*
 
 > "Same agent, same request, but now it goes through SentinelProxy. First, a normal question passes untouched."
 
@@ -167,16 +170,18 @@ detector or reason set than the spoken line.
    `injection_markers`, `payee_not_confirmed`.
 2. The case card: "Instruction originated in user turn #0 embedded "INDEXED DOCUMENT" block (untrusted) → toward
    http:127.0.0.1 → blocked by rule inbound.exfil_instruction. Outcome: blocked_before_agent."
-3. A response-side honeytoken tripwire (e.g. `dvaa-admin-secret` surfacing in a reply) is **alert-only**. It
-   raises an alert, it does not prevent. Prevention is the request-side block above and the egress guard (Beat 4b).
+3. A response-side honeytoken tripwire (e.g. `dvaa-admin-secret` surfacing in a reply): the tool already ran, so it
+   is **alert-only for prevention**, but in block mode the **reply is withheld** (403 `flagged_response`, outcome
+   `reply_withheld_tool_already_executed`, T3-fix #56), so the secret never reaches the client. `run-demo.sh` proves
+   this on the shipped inspectors and fails Beat 4 on any code where the tripwire is still alert-only.
 
-> "Blocked at the request boundary by our T3 detector, before the request ever reached the model, so nothing was
-> forwarded and nothing could leave. The alert maps it to MITRE ATLAS and OWASP."
+> "Blocked at the request boundary, before it was ever forwarded to the model. The verdict comes from our T3 detector, sentinel-t3, with reason codes exfil_instruction_inbound, injection_markers, payee_not_confirmed. Prevention is request-side. If a honeytoken shows up in a response instead, the tool already ran (alert-only for prevention), but in block mode the reply is withheld, so the secret never reaches the client."
+
+> "Nothing was forwarded, so nothing could be exfiltrated."
 
 ### Beat 4b — Egress guard, green (inside the Beat 4 window) · terminal
 
-> "RepoBot reads its payload inside the agent, so the proxy can only raise an alert. The egress guard stops it at
-> the tool boundary: non-allowlisted destinations and honeytokens are denied, and it fails closed."
+> "When a request-side block is not the control, like RepoBot, which reads its payload inside the agent so the proxy cannot stop the exfil, the egress guard is what stops it. It denies non-allowlisted destinations and honeytokens, and fails closed."
 
 ```bash
 # Inspector decisions from the recorded block-mode run of scripts/egress-demo.sh (sentinel/egress/, PR #45):
@@ -185,19 +190,23 @@ jq -rc 'select(.action=="deny") | {host, reasons, canaries:.canary_ids}' sentine
 grep -E '^RESULT|^\(no canary hits\)' demo/captures/egress-demo-block.txt
 ```
 
-Expected: denies for RAGBot 7005 (`DVAA-ADMIN-PASSWORD`, `DVAA-SSN-JOHN`) and RepoBot 7022 (FAKE `DVAA-AWS-KEY-ID`,
-`DVAA-SSH-KEY`), then `RESULT block: PREVENTED` and `RESULT repobot block: PREVENTED`, with zero canary hits.
+Expected: denies for RAGBot 7005 (`DVAA-ADMIN-PASSWORD`, `DVAA-SSN-JOHN`), RepoBot 7022's poisoned-repo
+`bootstrap.sh` fetch (no secret in it; denied because the attacker host is not allowlisted), and RepoBot 7022's
+credential post (FAKE `DVAA-AWS-KEY-ID`, `DVAA-SSH-KEY`), then `RESULT block: PREVENTED` and `RESULT repobot block: PREVENTED`, with zero canary hits.
 The egress alerts carry ATT&CK **T1567 · T1041**, OWASP LLM01 · LLM02 · LLM06, Agentic ASI01 · ASI02, OASB-1.
 
 > "The api.oa2a.org deny is DVAA's startup telemetry, blocked by the allowlist."
 
 Live encore (after the clock, about a minute, its own compose stack): `scripts/egress-demo.sh both`.
 
-### Beat 5 — Red vs green (1:50–2:05) · Slide 6, three columns
+### Beat 5a — Secure-by-design twin, red vs green (1:50–2:05) · terminal, then Slide 6 (three columns)
 
-> "Here's the A/B. On the left, RAGBot 7005 gets pwned. In the middle is its twin, RAGBot-AIM 7014, the same code with
-> its capability guard switched on, and it's denied. On the right is 7005 again, unmodified, behind SentinelProxy, and it's blocked.
-> Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
+> "Its twin, RAGBot-AIM 7014, is the same code with its capability guard switched on, and it is denied."
+
+*Point at Slide 6 while the output lands: left, RAGBot 7005 pwned; middle, the AIM twin denied; right, 7005
+unmodified behind SentinelProxy, blocked (Beat 4).*
+
+> "Secure-by-design works when you can rebuild the agent. We protect the agents you can't rebuild."
 
 ```bash
 # Real today: the AIM twin's verdict on the identical payload (T1)
@@ -216,10 +225,11 @@ scripts/eval.sh contrast
 **Prevention map (from T3, #24) — know which control actually stops each agent:**
 - **RAGBot 7005:** the poisoned request is blocked **request-side, before it is forwarded**. Prevention.
 - **LegacyBot 7003:** the **reply is withheld** at the response boundary. Prevention of the leak to the client.
-- **RepoBot 7022:** the proxy **only raises an alert** (it cannot block the request safely); **T12's egress
-  guard is the control that actually stops the exfil** at the tool boundary. Prevention lives at egress.
+- **RepoBot 7022:** the payload is read inside the agent, so the proxy **cannot stop the exfil** (it cannot block the
+  request safely); **T12's egress guard is the control that actually stops it** at the tool boundary.
 
-Response-side honeytoken tripwires are **alert-only** everywhere — they never, by themselves, prevent.
+Response-side honeytoken tripwires fire after the tool already ran: **alert-only for prevention** of the exfil. In
+block mode they **withhold the reply** (T3-fix #56), so the secret never reaches the client.
 
 ### Beat 6 — How it works (2:05–2:30) · Slide 7
 
@@ -241,18 +251,18 @@ plus the evasion result. Every number is read from the committed `sentinel/scori
   detection (any finding)  recall 63.0%  FP 0.0%        recall 65.6%  FP 12.8%
   prevention (pre-forward) recall 41.8%  FP 0.0%        recall 63.0%  FP 12.8%
   8KB evasion: 2/2 fixtures (T3)
-  in-detector latency: p95 0.38 ms over 353 cases (under 0.5 ms)
+  in-detector latency: p95 0.38 ms over 353 cases (under half a millisecond)
 ```
 
-(Values above are as of `results.json` on origin/main `6c4fdc7`: 189 attack + 164 benign cases. If T7 regenerates
-it, the runner prints the new values and builds the spoken FP and recall sentence from the same file.)
+(Values above are as of `results.json` on origin/main `6c4fdc7`: 189 attack + 164 benign cases. The spoken line is
+static, so the presenter can read it here word for word. Every number in it is checked against `results.json`, and
+Beat 7 FAILS if the file no longer supports it. Then update the line in `run-demo.sh` and here together.)
 
-> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline
-> has the higher recall, and it pays for it: it flags 12.8 percent of benign traffic. Ours flags none. 8KB evasion:
-> 2 out of 2 fixtures. In-detector latency is about half a millisecond. This is a working slice of Falcon AI
-> Detection and Response, sitting at the tool boundary. Thank you."
+> "Scored against DVAA's own ground-truth labels on 189 attacks and 164 benign runs. On this corpus DVAA's baseline has the higher recall, and it pays for it in false positives: it flags 12.8 percent of benign traffic, and T3 flags none. 8KB evasion: 2 out of 2 fixtures. In-detector latency is under half a millisecond."
 
-Quote **one** latency figure: "in-detector ~0.5 ms" (the p95 in `results.json` is under 0.5 ms; `run-demo.sh`
+> "This is a working slice of Falcon AI Detection and Response, at the tool boundary. Thank you."
+
+Quote **one** latency phrase: "under half a millisecond" (the p95 in `results.json` is 0.38 ms; `run-demo.sh`
 fails Beat 7 if it ever is not).
 
 *Hard stop at 3:00. The 8KB-evasion beat (3b) is DoD item 1 — **never cut it**. If running long, cut the
@@ -268,13 +278,14 @@ benign pass in Beat 4 first, then trim Beat 6 to two mechanisms.*
 | 2 Structure | 0:20–0:40 | 20 | 60 |
 | 3 Exploit (red) | 0:40–1:00 | 20 | 40 |
 | 3b 8KB evasion (red, DoD 1) | 1:00–1:20 | 20 | 40 |
-| 4 Detect/block (green) | 1:20–1:50 | 30 | 55 |
-| 5 Red vs green | 1:50–2:05 | 15 | 55 |
+| 4 + 4b Detect/block + egress (green) | 1:20–1:50 | 30 | 125 |
+| 5a Twin, red vs green | 1:50–2:05 | 15 | 35 |
 | 6 How it works | 2:05–2:30 | 25 | 80 |
-| 7 Close | 2:30–2:50 | 20 | 65 |
+| 7 Close | 2:30–2:50 | 20 | 75 |
 | Buffer | 2:50–3:00 | 10 | — |
 
-Beats 4–7 run dense, at about 3.2 words per second. Rehearsal must confirm they fit. If not, cut the benign
+Beats 4–7 run dense: the verbatim Beat 4 + 4b lines are about 125 words in 30 seconds, which is too fast to read
+aloud in full. Rehearsal must confirm they fit. If not, cut the benign
 pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is DoD item 1 — never cut it.
 
 ## Placeholder register (fill on merge, then delete this table)
@@ -289,7 +300,7 @@ pass in Beat 4, then trim Beat 6 to two mechanisms. The 8KB-evasion beat (3b) is
 | `<<T2/T5: replay … ALLOWED / BLOCKED>>` | T2/T3/T5 | **FILLED** | live benign 200 vs attack 403 (Beat 4), T4 alert `proxy-block.t4-alerts.json` |
 | (egress guard, Beat 4b) | T12 | **FILLED (PR #45)** | `sentinel/egress/evidence-block.jsonl` + ground truth `demo/captures/egress-demo-block.txt` (`scripts/egress-demo.sh block`) |
 | `<<METRIC: detection / prevention recall, FP, N / M>>` | T7 | **FILLED** | printed by Beat 7 from `sentinel/scoring/results.json`. **Do not invent.** |
-| latency | T7 | **FILLED** | one figure only: "in-detector ~0.5 ms" (p95 from `results.json`) |
+| latency | T7 | **FILLED** | one phrase only: "under half a millisecond" (p95 0.38 ms in `results.json`) |
 
 > **Note on metrics:** the stage reads `sentinel/scoring/results.json`. Figures from the older 29-case
 > corpus are stale and must not be used anywhere. **Never hand-type metrics into the slides.**
