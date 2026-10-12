@@ -1,6 +1,8 @@
 # PRESENTER — 18:00 run-of-show (Catherine, Mac, screen share)
 
-One page. Follow it top to bottom. **Hard stop at 3:00, and don't debug on stage: switch to the fallback.**
+One page. Follow it top to bottom. **The 18:00 slot is 5–7 min (target ≈6:00): the 3-min Track 3 core (Beats 1–7,
+driven by `run-demo.sh`, live Beat 4b included) plus three presenter-driven expansion beats (8–10). Don't debug on
+stage: switch to the fallback.**
 Every quoted line below is copied word for word from `demo/SCRIPT.md`. The Beat 3–7 lines are also the `say`
 lines of `demo/run-demo.sh`, which prints each one in cyan, and `demo/run-demo.sh --check-script` fails if they drift.
 If you need to shorten a line, drop sentences from it. Don't reword it.
@@ -44,10 +46,12 @@ All commands run from the repo root. Under Colima the repo must be somewhere und
       **each** of Preflight 1/3, 2/3 and 3/3. **Park at the prompt after "Preflight 3/3"**, then Cmd-K. That's your
       starting position: the next Enter starts Beat 3.
 
-## Run of show (3:00 clock; Cmd-K, then Enter, for each beat)
+## Run of show (≈6:00; Cmd-K, then Enter, for each driven beat)
 
-Order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** → 6 → **7**. Beats 1, 2 and 6 are slides only; `run-demo.sh` drives the
-beats in bold. 376 spoken words, about 2:49 with transitions. Every quoted line is word for word from `demo/SCRIPT.md`.
+Order: 1 → 2 → **3 → 3b → 4 → 4b → 5a** → 6 → **7** → 8 → 9 → (10). Beats 1, 2 and 6 are slides only; `run-demo.sh`
+drives the beats in bold (the 3-min core). Beats 8–10 are the expanded run, **presenter-driven** from Slides 11–12 and
+one terminal command each. 691 spoken words total, about 5:45 with transitions and slide-reading pauses (the core is
+376 words / ≈2:49). Every quoted line is word for word from `demo/SCRIPT.md`.
 Don't read ticket numbers, reason codes or framework IDs aloud; they're on the slides for Q&A.
 
 **0:00 · Beat 1 Hook** · slide 1 → 2 (incidents and the Kurtz quote stay on the slide, unspoken)
@@ -110,6 +114,29 @@ result; Cmd-K, Enter for the recorded evidence (unspoken).
 
 Teardown and the Summary print straight after Beat 7; switch to slide 10 before they scroll in.
 Running long? Cut Beat 6 first, then the second sentence of Beat 3b. **Never cut the "we attacked ourselves" line.**
+**Expanded run:** after Beat 7's metrics, **don't say the final "Thank you." yet** — drop that one sentence (allowed;
+don't reword the rest) and keep going to Beat 8. `run-demo.sh` prints its Summary and tears down the dashboard after
+Beat 7; that's fine — Beats 8–10 use Slides 11–12 and their own one-line commands, not the dashboard.
+
+### Expansion beats 8–10 (expanded run only; presenter-driven, not `run-demo.sh`)
+
+**≈3:35 · Beat 8 OpsBot / Path A** · Slide 11 · terminal: `node track3a/run-demo.mjs` (≈2 s)
+> "That was the organizers' agent. We also built our own — OpsBot, a support agent with the same lethal trifecta — and attacked it. Undefended, it leaks on both the indirect and the direct attack. The chat proxy alone stops the direct one. Add the egress guard and both are stopped, two of two, with zero false alarms on the benign tasks. No single layer is enough; together they hold. Same unmodified SentinelProxy, a different agent."
+
+Screen: the matrix (undefended 0/2 … hardened + both 2/2; benign 0/2 every row). Fallback: open `track3a/RESULTS.md`.
+**Cut this beat first if running long** (after Beat 10).
+
+**≈4:10 · Beat 9 Ciocca** · Slide 12 (the venture slide; the SWG / SASE egress row is on it)
+> "As a product, for the Ciocca award: who pays? Teams running agents they can't rebuild — a vendor agent, an open-source one, a legacy internal one — where you can't rewrite the prompt or the tool code, but you can control the network. The budget holder can't ship an agent until security signs off on what it can send out. How we stand apart: classifiers ask whether text looks like an attack, and an attacker can reword it. We ask whether the user authorized the destination, and rewording doesn't change where the data goes. It's the secure web gateway model — a destination allowlist on egress — applied one layer down, to an agent's tool calls. Our path to launch: today, a prototype against the sandbox and our own OpsBot; next, an open-source sidecar that design partners run in observe mode on real traffic; then a paid managed tier for hosted allowlists and alert routing; then SOC integration. Where data actually leaves, we prevent 57 of 71 exfil attempts with zero of 164 legitimate requests blocked; the sandbox's scanner prevents 64 of 71 but blocks 21 of 164."
+
+No market size, price or customer name. Always pair "57 of 71" with "64 of 71 at 21 of 164 blocked" in the same breath.
+**Never cut this beat** (it is the Ciocca criteria itself).
+
+**≈5:25 · Beat 10 SOC handoff** · terminal: `scripts/soc-handoff.sh` · **only if time**
+> "And if there's time: our alerts don't stop at a dashboard. One offline command hands them to our Track 1 SOC brief, which turns them into a plain-English priority-one analyst brief — the source document, the tool, and the destination — ready for triage. No model key, no network. Thank you."
+
+Prints the brief and writes `.eval/soc-handoff/brief.md` (offline, Node ≥ 22). **If you skip Beat 10, move the closing
+"Thank you." to the end of Beat 9.**
 
 **If a judge bypasses the proxy live** (spacing, homoglyphs, a polite rephrase): "Thank you. That's layer 1. Layer 2
 doesn't read words." Then point at the egress guard: it decides on the destination host, not the wording.
@@ -127,7 +154,10 @@ doesn't read words." Then point at the egress guard: it decides on the destinati
 - Latency on stage: "typically in under a tenth of a millisecond" (the median, checked by `run-demo.sh`). If asked for more: "median under a tenth of a millisecond, p95 around half a millisecond". p95 moves between about 0.39 and 0.52 ms from run to run, so never say "under half a millisecond".
 - **"The attacker still got the key"** (closing line) is the recorded **watch-only (observe-mode) egress run**: the guard flagged the FAKE AWS key and forwarded it (`sentinel/egress/evidence-observe.jsonl`). "No secret reached the attacker" (Beat 4b) is the recorded **block** run only. Never generalize either to "nothing gets out".
 
-## Encores (after 3:00, or in Q&A)
+## Encores (Beats 8 and 10 in the expanded run; also for Q&A re-runs, or if you fall back to the 3-min core)
+
+> In the expanded ≈6:00 run these are scripted as Beats 8 (OpsBot) and 10 (SOC) — see **Expansion beats 8–10** above.
+> This section is the command reference and the Q&A / 3-min-core fallback for them.
 
 - **3A OpsBot (Path A).** Run `node track3a/run-demo.mjs` (about 2 s). It prints the layering table: Undefended
   LEAKED ×2 … Hardened + proxy + egress all blocked, benign OK. Fallback: `open track3a/RESULTS.md` (the committed table).
