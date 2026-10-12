@@ -67,7 +67,7 @@ test('delete-the-fix: stale 83.1% in each pitch doc (QA-PREP mid-paragraph, DECK
     const dir = tempRepo();
     try {
       const p = path.join(dir, doc);
-      const src = readFileSync(p, 'utf8').replace(/67\.7%/, '83.1%');
+      const src = readFileSync(p, 'utf8').replaceAll('67.7%', '83.1%');
       const injected = src.includes('83.1%') ? src : src + '\n\nOur prevention recall is 83.1%.\n';
       writeFileSync(p, injected);
       const r = cli(dir);
