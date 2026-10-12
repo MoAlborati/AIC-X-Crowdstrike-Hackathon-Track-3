@@ -1,0 +1,18 @@
+{
+  "name": "@sentinelproxy/alerts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelProxy AIDR/Falcon-shaped alert schema + framework mapping (T4). Zero dependencies.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./schema": "./schema.js",
+    "./mapping": "./mapping.js",
+    "./redact": "./redact.js"
+  },
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}
