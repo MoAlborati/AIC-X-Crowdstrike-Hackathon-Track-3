@@ -9,16 +9,12 @@
 //    An id the registry does not know throws: an unredactable verdict fails loud and is never rendered.
 //
 // 2. Response-side findings arrive as `flagged: false, alert: true` (DVAA runs tools in-process, so the
-//    reply is evidence, not prevention). The T2 proxy records only FLAGGED verdicts in its exchange
-//    record, so these would be dropped. The wrapper below parks each alert-only verdict by request id in a
-//    bounded map, and PipelineSink merges it into that request's exchange record before it is written
-//    (tagged `recordedBy: 'sentinel-pipeline'`). The reply is still delivered: the proxy sees the same
-//    unflagged verdict T3 returned. Bound: MAX_PENDING_ALERTS request ids; overflow throws
-//    PipelineBoundError, which the proxy turns into a fail-closed inspector error. Nothing is dropped.
-//    Limitation: `convert`/`tail` over a JSONL written by the STOCK proxy CLI only see flagged verdicts.
+//    reply is evidence, not prevention). Since #41 the T2 proxy records these alert-only verdicts in the
+//    exchange record itself (and emits a `detector_alert` alert record), so the pipeline no longer parks
+//    them. Parking them as well produced every response-side alert twice. `convert`/`tail` over a JSONL
+//    written by the stock proxy CLI therefore see the same alert-only verdicts as the live path.
 
 import { createDetector, sentinelInspector, DVAA_HONEYTOKENS } from '../detectors/index.js';
-import { BOUNDS, PipelineBoundError } from './bounds.mjs';
 
 export const T3_DETECTOR = 'sentinel-t3';
 
@@ -26,41 +22,20 @@ export const T3_DETECTOR = 'sentinel-t3';
 export const T3_CANARIES = Object.freeze(DVAA_HONEYTOKENS.map(({ id, value }) => Object.freeze({ id, value })));
 
 /**
- * @param {{detector?: object, caps?: object, detectorOptions?: object}} [opts]
- * @returns {{inspectors: Function[], detector: object, toAlertVerdict: Function, takeAlertOnly: Function, pendingAlertOnly: Function}}
+ * @param {{detector?: object, detectorOptions?: object}} [opts]
+ * @returns {{inspectors: Function[], detector: object, toAlertVerdict: Function}}
  */
-export function createT3Source({ detector, caps = BOUNDS, detectorOptions = {} } = {}) {
+export function createT3Source({ detector, detectorOptions = {} } = {}) {
   const det = detector ?? createDetector({ honeytokens: DVAA_HONEYTOKENS, ...detectorOptions });
   const inner = sentinelInspector({ detector: det });
-  const alertOnly = new Map(); // requestId -> [phase-tagged verdict]
-
+  // Named so the proxy's verdict `detector` fallback and logs read 'sentinelT3'; T3 sets `detector` itself.
   async function sentinelT3(ctx) {
-    const v = await inner(ctx);
-    if (v && v.flagged !== true && v.alert === true) {
-      const list = alertOnly.get(ctx.requestId);
-      if (!list && alertOnly.size >= caps.MAX_PENDING_ALERTS) {
-        throw new PipelineBoundError('MAX_PENDING_ALERTS', alertOnly.size + 1, caps.MAX_PENDING_ALERTS, 'T3 alert-only verdicts waiting for their exchange record');
-      }
-      const next = [...(list ?? []), { phase: ctx.phase, ...v, recordedBy: 'sentinel-pipeline' }];
-      if (next.length > caps.MAX_VERDICTS_PER_EXCHANGE) {
-        throw new PipelineBoundError('MAX_VERDICTS_PER_EXCHANGE', next.length, caps.MAX_VERDICTS_PER_EXCHANGE, `T3 alert-only verdicts for request ${ctx.requestId}`);
-      }
-      alertOnly.set(ctx.requestId, next);
-    }
-    return v;
+    return inner(ctx);
   }
-
   return {
     inspectors: [sentinelT3],
     detector: det,
     toAlertVerdict: (finding) => det.toAlertVerdict(finding),
-    /** Remove and return the alert-only verdicts parked for a request (empty when none). */
-    takeAlertOnly(requestId) {
-      const list = alertOnly.get(requestId) ?? [];
-      alertOnly.delete(requestId);
-      return list;
-    },
-    pendingAlertOnly: () => alertOnly.size,
   };
 }
 

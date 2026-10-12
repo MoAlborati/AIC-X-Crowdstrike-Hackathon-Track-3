@@ -5,10 +5,11 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { validateAlert } from '../../alerts/index.js';
 import { DVAA_HONEYTOKENS } from '../../detectors/index.js';
 import { createPipeline } from '../pipeline.mjs';
+import { verdictParts } from '../convert.mjs';
 import { PipelineSink } from '../sink.mjs';
 import { readJsonl } from '../jsonl.mjs';
 import { createT3Source, t3Rehydrator, T3_CANARIES } from '../t3.mjs';
@@ -38,7 +39,7 @@ before(async () => {
     const pipeline = createPipeline({ outDir, log: silentLog(), canaries: [...T3_CANARIES], t3, proxyCapturePath: capturePath });
     await pipeline.init();
     const config = proxyConfig({ upstreamPort: up.port, mode: 'block', capturePath });
-    const sink = new PipelineSink(new JsonlCaptureSink(config.capture), pipeline, { takeExtraVerdicts: t3.takeAlertOnly });
+    const sink = new PipelineSink(new JsonlCaptureSink(config.capture), pipeline);
     const proxy = createProxy(config, { sink, inspectors: t3.inspectors, logAlert: () => {} });
     const { port } = await proxy.listen();
     try {
@@ -46,7 +47,6 @@ before(async () => {
     } finally {
       await proxy.close();
     }
-    assert.equal(t3.pendingAlertOnly(), 0, 'every parked alert-only verdict was merged into its exchange');
   } finally {
     await up.close();
   }
@@ -80,6 +80,23 @@ test('T3 on aim-ab run A: response-side flagged:false/alert:true verdicts become
   // The honeytoken alert names the real tool call from the DVAA reply.
   const ht = alerts.find((a) => a.Category === 'honeytoken_exfil');
   assert.equal(ht.Entities.ToolCall.Name, 'submit_to_index');
+});
+
+test('post-#41: each T3 alert-only finding becomes exactly ONE alert (proxy-recorded verdict, no pipeline re-merge)', () => {
+  const recs = readFileSync(capturePath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const ex = recs.find((r) => r.type === 'exchange');
+  const t3Verdicts = ex.verdicts.filter((v) => v.detector === 'sentinel-t3');
+  assert.equal(t3Verdicts.length, 1, 'the T3 response verdict is recorded once, by the proxy');
+  assert.ok(recs.some((r) => r.type === 'alert' && r.reason === 'detector_alert'), 'proxy emitted its detector_alert record');
+  const alerts = allAlerts(outDir);
+  // One alert per T3 finding on the single recorded verdict. Pre-fix (pipeline parking + #41 proxy
+  // recording) this was 2x: every finding rendered twice on the dashboard.
+  const parts = verdictParts(t3Verdicts[0], ex);
+  assert.ok(parts.length >= 1);
+  assert.equal(alerts.length, parts.length, `alerts ${alerts.map((a) => a.AlertId).join(', ')} vs ${parts.length} findings`);
+  const opsPath = path.join(outDir, 'ops-alerts.jsonl');
+  const ops = existsSync(opsPath) ? readFileSync(opsPath, 'utf8') : '';
+  assert.doesNotMatch(ops, /detector_alert/, 'detector_alert is a detection duplicate, not an operational alert');
 });
 
 test('T3 canaries: rehydrated by toAlertVerdict for T4, and no honeytoken value is written anywhere', () => {

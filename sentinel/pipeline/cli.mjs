@@ -138,7 +138,7 @@ export async function main(argv = process.argv.slice(2)) {
       proxyCapturePath: path.relative(REPO, config.capture.path),
     });
     await pipeline.init({ clean: values.clean });
-    const sink = new PipelineSink(new JsonlCaptureSink(config.capture), pipeline, t3 ? { takeExtraVerdicts: t3.takeAlertOnly } : {});
+    const sink = new PipelineSink(new JsonlCaptureSink(config.capture), pipeline);
     const inspectors = t3 ? t3.inspectors : standinInspectors(loadStandinConfig(standinPath));
     if (!t3) defaultLog({ level: 'WARN', reason: 'standin_fallback', msg: 'STAND-IN inspectors selected with --standin: alerts are labeled StandIn and the dashboard shows PLACEHOLDER' });
     const proxy = createProxy(config, { sink, inspectors });

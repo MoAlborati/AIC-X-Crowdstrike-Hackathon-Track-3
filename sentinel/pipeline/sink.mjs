@@ -8,10 +8,9 @@
 // sink is written first.
 
 //
-// `takeExtraVerdicts(requestId)` (optional, from createT3Source().takeAlertOnly): T3's alert-only
-// response verdicts (`flagged: false`) are not recorded by the proxy. They are merged into the exchange
-// record here, before both the proxy JSONL and the pipeline see it, so `convert` over that JSONL reproduces
-// the same alerts.
+// `takeExtraVerdicts(requestId)` (optional): extra verdicts to merge into an exchange record before both
+// the proxy JSONL and the pipeline see it. Not used for T3 since #41: the proxy records T3's alert-only
+// (`flagged: false, alert: true`) verdicts itself, and merging them again would duplicate every alert.
 export class PipelineSink {
   constructor(inner, pipeline, { takeExtraVerdicts = null } = {}) {
     this.inner = inner;

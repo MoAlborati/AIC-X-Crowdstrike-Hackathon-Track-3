@@ -8,7 +8,8 @@
 // Record handling:
 //   exchange                  -> capture exchange + one T4 alert per flagged verdict (both directions)
 //   request (write-ahead)     -> counted only; its exchange record follows
-//   alert reason=flagged      -> duplicate of the exchange's verdicts. Held until that exchange
+//   alert reason=flagged|detector_alert -> duplicate of the exchange's verdicts (detector_alert = #41's
+//                                alert-only verdicts, e.g. T3 response-side). Held until that exchange
 //                                arrives, then dropped. If the exchange never comes
 //                                (capture_write_failed), it is converted on its own (orphan alerts).
 //   alert request/response_too_large -> T4 `scan_cap_exceeded` alert, attached to the exchange
@@ -18,6 +19,9 @@
 import { BOUNDS, enforce, defaultLog, resolveCaps } from './bounds.mjs';
 import { alertsForExchange, alertsForProxyAlert, agentOf, parseJsonBody, sessionOf, inspectedBody } from './convert.mjs';
 import { OutputStore } from './store.mjs';
+
+// Proxy alert reasons whose verdicts are also on the request's exchange record (T2 #14, #41).
+const DUPLICATE_OF_EXCHANGE = new Set(['flagged', 'detector_alert']);
 
 export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, canaries = [], proxyCapturePath = null, onWarning, t3 = null } = {}) {
   if (!outDir) throw new Error('createPipeline: outDir is required');
@@ -52,7 +56,7 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
     const session = extra.session ?? 'proxy-unattributed';
     const alerts = [];
     for (const { record, line } of held) {
-      if (record.reason === 'flagged') {
+      if (DUPLICATE_OF_EXCHANGE.has(record.reason)) {
         // Rebuild an exchange-shaped record from the alert so the same converter applies.
         const pseudo = { ...record, target: extra.target, verdicts: (record.verdicts ?? []).map((v) => ({ phase: record.phase, ...v })), action: record.action === 'blocked' ? `blocked_${record.phase}` : 'forwarded' };
         alerts.push(...alertsForExchange(pseudo, ctxFor(session, line)));
@@ -77,9 +81,10 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
       enforce('MAX_VERDICTS_PER_EXCHANGE', (record.verdicts ?? []).length, `exchange ${record.request_id}`, caps, log);
       const alerts = alertsForExchange(record, ctxFor(session, line));
       enforce('MAX_VERDICTS_PER_EXCHANGE', alerts.length, `alerts built for exchange ${record.request_id}`, caps, log);
-      // Held proxy alerts for this request: scan-cap ones become detections, `flagged` ones are
-      // duplicates of the verdicts above and are dropped here on purpose.
+      // Held proxy alerts for this request: scan-cap ones become detections, `flagged` / `detector_alert`
+      // ones are duplicates of the verdicts above and are dropped here on purpose.
       for (const { record: a, line: aLine } of pending.get(record.request_id) ?? []) {
+        if (DUPLICATE_OF_EXCHANGE.has(a.reason)) continue;
         alerts.push(...alertsForProxyAlert(a, { ...ctxFor(session, aLine), agent, target: record.target }));
       }
       pending.delete(record.request_id);
@@ -94,7 +99,7 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
     }
     if (record.type === 'alert') {
       const entry = { level: 'ALERT', source: 'proxy', line, ...record };
-      if (record.reason === 'flagged' || record.reason === 'request_too_large' || record.reason === 'response_too_large') {
+      if (DUPLICATE_OF_EXCHANGE.has(record.reason) || record.reason === 'request_too_large' || record.reason === 'response_too_large') {
         if (record.request_id) { holdAlert(record, line); return; }
       }
       if (record.reason === 'capture_write_failed' && record.request_id && pending.has(record.request_id)) {
@@ -102,7 +107,7 @@ export function createPipeline({ outDir, caps: capOverrides, log = defaultLog, c
       }
       // Operational alert: never a T4 detection, never silent.
       await store.recordOps({ source: 'proxy', line, ...record });
-      if (record.reason !== 'flagged') log(entry);
+      if (!DUPLICATE_OF_EXCHANGE.has(record.reason)) log(entry);
       return;
     }
     throw new Error(`line ${line}: unknown record type ${JSON.stringify(record.type)}`);
